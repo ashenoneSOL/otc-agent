@@ -163,6 +163,7 @@ async function main() {
     NEXT_PUBLIC_ELIZA_TOKEN_ADDRESS: elizaAddress,
     NEXT_PUBLIC_USDC_ADDRESS: usdcAddress,
     NEXT_PUBLIC_deal_ADDRESS: otcAddress,
+    NEXT_PUBLIC_OTC_ADDRESS: otcAddress,
     NEXT_PUBLIC_ELIZA_USD_FEED: elizaUsdAddress,
     NEXT_PUBLIC_ETH_USD_FEED: ethUsdAddress,
     // Note: Approver is a Hardhat signer, no private key available in test environment

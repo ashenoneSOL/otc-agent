@@ -75,6 +75,96 @@ describe("OTC", () => {
     // approver can cancel
     await desk.connect(approver).cancelOffer(offerId);
   });
+
+  it("0 lockup allows immediate claim after fulfill", async () => {
+    const { user, approver, usdc, desk, token } = await deploy();
+    // Set reasonable token price
+    const tokenUsdAddr = await desk.tokenUsdFeed();
+    const tokenUsd = (await hre.ethers.getContractAt("MockAggregatorV3", tokenUsdAddr)) as any;
+    await tokenUsd.setAnswer(100_000n); // $0.001
+
+    // Fund user
+    await usdc.transfer(user.address, 1_000_000n * 10n ** 6n);
+
+    // Create, approve, fulfill
+    await desk.connect(user).createOffer(hre.ethers.parseEther("1000"), 0, 1, 0); // 0 lockup
+    const ids = await desk.getOpenOfferIds();
+    const id = ids[0];
+    await desk.connect(approver).approveOffer(id);
+    const usd = await desk.totalUsdForOffer(id);
+    const usdcAmt = (usd * 10n ** 6n) / 10n ** 8n;
+    await usdc.connect(user).approve(await desk.getAddress(), usdcAmt);
+    await desk.connect(user).fulfillOffer(id);
+
+    // Immediate claim
+    await expect(desk.connect(user).claim(id)).to.not.be.reverted;
+    const bal = await token.balanceOf(user.address);
+    expect(bal).to.equal(hre.ethers.parseEther("1000"));
+  });
+
+  it("claim reverts before unlock for non-zero lockup", async () => {
+    const { user, approver, usdc, desk } = await deploy();
+    const tokenUsdAddr = await desk.tokenUsdFeed();
+    const tokenUsd = (await hre.ethers.getContractAt("MockAggregatorV3", tokenUsdAddr)) as any;
+    await tokenUsd.setAnswer(100_000n); // $0.001
+
+    await usdc.transfer(user.address, 1_000_000n * 10n ** 6n);
+    // 30-day lockup
+    await desk.connect(user).createOffer(hre.ethers.parseEther("1000"), 0, 1, 30n * 24n * 60n * 60n);
+    const ids = await desk.getOpenOfferIds();
+    const id = ids[0];
+    await desk.connect(approver).approveOffer(id);
+    const usd = await desk.totalUsdForOffer(id);
+    const usdcAmt = (usd * 10n ** 6n) / 10n ** 8n;
+    await usdc.connect(user).approve(await desk.getAddress(), usdcAmt);
+    await desk.connect(user).fulfillOffer(id);
+
+    await expect(desk.connect(user).claim(id)).to.be.revertedWith("locked");
+
+    // advance just before unlock still reverts
+    await hre.network.provider.send("evm_increaseTime", [29 * 24 * 60 * 60]);
+    await hre.network.provider.send("evm_mine");
+    await expect(desk.connect(user).claim(id)).to.be.revertedWith("locked");
+
+    // advance past unlock succeeds
+    await hre.network.provider.send("evm_increaseTime", [2 * 24 * 60 * 60]);
+    await hre.network.provider.send("evm_mine");
+    await expect(desk.connect(user).claim(id)).to.not.be.reverted;
+  });
+
+  it("autoClaim by approver distributes matured tokens in batch", async () => {
+    const { user, approver, usdc, desk, token } = await deploy();
+    const tokenUsdAddr = await desk.tokenUsdFeed();
+    const tokenUsd = (await hre.ethers.getContractAt("MockAggregatorV3", tokenUsdAddr)) as any;
+    await tokenUsd.setAnswer(100_000n); // $0.001
+    await usdc.transfer(user.address, 1_000_000n * 10n ** 6n);
+
+    // Create two offers with 1-day lockup
+    for (let i = 0; i < 2; i++) {
+      await desk.connect(user).createOffer(hre.ethers.parseEther("500"), 0, 1, 24n * 60n * 60n);
+    }
+    const ids = await desk.getOpenOfferIds();
+    for (const id of ids) {
+      await desk.connect(approver).approveOffer(id);
+      const usd = await desk.totalUsdForOffer(id);
+      const usdcAmt = (usd * 10n ** 6n) / 10n ** 8n;
+      await usdc.connect(user).approve(await desk.getAddress(), usdcAmt);
+      await desk.connect(user).fulfillOffer(id);
+    }
+
+    // advance past unlock
+    await hre.network.provider.send("evm_increaseTime", [2 * 24 * 60 * 60]);
+    await hre.network.provider.send("evm_mine");
+
+    // Before autoClaim, user has 0 new tokens from these deals
+    const before = await token.balanceOf(user.address);
+
+    // Approver triggers autoClaim
+    await expect(desk.connect(approver).autoClaim(ids)).to.not.be.reverted;
+
+    const after = await token.balanceOf(user.address);
+    expect(after - before).to.equal(hre.ethers.parseEther("1000"));
+  });
 });
 
 

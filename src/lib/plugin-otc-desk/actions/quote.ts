@@ -69,13 +69,13 @@ function parseQuoteRequest(text: string): {
   return result;
 }
 
-// ---------------- Negotiation support (APR/lockup) ----------------
+// ---------------- Negotiation support (discount/lockup) ----------------
 const MIN_USD_AMOUNT = 5; // $5 minimum
 const MAX_DISCOUNT_BPS = 2500; // 25% maximum discount
 
 function parseNegotiationRequest(text: string): {
   tokenAmount?: string;
-  apr?: number;
+  requestedDiscountBps?: number;
   lockupMonths?: number;
   paymentCurrency?: "ETH" | "USDC";
 } {
@@ -87,10 +87,15 @@ function parseNegotiationRequest(text: string): {
     result.tokenAmount = amountMatch[1].replace(/,/g, "");
   }
 
-  // APR/yield request
-  const aprMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:%|percent|apr|apy|yield)/i);
-  if (aprMatch) {
-    result.apr = parseFloat(aprMatch[1]);
+  // Discount request
+  const discountMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:%|percent|bps|basis|discount)/i);
+  if (discountMatch) {
+    const value = parseFloat(discountMatch[1]);
+    if (discountMatch[0].includes("bps") || discountMatch[0].includes("basis")) {
+      result.requestedDiscountBps = Math.round(value);
+    } else {
+      result.requestedDiscountBps = Math.round(value * 100);
+    }
   }
 
   // Lockup period
@@ -117,10 +122,8 @@ function parseNegotiationRequest(text: string): {
   return result;
 }
 
-function calculateDiscountFromAPR(apr: number, lockupMonths: number): number {
-  const baseBps = apr * 100; // percentage -> basis points
-  const lockupAdjustment = Math.max(0, (12 - lockupMonths) * 50); // shorter lockups => more discount
-  return Math.min(MAX_DISCOUNT_BPS, Math.round(baseBps + lockupAdjustment));
+function clampDiscountBps(discountBps: number): number {
+  return Math.max(0, Math.min(MAX_DISCOUNT_BPS, Math.round(discountBps)));
 }
 
 async function negotiateTerms(
@@ -129,56 +132,34 @@ async function negotiateTerms(
   existingQuote: any,
 ): Promise<{
   tokenAmount: string;
-  apr: number;
   lockupMonths: number;
   discountBps: number;
   paymentCurrency: "ETH" | "USDC";
   reasoning: string;
 }> {
-  let apr = 8.0; // default
   let lockupMonths = 5; // default
-
-  if (request.apr) {
-    if (request.apr > 25) {
-      apr = 25;
-      lockupMonths = 1;
-    } else if (request.apr < 1) {
-      apr = 1;
-      lockupMonths = 12;
-    } else {
-      apr = request.apr;
-      if (apr <= 5) lockupMonths = 12;
-      else if (apr <= 8) lockupMonths = 9;
-      else if (apr <= 12) lockupMonths = 6;
-      else if (apr <= 15) lockupMonths = 3;
-      else lockupMonths = 1;
-    }
-  }
 
   if (request.lockupMonths) {
     lockupMonths = Math.max(0.25, Math.min(12, request.lockupMonths));
-    if (lockupMonths >= 12) apr = Math.min(apr, 12);
-    else if (lockupMonths >= 9) apr = Math.min(apr, 10);
-    else if (lockupMonths >= 6) apr = Math.min(apr, 8.5);
-    else if (lockupMonths >= 3) apr = Math.min(apr, 6.5);
-    else apr = Math.min(apr, 4.5);
   }
 
-  const discountBps = calculateDiscountFromAPR(apr, lockupMonths);
+  // Requested discount or default based on existing quote
+  let discountBps = clampDiscountBps(
+    request.requestedDiscountBps ?? existingQuote?.discountBps ?? 800,
+  );
+
+  // Adjust lockup guidance for larger discounts
+  if (discountBps >= 2000 && lockupMonths < 6) lockupMonths = 6;
+  if (discountBps >= 2500 && lockupMonths < 9) lockupMonths = 9;
+
   const tokenAmount = request.tokenAmount || existingQuote?.tokenAmount || "1000";
 
-  let reasoning = "";
-  if (request.apr && request.apr > 15) {
-    reasoning = `For ${apr.toFixed(1)}% APR, I need a shorter ${lockupMonths}-month lockup to make the economics work.`;
-  } else if (request.lockupMonths && request.lockupMonths >= 9) {
-    reasoning = `With a ${lockupMonths}-month commitment, I can offer you ${apr.toFixed(1)}% APR - that's a great long-term rate.`;
-  } else {
-    reasoning = `I can do ${apr.toFixed(1)}% APR with a ${lockupMonths}-month lockup. This balances yield and flexibility.`;
-  }
+  const reasoning = `I can offer a ${(
+    discountBps / 100
+  ).toFixed(2)}% discount with a ${lockupMonths}-month lockup.`;
 
   return {
     tokenAmount,
-    apr,
     lockupMonths,
     discountBps,
     paymentCurrency: request.paymentCurrency || existingQuote?.paymentCurrency || "USDC",
@@ -256,8 +237,8 @@ export const quoteAction: Action = {
 
       // Determine whether this is a negotiation-style request
       const isNegotiation =
-        /negotiate|apr|yield|lockup|month/i.test(text) ||
-        negotiationRequest.apr !== undefined ||
+        /negotiate|discount|lockup|month/i.test(text) ||
+        negotiationRequest.requestedDiscountBps !== undefined ||
         negotiationRequest.lockupMonths !== undefined;
 
       // Shared prices
@@ -308,7 +289,6 @@ export const quoteAction: Action = {
           expiresAt,
           createdAt: now,
           quoteId,
-          apr: negotiated.apr,
           lockupMonths: negotiated.lockupMonths,
           paymentAmount,
         };
@@ -336,7 +316,6 @@ export const quoteAction: Action = {
   <tokenAmount>${negotiated.tokenAmount}</tokenAmount>
   <tokenAmountFormatted>${formattedAmount}</tokenAmountFormatted>
   <tokenSymbol>${ELIZA_TOKEN.symbol}</tokenSymbol>
-  <apr>${negotiated.apr.toFixed(1)}</apr>
   <lockupMonths>${negotiated.lockupMonths}</lockupMonths>
   <lockupDays>${lockupDays}</lockupDays>
   <pricePerToken>${priceUsdPerToken.toFixed(8)}</pricePerToken>
@@ -359,15 +338,15 @@ export const quoteAction: Action = {
 
 📊 **Your Quote** (ID: ${quoteId})
 • Amount: ${formattedAmount} ${ELIZA_TOKEN.symbol}
-• **APR: ${negotiated.apr.toFixed(1)}%**
+• **Discount: ${(negotiated.discountBps / 100).toFixed(2)}%**
 • **Lockup: ${negotiated.lockupMonths} months** (${lockupDays} days)
 • Your Price: $${discountedUsd.toFixed(2)} (${paymentAmount} ${paymentSymbol})
-• You Save: $${discountUsd.toFixed(2)} (${(negotiated.discountBps / 100).toFixed(2)}% discount)
+• You Save: $${discountUsd.toFixed(2)}
 
 ✅ Quote is valid upon on-chain submission; the agent will confirm it matches our records.
 
 To accept: Say "accept" or "confirm"
-To negotiate: Tell me your preferred APR or lockup period`;
+To negotiate: Tell me your preferred discount or lockup period`;
 
         if (callback) {
           await callback({
@@ -430,7 +409,6 @@ To negotiate: Tell me your preferred APR or lockup period`;
         expiresAt,
         createdAt: now,
         quoteId,
-        apr: 8.0,
         lockupMonths: 5,
         paymentAmount,
       };
@@ -469,7 +447,6 @@ To negotiate: Tell me your preferred APR or lockup period`;
   <tokenAmountFormatted>${formattedAmount}</tokenAmountFormatted>
   <tokenSymbol>${ELIZA_TOKEN.symbol}</tokenSymbol>
   <tokenName>${ELIZA_TOKEN.name}</tokenName>
-  <apr>8.0</apr>
   <lockupMonths>5</lockupMonths>
   <lockupDays>150</lockupDays>
   <pricePerToken>${priceUsdPerToken.toFixed(8)}</pricePerToken>

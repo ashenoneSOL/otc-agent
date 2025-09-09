@@ -4,7 +4,7 @@ describe('OTC Desk Comprehensive Tests', () => {
   // Test data
   const testWalletAddress = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
   const initialQuote = {
-    apr: '8%',
+    discount: '8%',
     lockup: '5 months',
     minAmount: 100,
     maxAmount: 10000
@@ -31,7 +31,7 @@ describe('OTC Desk Comprehensive Tests', () => {
       
       // Initial quote display
       cy.get('[data-testid="initial-quote"]').within(() => {
-        cy.contains(initialQuote.apr).should('be.visible');
+        cy.contains(initialQuote.discount).should('be.visible');
         cy.contains(initialQuote.lockup).should('be.visible');
         cy.contains('Accept Quote').should('be.visible');
       });
@@ -47,7 +47,7 @@ describe('OTC Desk Comprehensive Tests', () => {
       cy.get('[data-testid="initial-quote"]').within(() => {
         // Check all quote details
         cy.contains('Your Quote').should('be.visible');
-        cy.contains('APR').should('be.visible');
+        cy.contains('Discount').should('be.visible');
         cy.contains('Lockup Period').should('be.visible');
         cy.contains('Payment Currency').should('be.visible');
         cy.contains(/ETH|USDC/).should('be.visible');
@@ -60,7 +60,7 @@ describe('OTC Desk Comprehensive Tests', () => {
       
       // Verify everything loads again
       cy.get('[data-testid="initial-quote"]').should('be.visible');
-      cy.contains(initialQuote.apr).should('be.visible');
+      cy.contains(initialQuote.discount).should('be.visible');
     });
   });
 
@@ -78,7 +78,7 @@ describe('OTC Desk Comprehensive Tests', () => {
         
         // Quote summary
         cy.contains('Quote Summary').should('be.visible');
-        cy.contains(initialQuote.apr).should('be.visible');
+        cy.contains(initialQuote.discount).should('be.visible');
         cy.contains(initialQuote.lockup).should('be.visible');
         
         // Input controls
@@ -149,7 +149,7 @@ describe('OTC Desk Comprehensive Tests', () => {
   describe('3. Chat Negotiation Tests', () => {
     it('should navigate to chat when entering negotiation text', () => {
       // Type negotiation message
-      const negotiationMessage = 'I want 10% APR instead';
+      const negotiationMessage = 'I want 10% discount instead';
       cy.get('[data-testid="landing-textarea"]').type(negotiationMessage);
       
       // Press enter or click send
@@ -164,7 +164,7 @@ describe('OTC Desk Comprehensive Tests', () => {
 
     it('should receive AI response with updated quote', () => {
       // Start negotiation
-      cy.get('[data-testid="landing-textarea"]').type('Can you do 9% APR?{enter}');
+      cy.get('[data-testid="landing-textarea"]').type('Can you do 9% discount?{enter}');
       
       // Wait for AI response
       cy.get('[data-testid="agent-message"]', { timeout: 15000 }).should('be.visible');
@@ -175,9 +175,9 @@ describe('OTC Desk Comprehensive Tests', () => {
 
     it('should handle multiple negotiation rounds', () => {
       const negotiations = [
-        'Can you improve the APR?',
+        'Can you improve the discount?',
         'What about 9.5%?',
-        'OK, I accept 9%'
+        'OK, I accept 9% discount'
       ];
       
       negotiations.forEach((message, index) => {
@@ -196,12 +196,12 @@ describe('OTC Desk Comprehensive Tests', () => {
 
     it('should parse and display XML quotes correctly', () => {
       // Send negotiation request
-      cy.get('[data-testid="landing-textarea"]').type('I need a better rate{enter}');
+      cy.get('[data-testid="landing-textarea"]').type('I need a better discount{enter}');
       
       // Wait for quote display
       cy.get('[data-testid="quote-display"]', { timeout: 15000 }).within(() => {
         // Check all quote fields are present
-        cy.get('[data-testid="quote-apr"]').should('be.visible');
+        cy.get('[data-testid="quote-discount"]').should('be.visible');
         cy.get('[data-testid="quote-lockup"]').should('be.visible');
         cy.get('[data-testid="quote-discount"]').should('be.visible');
         cy.get('[data-testid="quote-currency"]').should('be.visible');
@@ -222,9 +222,8 @@ describe('OTC Desk Comprehensive Tests', () => {
     it('should display all quote information', () => {
       cy.get('[data-testid="quote-display"]').within(() => {
         // Check all fields
-        cy.contains('APR').should('be.visible');
-        cy.contains('Lockup Period').should('be.visible');
         cy.contains('Discount').should('be.visible');
+        cy.contains('Lockup Period').should('be.visible');
         cy.contains('Payment Currency').should('be.visible');
         cy.contains('Expires').should('be.visible');
       });
@@ -350,7 +349,7 @@ describe('OTC Desk Comprehensive Tests', () => {
       // Check completion details
       cy.contains('Deal Complete').should('be.visible');
       cy.contains('1000 tokens').should('be.visible');
-      cy.contains(initialQuote.apr).should('be.visible');
+      cy.contains(initialQuote.discount).should('be.visible');
     });
   });
 
@@ -374,7 +373,7 @@ describe('OTC Desk Comprehensive Tests', () => {
       // Check all details displayed
       // cy.get('[data-testid="deal-completion"]').within(() => {
       //   cy.contains('1000 tokens').should('be.visible');
-      //   cy.contains('8% APR').should('be.visible');
+      //   cy.contains('8% discount').should('be.visible');
       //   cy.contains('5 months').should('be.visible');
       // });
     });
@@ -658,7 +657,7 @@ describe('OTC Desk Comprehensive Tests', () => {
       cy.get('[data-testid="agent-message"]', { timeout: 15000 }).should('be.visible');
       
       // 4. Continue negotiation
-      cy.get('[data-testid="chat-input"]').type('How about 9% APR?{enter}');
+      cy.get('[data-testid="chat-input"]').type('How about 9% discount?{enter}');
       
       // 5. Get updated quote
       cy.get('[data-testid="quote-display"]').should('be.visible');
@@ -725,7 +724,6 @@ describe('OTC Desk Comprehensive Tests', () => {
           text: `
             <!-- XML_START -->
             <quote>
-              <apr>99.99</apr>
               <lockupMonths>120</lockupMonths>
               <discountBps>9999</discountBps>
             </quote>

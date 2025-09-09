@@ -206,14 +206,13 @@ async function main() {
   log("=".repeat(60), COLORS.cyan);
   
   const savedAmount = Number(totalUsd) / 1e8 * 0.15; // 15% discount
-  const effectiveAPR = (0.15 / (90/365)) * 100; // Annualized discount rate
   
   log("\n🎉 CONGRATULATIONS! Deal Complete! 🎉", COLORS.bright + COLORS.magenta);
   log("\n📈 Deal Summary:", COLORS.yellow);
   log(`  • Tokens Received: ${ethers.formatEther(elizaBalance)} ELIZA`);
   log(`  • Amount Paid: ${Number(usdcAmount) / 1e6} USDC`);
   log(`  • Discount Received: 15% ($${savedAmount.toFixed(2)} saved)`);
-  log(`  • Effective APR: ${effectiveAPR.toFixed(1)}%`);
+  log(`  • Discount ROI: ${((savedAmount / (Number(totalUsd) / 1e8)) * 100).toFixed(1)}%`);
   log(`  • Lockup Period: 90 days`);
   
   log("\n✨ P&L Summary:", COLORS.green);

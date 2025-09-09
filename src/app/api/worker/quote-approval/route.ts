@@ -46,6 +46,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "start") {
+      // Allow passing approver key for test/dev
+      try {
+        const body = await request.json();
+        if (body?.approverPrivateKey && typeof body.approverPrivateKey === "string") {
+          process.env.APPROVER_PRIVATE_KEY = body.approverPrivateKey as string;
+        }
+      } catch {}
       startQuoteApprovalWorker();
       return NextResponse.json({
         success: true,

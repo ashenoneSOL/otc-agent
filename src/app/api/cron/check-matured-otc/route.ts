@@ -1,17 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createPublicClient, http, type Abi, type Address } from "viem";
-import { hardhat } from "viem/chains";
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  privateKeyToAccount,
+  type Abi,
+  type Address,
+} from "viem";
+import { hardhat, base, baseSepolia } from "viem/chains";
 import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
 
 // This should be called daily via a cron job (e.g., Vercel Cron or external scheduler)
 // It checks for matured OTC and claims them on behalf of users
 
 const OTC_ADDRESS = process.env.NEXT_PUBLIC_OTC_ADDRESS as Address;
+const APPROVER_PRIVATE_KEY = process.env.APPROVER_PRIVATE_KEY as `0x${string}` | undefined;
+const CRON_SECRET = process.env.CRON_SECRET;
+
+function getChain() {
+  const env = process.env.NODE_ENV;
+  const network = process.env.NETWORK || "hardhat";
+  if (env === "production") return base;
+  if (network === "base-sepolia") return baseSepolia;
+  return hardhat;
+}
 
 export async function GET(request: NextRequest) {
   // Verify cron secret if using external scheduler
   const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = CRON_SECRET;
 
   // Always require authentication in production
   if (!cronSecret && process.env.NODE_ENV === "production") {
@@ -40,90 +57,92 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Set up clients
-    const publicClient = createPublicClient({
-      chain: hardhat,
-      transport: http(),
-    });
-
+    const chain = getChain();
+    const publicClient = createPublicClient({ chain, transport: http() });
     const abi = otcArtifact.abi as Abi;
 
-    // Get all open offer IDs
-    const openOfferIds = (await publicClient.readContract({
+    // Enumerate all offers via nextOfferId
+    const nextOfferId = (await publicClient.readContract({
       address: OTC_ADDRESS,
       abi,
-      functionName: "getOpenOfferIds",
-    })) as bigint[];
+      functionName: "nextOfferId",
+    })) as bigint;
 
     const now = Math.floor(Date.now() / 1000);
     const maturedOffers: bigint[] = [];
 
-    // Check each offer for maturity
-    for (const offerId of openOfferIds) {
+    for (let i = 1n; i < nextOfferId; i++) {
       const offer = (await publicClient.readContract({
         address: OTC_ADDRESS,
         abi,
         functionName: "offers",
-        args: [offerId],
+        args: [i],
       })) as any;
 
-      // Check if offer is paid, fulfilled, and past unlock time
+      // Matured = paid, not fulfilled, not cancelled, and unlockTime passed
       if (
+        offer?.beneficiary &&
         offer.paid &&
-        offer.fulfilled &&
+        !offer.fulfilled &&
         !offer.cancelled &&
-        Number(offer.unlockTime) <= now &&
-        Number(offer.unlockTime) > 0
+        Number(offer.unlockTime) > 0 &&
+        Number(offer.unlockTime) <= now
       ) {
-        maturedOffers.push(offerId);
+        maturedOffers.push(i);
       }
     }
 
-    // Claim matured offers
-    const claimedOffers: bigint[] = [];
-    const failedOffers: { id: bigint; error: string }[] = [];
+    const result: {
+      maturedOffers: string[];
+      claimedOffers: string[];
+      failedOffers: { id: string; error: string }[];
+      txHash?: string;
+    } = { maturedOffers: maturedOffers.map(String), claimedOffers: [], failedOffers: [] };
 
-    for (const offerId of maturedOffers) {
-      try {
-        // Check if tokens are claimable
-        const offer = (await publicClient.readContract({
-          address: OTC_ADDRESS,
-          abi,
-          functionName: "offers",
-          args: [offerId],
-        })) as any;
-
-        // Only the beneficiary can claim, so we need to check if we have a claiming mechanism
-        // For now, we'll just log these for manual processing
-        console.log(
-          `Matured offer ready for claim: ${offerId}, beneficiary: ${offer.beneficiary}`,
+    // Execute autoClaim as approver if configured and there are matured offers
+    if (maturedOffers.length > 0) {
+      if (!APPROVER_PRIVATE_KEY) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Missing APPROVER_PRIVATE_KEY",
+            maturedOffers: result.maturedOffers,
+            message: "Found matured offers but cannot claim without approver key",
+          },
+          { status: 500 },
         );
+      }
 
-        // In production, you might want to:
-        // 1. Send notifications to beneficiaries
-        // 2. Have a separate claiming interface
-        // 3. Or implement a batch claim function in the contract
+      const account = privateKeyToAccount(APPROVER_PRIVATE_KEY);
+      const walletClient = createWalletClient({ account, chain, transport: http() });
 
-        claimedOffers.push(offerId);
-      } catch (error) {
-        failedOffers.push({
-          id: offerId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+      // Chunk to avoid gas issues (e.g., 50 per tx)
+      const chunkSize = 50;
+      const chunks: bigint[][] = [];
+      for (let i = 0; i < maturedOffers.length; i += chunkSize) {
+        chunks.push(maturedOffers.slice(i, i + chunkSize));
+      }
+
+      for (const chunk of chunks) {
+        try {
+          const hash = await walletClient.writeContract({
+            address: OTC_ADDRESS,
+            abi,
+            functionName: "autoClaim",
+            args: [chunk],
+            account,
+          } as any);
+          // wait for 1 confirmation
+          await publicClient.waitForTransactionReceipt({ hash });
+          result.txHash = hash;
+          result.claimedOffers.push(...chunk.map(String));
+        } catch (e: any) {
+          result.failedOffers.push({ id: chunk.map(String).join(","), error: e?.message || String(e) });
+        }
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      timestamp: new Date().toISOString(),
-      maturedOffers: maturedOffers.map((id) => id.toString()),
-      claimedOffers: claimedOffers.map((id) => id.toString()),
-      failedOffers: failedOffers.map((f) => ({
-        id: f.id.toString(),
-        error: f.error,
-      })),
-      message: `Found ${maturedOffers.length} matured offers, processed ${claimedOffers.length}`,
-    });
+    return NextResponse.json({ success: true, timestamp: new Date().toISOString(), ...result });
   } catch (error) {
     console.error("[Cron API] Error checking matured deals:", error);
     return NextResponse.json(

@@ -167,13 +167,13 @@ describe('ELIZA OTC System - End-to-End Test', () => {
         cy.contains('Instant Savings').should('be.visible');
         cy.contains('$').should('be.visible');
         
-        // Check for ROI
-        cy.contains('Total ROI').should('be.visible');
+        // Check for Discount ROI
+        cy.contains('Discount ROI').should('be.visible');
         cy.contains('%').should('be.visible');
         
-        // Check for APR
-        cy.contains('APR').should('be.visible');
-        cy.contains('Effective APR').should('be.visible');
+        // Check for Discount & Lockup info
+        cy.contains('Discount').should('be.visible');
+        cy.contains('Lockup').should('be.visible');
       });
     });
 

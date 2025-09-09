@@ -88,7 +88,7 @@ export function InitialQuoteDisplay({
       }
 
       // Use terms from current quote where possible
-      const discountBps = quote?.discountBps ?? Math.round(apr * 100);
+      const discountBps = quote?.discountBps ?? defaultQuote.discountBps ?? 800;
       const lockupMonthsForOffer = (quote?.lockupMonths ?? lockupMonths) || 5;
       const lockupSeconds = BigInt(lockupMonthsForOffer * 30 * 24 * 60 * 60);
       const tokenAmountWei = BigInt(tokenAmount) * BigInt(10 ** 18);

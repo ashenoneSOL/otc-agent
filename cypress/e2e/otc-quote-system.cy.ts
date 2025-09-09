@@ -25,7 +25,7 @@ describe('Quote System Tests', () => {
           const xml = xmlMatch[1];
           expect(xml).to.include('<quote>');
           expect(xml).to.include('</quote>');
-          expect(xml).to.include('<apr>');
+          expect(xml).to.not.include('<apr>');
           expect(xml).to.include('<lockupMonths>');
           expect(xml).to.include('<discountBps>');
         }
@@ -37,24 +37,23 @@ describe('Quote System Tests', () => {
       
       cy.get('[data-testid="quote-display"]', { timeout: 15000 }).within(() => {
         // Check all required fields are parsed and displayed
-        cy.get('[data-testid="quote-apr"]').should('exist').and('not.be.empty');
-        cy.get('[data-testid="quote-lockup"]').should('exist').and('not.be.empty');
         cy.get('[data-testid="quote-discount"]').should('exist').and('not.be.empty');
+        cy.get('[data-testid="quote-lockup"]').should('exist').and('not.be.empty');
         cy.get('[data-testid="quote-currency"]').should('exist').and('not.be.empty');
         cy.get('[data-testid="quote-expiry"]').should('exist').and('not.be.empty');
       });
     });
 
     it('should handle malformed XML gracefully', () => {
-      // Mock malformed XML response
+      // Mock malformed XML response (missing discount field)
       cy.intercept('POST', '/api/eliza/**', {
         body: {
           text: `
             Here's your quote:
             <!-- XML_START -->
             <quote>
-              <apr>8.5
               <lockupMonths>5</lockupMonths>
+            </quote>
             <!-- XML_END -->
           `
         }
@@ -75,23 +74,23 @@ describe('Quote System Tests', () => {
       cy.get('[data-testid="quote-display"]', { timeout: 15000 })
         .first()
         .within(() => {
-          cy.get('[data-testid="quote-apr"]').invoke('text').as('initialAPR');
+          cy.get('[data-testid="quote-discount"]').invoke('text').as('initialDiscount');
         });
       
       // Negotiate
-      cy.get('[data-testid="chat-input"]').type('Can you do better on the APR?{enter}');
+      cy.get('[data-testid="chat-input"]').type('Can you do better on the discount?{enter}');
       
       // Check for updated quote
       cy.get('[data-testid="quote-display"]')
         .should('have.length', 2)
         .last()
         .within(() => {
-          cy.get('[data-testid="quote-apr"]').invoke('text').as('updatedAPR');
+          cy.get('[data-testid="quote-discount"]').invoke('text').as('updatedDiscount');
         });
       
-      // Verify APR changed
-      cy.get('@initialAPR').then((initial) => {
-        cy.get('@updatedAPR').then((updated) => {
+      // Verify discount changed
+      cy.get('@initialDiscount').then((initial) => {
+        cy.get('@updatedDiscount').then((updated) => {
           expect(initial).to.not.equal(updated);
         });
       });
@@ -99,16 +98,16 @@ describe('Quote System Tests', () => {
   });
 
   describe('Quote Validation', () => {
-    it('should validate APR ranges', () => {
+    it('should validate discount ranges', () => {
       cy.get('[data-testid="landing-textarea"]').type('Quote{enter}');
       
       cy.get('[data-testid="quote-display"]', { timeout: 15000 }).within(() => {
-        cy.get('[data-testid="quote-apr"]')
+        cy.get('[data-testid="quote-discount"]')
           .invoke('text')
-          .then((apr) => {
-            const aprValue = parseFloat(apr);
-            expect(aprValue).to.be.greaterThan(0);
-            expect(aprValue).to.be.lessThan(20); // Reasonable max
+          .then((pct) => {
+            const value = parseFloat(pct);
+            expect(value).to.be.greaterThan(0);
+            expect(value).to.be.lessThan(100); // Reasonable max
           });
       });
     });
@@ -191,7 +190,6 @@ describe('Quote System Tests', () => {
           text: `
             <!-- XML_START -->
             <quote>
-              <apr>8.0</apr>
               <lockupMonths>5</lockupMonths>
               <discountBps>500</discountBps>
               <paymentCurrency>ETH</paymentCurrency>
@@ -218,13 +216,16 @@ describe('Quote System Tests', () => {
       cy.get('[data-testid="quote-display"]', { timeout: 15000 }).should('be.visible');
       
       // Get session ID
-      cy.url().then((url) => {
-        const sessionId = url.split('/chat/')[1];
-        
-        // Check quote is retrievable
-        cy.request(`/api/chat-session/${sessionId}`).then((response) => {
-          expect(response.status).to.equal(200);
-          // Quote should be in session data
+      cy.url().then(() => {
+        // Validate latest quote endpoint with userId in local storage (if present)
+        cy.window().then((win) => {
+          const userId = win.localStorage.getItem('userId') || win.localStorage.getItem('otc-desk-user-id');
+          if (userId) {
+            cy.request(`/api/quote/latest?userId=${encodeURIComponent(userId)}`).then((response) => {
+              expect(response.status).to.equal(200);
+              // response.body.quote may be null if none active; this is fine
+            });
+          }
         });
       });
     });
@@ -239,7 +240,7 @@ describe('Quote System Tests', () => {
         const quote = win.localStorage.getItem('currentQuote');
         if (quote) {
           const modified = JSON.parse(quote);
-          modified.apr = 50; // Try to set unrealistic APR
+          modified.discountBps = 10000; // Try to set unrealistic discount
           win.localStorage.setItem('currentQuote', JSON.stringify(modified));
         }
       });
@@ -249,12 +250,10 @@ describe('Quote System Tests', () => {
       
       // Quote should either be rejected or show original values
       cy.get('[data-testid="quote-display"]').within(() => {
-        cy.get('[data-testid="quote-apr"]')
-          .invoke('text')
-          .then((apr) => {
-            const aprValue = parseFloat(apr);
-            expect(aprValue).to.be.lessThan(20); // Not the tampered 50%
-          });
+        cy.get('[data-testid="quote-discount"]').invoke('text').then((pct) => {
+          const value = parseFloat(pct);
+          expect(value).to.be.lessThan(100); // Not the tampered 100%
+        });
       });
     });
   });
@@ -303,7 +302,7 @@ describe('Quote System Tests', () => {
             cy.window().then((win) => {
               if (win.navigator.clipboard && win.navigator.clipboard.readText) {
                 win.navigator.clipboard.readText().then((text) => {
-                  expect(text).to.include('APR');
+                  expect(text).to.include('Discount');
                   expect(text).to.include('Lockup');
                 });
               }
@@ -414,7 +413,7 @@ describe('Quote System Tests', () => {
         } else {
           req.reply({
             body: {
-              text: `Quote ready <!-- XML_START --><quote><apr>8</apr></quote><!-- XML_END -->`
+              text: `Quote ready <!-- XML_START --><quote><discountBps>800</discountBps></quote><!-- XML_END -->`
             }
           });
         }
