@@ -43,8 +43,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const elizaOrange = "#ff8c00";
-
   return (
     <ThemeProvider
       attribute="class"

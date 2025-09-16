@@ -65,9 +65,6 @@ const WalletConnectorInner = ({
         <span className="text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           {networkLabel}
         </span>
-        {displayAddress && (
-          <span className="text-sm text-zinc-700 dark:text-zinc-300">{displayAddress}</span>
-        )}
       </div>
 
       {bothConnected && (
@@ -103,7 +100,7 @@ const WalletConnectorInner = ({
         </ConnectButton.Custom>
       ) : (
         <div className="inline-flex">
-          <WalletMultiButton className="!h-9 !py-0 !px-3 !text-sm !bg-[#ff8c00] !text-white !border !border-[#e67e00] hover:!brightness-110" />
+          <WalletMultiButton className="!h-9 !py-0 !px-3 !text-sm !text-white !border !border-[#e67e00] hover:!brightness-110" />
         </div>
       )}
     </div>

@@ -6,6 +6,10 @@ import { Dialog } from "@/components/dialog";
 import { useOTC } from "@/hooks/contracts/useOTC";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import * as anchor from "@coral-xyz/anchor";
+import type { Idl } from "@coral-xyz/anchor";
+import { PublicKey as SolPubkey, SystemProgram as SolSystemProgram, Connection } from "@solana/web3.js";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { NetworkConnectButton } from "@/components/network-connect";
 import { useAccount, useChainId, useBalance } from "wagmi";
 import { useSignMessage } from "wagmi";
@@ -93,6 +97,18 @@ export function AcceptQuoteModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isSolanaActive = activeFamily === "solana";
+  const SOLANA_RPC =
+    (process.env.NEXT_PUBLIC_SOLANA_RPC_URL as string | undefined) ||
+    "http://127.0.0.1:8899";
+  const SOLANA_PROGRAM_ID =
+    (process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID as string | undefined) ||
+    "EPqRoaDur9VtTKABWK3QQArV2wCYKoN3Zu8kErhrtUxp";
+  const SOLANA_DESK_OWNER = process.env
+    .NEXT_PUBLIC_SOLANA_DESK_OWNER as string | undefined;
+  const SOLANA_TOKEN_MINT = process.env
+    .NEXT_PUBLIC_SOLANA_TOKEN_MINT as string | undefined;
+  const SOLANA_USDC_MINT = process.env
+    .NEXT_PUBLIC_SOLANA_USDC_MINT as string | undefined;
 
   // Wallet balances for display and MAX calculation
   const ethBalance = useBalance({ address });
@@ -180,6 +196,12 @@ export function AcceptQuoteModal({
     setStep("sign");
   };
 
+  async function fetchSolanaIdl(): Promise<Idl> {
+    const res = await fetch("/api/solana/idl");
+    if (!res.ok) throw new Error("Failed to load Solana IDL");
+    return (await res.json()) as Idl;
+  }
+
   async function readNextOfferId(): Promise<bigint> {
     if (!otcAddress) throw new Error("Missing OTC address");
     const id = (await publicClient.readContract({
@@ -255,12 +277,149 @@ export function AcceptQuoteModal({
   }
 
   const handleConfirm = async () => {
-    if (!isConnected || !otcAddress || !address) return;
+    if (!unifiedConnected) return;
     setError(null);
     setIsProcessing(true);
     setStep("creating");
 
     try {
+      // Solana path
+      if (isSolanaActive) {
+        // Basic config checks
+        if (!SOLANA_DESK_OWNER || !SOLANA_TOKEN_MINT) {
+          throw new Error(
+            "Missing Solana configuration (DESK_OWNER or TOKEN_MINT)."
+          );
+        }
+
+        const connection = new Connection(SOLANA_RPC, "confirmed");
+        // @ts-ignore - wallet adapter injects window.solana
+        const wallet = (globalThis as any).solana;
+        if (!wallet?.publicKey) {
+          throw new Error("Connect a Solana wallet to continue.");
+        }
+
+        const provider = new anchor.AnchorProvider(
+          connection,
+          // Anchor expects an object with signTransaction / signAllTransactions
+          wallet,
+          { commitment: "confirmed" }
+        );
+        const programId = new SolPubkey(SOLANA_PROGRAM_ID);
+        const idl = await fetchSolanaIdl();
+        const program = new (anchor as any).Program(idl as Idl, programId, provider) as any;
+
+        // Derive PDAs
+        const deskOwnerPk = new SolPubkey(SOLANA_DESK_OWNER);
+        const [desk] = SolPubkey.findProgramAddressSync(
+          [Buffer.from("desk"), deskOwnerPk.toBuffer()],
+          programId
+        );
+        const tokenMintPk = new SolPubkey(SOLANA_TOKEN_MINT);
+        const usdcMintPk = SOLANA_USDC_MINT
+          ? new SolPubkey(SOLANA_USDC_MINT)
+          : undefined;
+        const deskTokenTreasury = await getAssociatedTokenAddress(
+          tokenMintPk,
+          desk,
+          true
+        );
+        const deskUsdcTreasury = usdcMintPk
+          ? await getAssociatedTokenAddress(usdcMintPk, desk, true)
+          : undefined;
+
+        // Read nextOfferId from desk account
+        const deskAccount: any = await (program.account as any).desk.fetch(desk);
+        const nextOfferId = new anchor.BN(deskAccount.nextOfferId.toString());
+        const idBuf = Buffer.alloc(8);
+        idBuf.writeBigUInt64LE(BigInt(nextOfferId.toString()));
+        const [offer] = SolPubkey.findProgramAddressSync(
+          [Buffer.from("offer"), desk.toBuffer(), idBuf],
+          programId
+        );
+
+        // Create offer on Solana
+        const tokenAmountWei = new anchor.BN(
+          (BigInt(tokenAmount) * 10n ** 18n).toString()
+        );
+        const lockupSeconds = new anchor.BN(lockupDays * 24 * 60 * 60);
+        const paymentCurrencySol = currency === "USDC" ? 1 : 0; // 0 SOL, 1 USDC
+
+        await program.methods
+          .createOffer(
+            tokenAmountWei,
+            discountBps,
+            paymentCurrencySol,
+            lockupSeconds
+          )
+          .accountsStrict({
+            desk,
+            deskTokenTreasury,
+            beneficiary: wallet.publicKey,
+            offer,
+            systemProgram: SolSystemProgram.programId,
+          })
+          .signers([])
+          .rpc();
+
+        setStep("await_approval");
+        // Poll for approval
+        const start = Date.now();
+        while (Date.now() - start < 90_000) {
+          const off: any = await (program.account as any).offer.fetch(offer);
+          if (off.approved) break;
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+
+        setStep("paying");
+        if (paymentCurrencySol === 0) {
+          // Pay in SOL
+          await program.methods
+            .fulfillOfferSol(nextOfferId)
+            .accounts({
+              desk,
+              offer,
+              deskTokenTreasury,
+              payer: wallet.publicKey,
+              systemProgram: SolSystemProgram.programId,
+            })
+            .signers([])
+            .rpc();
+        } else {
+          // Pay in USDC on Solana
+          if (!usdcMintPk || !deskUsdcTreasury) {
+            throw new Error("USDC mint/treasury not configured for Solana.");
+          }
+          const payerUsdcAta = await getAssociatedTokenAddress(
+            usdcMintPk,
+            wallet.publicKey,
+            false
+          );
+          await program.methods
+            .fulfillOfferUsdc(nextOfferId)
+            .accounts({
+              desk,
+              offer,
+              deskTokenTreasury,
+              deskUsdcTreasury,
+              payerUsdcAta,
+              payer: wallet.publicKey,
+              tokenProgram: new SolPubkey(
+                // spl-token program id
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+              ),
+              systemProgram: SolSystemProgram.programId,
+            })
+            .signers([])
+            .rpc();
+        }
+
+        setStep("complete");
+        setIsProcessing(false);
+        onComplete?.({ offerId: BigInt(nextOfferId.toString()) });
+        return;
+      }
+
       // Persist beneficiary for the negotiated quote so the worker can match strictly
       try {
         if (initialQuote?.quoteId) {
@@ -319,7 +478,7 @@ export function AcceptQuoteModal({
             (((ta * priceUsdPerToken) / 10n ** 18n) * (10_000n - dbps)) /
             10_000n;
           if (Number(offer?.currency ?? 0) === 0) {
-            const ethUsd = BigInt(offer?.ethUsdPrice ?? 0n); // 8d
+            const ethUsd = BigInt(offer?.ethPrice ?? 0n); // 8d
             const wei = (usd8 * 10n ** 18n) / (ethUsd === 0n ? 1n : ethUsd);
             return { wei };
           }
@@ -485,11 +644,7 @@ export function AcceptQuoteModal({
               {activeFamily === "solana" ? "SOL" : "ETH"}
             </button>
           </div>
-          {isSolanaActive && (
-            <div className="px-5 pt-2 text-xs text-zinc-400">
-              Solana payments are not yet available. <button type="button" className="underline" onClick={() => setCurrency("ETH")}>Switch to EVM</button> to buy now.
-            </div>
-          )}
+          {/* Solana now supported */}
         </div>
 
         {/* Main amount card */}
@@ -650,11 +805,10 @@ export function AcceptQuoteModal({
               disabled={
                 Boolean(validationError) ||
                 insufficientFunds ||
-                isProcessing ||
-                isSolanaActive
+                isProcessing
               }
             >
-              {isSolanaActive ? "Switch to EVM to buy" : "Buy Now on EVM"}
+              {isSolanaActive ? "Buy Now on Solana" : "Buy Now on EVM"}
             </Button>
           </div>
         )}

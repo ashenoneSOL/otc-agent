@@ -44,7 +44,7 @@ export function NetworkConnectButton({
             <button
               type="button"
               onClick={onChooseEvm}
-              className="rounded-xl p-4 sm:p-5 text-left transition-all duration-200 cursor-pointer text-white bg-[#0052ff] border border-[#0047e5] hover:brightness-110 hover:shadow-md active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-[#ff8c00]/30"
+              className="rounded-xl p-4 sm:p-5 text-left transition-all duration-200 cursor-pointer text-white bg-[#0052ff] border border-[#0047e5] hover:brightness-110 hover:shadow-md active:scale-[0.99] focus:outline-none focus:ring-2"
             >
               <div className="text-sm font-semibold">Base</div>
               <div className="text-xs text-white/80">Connect with RainbowKit</div>
@@ -52,7 +52,7 @@ export function NetworkConnectButton({
             <button
               type="button"
               onClick={onChooseSolana}
-              className="rounded-xl p-4 sm:p-5 text-left transition-all duration-200 cursor-pointer text-white bg-gradient-to-r from-[#9945FF] via-[#8752F3] to-[#14F195] border border-transparent hover:brightness-110 hover:shadow-md active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-[#ff8c00]/30"
+              className="rounded-xl p-4 sm:p-5 text-left transition-all duration-200 cursor-pointer text-white bg-gradient-to-r from-[#9945FF] via-[#8752F3] to-[#14F195] hover:brightness-110 hover:shadow-md focus:outline-none focus:ring-2"
             >
               <div className="text-sm font-semibold">Solana</div>
               <div className="text-xs text-white/85">Connect with Solana Wallet</div>

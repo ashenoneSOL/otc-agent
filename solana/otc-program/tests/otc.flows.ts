@@ -58,29 +58,30 @@ describe("otc flows", () => {
     const beneficiary = Keypair.generate();
     await airdrop(beneficiary.publicKey, 2e9);
     const deskAccount = await program.account.desk.fetch(desk);
+    const id = new BN(deskAccount.nextOfferId.toString());
     const idBuf = Buffer.alloc(8);
-    idBuf.writeBigUInt64LE(BigInt(deskAccount.nextOfferId.toString()));
+    idBuf.writeBigUInt64LE(BigInt(id.toString()));
     const [offer] = PublicKey.findProgramAddressSync([Buffer.from("offer"), desk.toBuffer(), idBuf], program.programId);
 
     const infoBefore1 = await provider.connection.getAccountInfo(offer);
     // debug
     console.log("offer before USDC create:", infoBefore1?.owner?.toBase58(), infoBefore1?.data?.length);
     await program.methods
-      .createOffer(new BN(deskAccount.nextOfferId.toString()), new BN("1000000000"), 0, 1, new BN(0))
+      .createOffer(id, new BN("1000000000"), 0, 1, new BN(0))
       .accountsStrict({ desk, deskTokenTreasury, beneficiary: beneficiary.publicKey, offer, systemProgram: SystemProgram.programId })
       .signers([beneficiary])
       .rpc();
 
     await program.methods.setApprover(beneficiary.publicKey, true).accounts({ desk, owner: owner.publicKey }).signers([owner]).rpc();
-    await program.methods.approveOffer(new BN(0)).accounts({ desk, offer, approver: beneficiary.publicKey }).signers([beneficiary]).rpc();
+    await program.methods.approveOffer(id).accounts({ desk, offer, approver: beneficiary.publicKey }).signers([beneficiary]).rpc();
 
     const payerUsdc = await getOrCreateAssociatedTokenAccount(provider.connection, owner, usdcMint, beneficiary.publicKey);
     await mintTo(provider.connection, owner, usdcMint, payerUsdc.address, owner, BigInt(1_000_000_000) as any);
-    await program.methods.fulfillOfferUsdc(new BN(0)).accounts({ desk, offer, deskTokenTreasury, deskUsdcTreasury, payerUsdcAta: payerUsdc.address, payer: beneficiary.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([beneficiary]).rpc();
+    await program.methods.fulfillOfferUsdc(id).accounts({ desk, offer, deskTokenTreasury, deskUsdcTreasury, payerUsdcAta: payerUsdc.address, payer: beneficiary.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([beneficiary]).rpc();
 
     const beneficiaryTokenAta = getAssociatedTokenAddressSync(tokenMint, beneficiary.publicKey);
     await getOrCreateAssociatedTokenAccount(provider.connection, owner, tokenMint, beneficiary.publicKey);
-    await program.methods.claim(new BN(0)).accounts({ desk, offer, deskTokenTreasury, beneficiaryTokenAta, beneficiary: beneficiary.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).signers([beneficiary]).rpc();
+    await program.methods.claim(id).accounts({ desk, offer, deskTokenTreasury, beneficiaryTokenAta, beneficiary: beneficiary.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).signers([beneficiary]).rpc();
 
     const bal = await provider.connection.getTokenAccountBalance(beneficiaryTokenAta);
     expect(parseInt(bal.value.amount)).to.be.greaterThan(0);
@@ -90,26 +91,27 @@ describe("otc flows", () => {
     const user = Keypair.generate();
     await airdrop(user.publicKey, 2e9);
     const deskAccount2 = await program.account.desk.fetch(desk);
+    const id2 = new BN(deskAccount2.nextOfferId.toString());
     const idBuf2 = Buffer.alloc(8);
-    idBuf2.writeBigUInt64LE(BigInt(deskAccount2.nextOfferId.toString()));
+    idBuf2.writeBigUInt64LE(BigInt(id2.toString()));
     const [offer] = PublicKey.findProgramAddressSync([Buffer.from("offer"), desk.toBuffer(), idBuf2], program.programId);
 
     const infoBefore2 = await provider.connection.getAccountInfo(offer);
     // debug
     console.log("offer before SOL create:", infoBefore2?.owner?.toBase58(), infoBefore2?.data?.length);
     await program.methods
-      .createOffer(new BN(deskAccount2.nextOfferId.toString()), new BN("500000000"), 0, 0, new BN(0))
+      .createOffer(id2, new BN("500000000"), 0, 0, new BN(0))
       .accountsStrict({ desk, deskTokenTreasury, beneficiary: user.publicKey, offer, systemProgram: SystemProgram.programId })
       .signers([user])
       .rpc();
     await program.methods.setApprover(user.publicKey, true).accounts({ desk, owner: owner.publicKey }).signers([owner]).rpc();
-    await program.methods.approveOffer(new BN(1)).accounts({ desk, offer, approver: user.publicKey }).signers([user]).rpc();
+    await program.methods.approveOffer(id2).accounts({ desk, offer, approver: user.publicKey }).signers([user]).rpc();
 
-    await program.methods.fulfillOfferSol(new BN(1)).accounts({ desk, offer, deskTokenTreasury, payer: user.publicKey, systemProgram: SystemProgram.programId }).signers([user]).rpc();
+    await program.methods.fulfillOfferSol(id2).accounts({ desk, offer, deskTokenTreasury, payer: user.publicKey, systemProgram: SystemProgram.programId }).signers([user]).rpc();
 
     const userTokenAta = getAssociatedTokenAddressSync(tokenMint, user.publicKey);
     await getOrCreateAssociatedTokenAccount(provider.connection, owner, tokenMint, user.publicKey);
-    await program.methods.claim(new BN(1)).accounts({ desk, offer, deskTokenTreasury, beneficiaryTokenAta: userTokenAta, beneficiary: user.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).signers([user]).rpc();
+    await program.methods.claim(id2).accounts({ desk, offer, deskTokenTreasury, beneficiaryTokenAta: userTokenAta, beneficiary: user.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).signers([user]).rpc();
 
     const bal = await provider.connection.getTokenAccountBalance(userTokenAta);
     expect(parseInt(bal.value.amount)).to.be.greaterThan(0);

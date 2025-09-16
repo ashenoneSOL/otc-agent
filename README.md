@@ -116,7 +116,6 @@ X_OAUTH_CALLBACK_URL=http://localhost:2222/callback
 - `npm run rpc:start`: Start Hardhat node + auto-deploy Eliza OTC on localhost
 - `npm run rpc:deploy`: Deploy OTC contracts to local chain
 - `npm run db:push`: Apply Drizzle schema
-- `npm run db:studio`: Drizzle Studio
 - `npm run worker:start`: Start the quote approval worker
 - `npm run test`: Unit tests (Vitest)
 - `npm run cypress:run`: E2E tests

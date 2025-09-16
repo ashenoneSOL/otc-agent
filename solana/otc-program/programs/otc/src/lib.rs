@@ -351,9 +351,7 @@ pub mod otc {
 
 #[derive(Accounts)]
 pub struct InitDesk<'info> {
-    /// CHECK:
     pub owner: Signer<'info>,
-    /// CHECK:
     pub agent: UncheckedAccount<'info>,
     pub token_mint: Account<'info, Mint>,
     pub usdc_mint: Account<'info, Mint>,
@@ -389,7 +387,6 @@ pub struct DepositTokens<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(offer_id: u64)]
 pub struct CreateOffer<'info> {
     #[account(mut)]
     pub desk: Account<'info, Desk>,
@@ -397,7 +394,7 @@ pub struct CreateOffer<'info> {
     pub desk_token_treasury: Account<'info, TokenAccount>,
     #[account(mut)]
     pub beneficiary: Signer<'info>,
-    #[account(init, payer = beneficiary, space = 8 + Offer::SIZE, seeds = [b"offer", desk.key().as_ref(), &offer_id.to_le_bytes()], bump)]
+    #[account(init, payer = beneficiary, space = 8 + Offer::SIZE, seeds = [b"offer", desk.key().as_ref(), &desk.next_offer_id.to_le_bytes()], bump)]
     pub offer: Account<'info, Offer>,
     pub system_program: Program<'info, System>,
 }
