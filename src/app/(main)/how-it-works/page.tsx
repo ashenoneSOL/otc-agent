@@ -38,7 +38,7 @@ export default function Page() {
 
       {/* Content */}
       <div className="z-10 flex flex-col items-start justify-center h-full">
-        <div className="flex items-center mb-12">
+        <div className="flex items-center mb-10">
           {/* Temporary replacement text */}
           <Image
             src="/how-it-works/text.svg"
@@ -61,21 +61,22 @@ export default function Page() {
         <div className="flex gap-4 mt-8 flex-row">
           <Card
             number="1"
-            title="Getting Started"
-            description="Learn the basics of our platform and how to get up and running quickly with your first project."
+            title="Connect your wallet"
+            description="Connect to start. We support devnet with a local faucet for testing."
             button="Start Tutorial"
           />
           <Card
             number="2"
-            title="Getting Started"
-            description="Learn the basics of our platform and how to get up and running quickly with your first project."
+            title="Negotiate a deal"
+            description="Use the AI trading desk to request an amount, choose a discount and lockup."
             button="Start Tutorial"
           />
           <Card
             number="3"
-            title="Getting Started"
-            description="Learn the basics of our platform and how to get up and running quickly with your first project."
+            title="Buy and hold"
+            description="Complete payment in ETH or USDC. Your ELIZA unlocks after the selected lockup."
             button="Start Tutorial"
+            note={true}
           />
         </div>
       </div>
