@@ -58,24 +58,24 @@ export default function Page() {
             Simple, transparent, on-chain.
           </span>
         </h1>
-        <div className="flex gap-4 mt-8 flex-row">
+        <div className="flex gap-4 mt-8 place-self-center lg:place-self-start flex-col lg:flex-row">
           <Card
             number="1"
             title="Connect your wallet"
             description="Connect to start. We support devnet with a local faucet for testing."
-            button="Start Tutorial"
+            button="Connect Wallet"
           />
           <Card
             number="2"
             title="Negotiate a deal"
             description="Use the AI trading desk to request an amount, choose a discount and lockup."
-            button="Start Tutorial"
+            button="Open Trading Desk"
           />
           <Card
             number="3"
             title="Buy and hold"
             description="Complete payment in ETH or USDC. Your ELIZA unlocks after the selected lockup."
-            button="Start Tutorial"
+            button="View My Deals"
             note={true}
           />
         </div>
