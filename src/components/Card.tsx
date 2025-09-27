@@ -28,7 +28,7 @@ export default function Card({
         </div>
       </div>
       {note ? (
-        <div className="mx-7 mt-2 flex flex-row space-x-2">
+        <div className="mx-7 my-4 flex flex-row space-x-2">
           <Image
             src="/info-line.svg"
             height={24}
