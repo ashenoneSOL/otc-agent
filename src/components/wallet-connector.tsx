@@ -56,7 +56,7 @@ const WalletConnectorInner = ({
   }
 
   if (!evmConnected && !solanaConnected) {
-    return <NetworkConnectButton className="!h-9">Connect Wallet</NetworkConnectButton>;
+    return <NetworkConnectButton className="!h-9 bg-[#FF5800] !px-3">Connect Wallet</NetworkConnectButton>;
   }
 
   return (
@@ -99,7 +99,7 @@ const WalletConnectorInner = ({
           )}
         </ConnectButton.Custom>
       ) : (
-        <div className="inline-flex">
+        <div className="inline-flex ">
           <WalletMultiButton className="!h-9 !py-0 !px-3 !text-sm !text-white !border !border-[#e67e00] hover:!brightness-110" />
         </div>
       )}

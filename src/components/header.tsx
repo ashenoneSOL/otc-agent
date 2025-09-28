@@ -101,7 +101,7 @@ export function Header() {
             </Link>
           </div>
 
-          <div className="flex-1 min-w-0 flex items-center justify-center gap-x-8 overflow-x-auto whitespace-nowrap">
+          <div className="flex-1 min-w-0 flex items-center justify-center gap-x-3 overflow-x-auto whitespace-nowrap">
             <NavLinks />
           </div>
           <div className="flex items-center justify-end whitespace-nowrap shrink-0">

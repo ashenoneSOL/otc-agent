@@ -83,7 +83,7 @@ export default function Page() {
       <div
         className="absolute bottom-0 right-0 w-full h-2/3 z-20 pointer-events-none"
         style={{
-          background: `radial-gradient(ellipse 80% 100% at 100% 100%, #F75B1E 0%, rgba(247, 91, 30, 0.6) 0%, rgba(247, 91, 30, 0.3) 50%, transparent 75%)`,
+          background: `radial-gradient(ellipse 80% 100% at 100% 100%, #F75B1E 0%, rgba(247, 91, 30, 0.6) 0%, rgba(247, 91, 30, 0.3) 0%, transparent 75%)`,
           filter: "blur(2px)",
         }}
       />
