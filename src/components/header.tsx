@@ -92,16 +92,16 @@ export function Header() {
   );
 
   return (
-    <header className="sticky top-0 left-0 right-0 z-20 bg-white dark:bg-black">
+    <header className="fixed top-0 left-0 right-0 z-20 bg-transparent">
       <nav className="px-4 lg:px-6 w-full" aria-label="Global">
         <div className="flex items-center justify-between py-4 gap-4 flex-nowrap">
           <div className="flex shrink-0">
             <Link href="/" className="-m-1.5 p-1.5">
-              <Logo width={128} height={32} />
+              <Logo width={290} height={22} />
             </Link>
           </div>
 
-          <div className="flex-1 min-w-0 flex items-center justify-center gap-x-8 overflow-x-auto whitespace-nowrap">
+          <div className="flex-1 min-w-0 flex items-center justify-center gap-x-3 overflow-x-auto whitespace-nowrap">
             <NavLinks />
           </div>
           <div className="flex items-center justify-end whitespace-nowrap shrink-0">
