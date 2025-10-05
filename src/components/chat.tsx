@@ -18,17 +18,17 @@ import { useMultiWallet } from "@/components/multiwallet";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 
 interface ChatProps {
-  conversationId?: string;
+  roomId?: string;
 }
 
 export const Chat = ({
-  conversationId: propConversationId,
+  roomId: propConversationId,
 }: ChatProps = {}) => {
   // --- State ---
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [inputDisabled, setInputDisabled] = useState<boolean>(false);
-  const [conversationId, setConversationId] = useState<string | null>(
+  const [roomId, setConversationId] = useState<string | null>(
     propConversationId || null,
   );
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
@@ -86,7 +86,7 @@ export const Chat = ({
     if (!userId) return null;
 
     try {
-      const response = await fetch("/api/conversations", {
+      const response = await fetch("/api/rooms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId }),
@@ -97,7 +97,7 @@ export const Chat = ({
       }
 
       const data = await response.json();
-      const newConversationId = data.conversationId;
+      const newConversationId = data.roomId;
 
       setConversationId(newConversationId);
       // Persist conversation per-wallet
@@ -120,14 +120,14 @@ export const Chat = ({
 
   // Load conversation data
   useEffect(() => {
-    if (!conversationId || !userId) return;
+    if (!roomId || !userId) return;
 
     const loadConversation = async () => {
       try {
         setIsLoadingHistory(true);
 
         const response = await fetch(
-          `/api/conversations/${conversationId}/messages`,
+          `/api/rooms/${roomId}/messages`,
           { cache: "no-store" },
         );
 
@@ -154,7 +154,7 @@ export const Chat = ({
               name: msg.isAgent ? "Eliza" : USER_NAME,
               text: messageText,
               senderId: msg.userId,
-              roomId: conversationId,
+              roomId: roomId,
               createdAt: typeof msg.createdAt === "number"
                 ? msg.createdAt
                 : new Date(msg.createdAt || Date.now()).getTime(),
@@ -179,11 +179,11 @@ export const Chat = ({
     };
 
     loadConversation();
-  }, [conversationId, userId]);
+  }, [roomId, userId]);
 
   // Poll for new messages when agent is thinking
   useEffect(() => {
-    if (!isAgentThinking || !conversationId) {
+    if (!isAgentThinking || !roomId) {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
@@ -196,7 +196,7 @@ export const Chat = ({
       try {
         // Append a cache-busting param to avoid any intermediary caching
         const response = await fetch(
-          `/api/conversations/${conversationId}/messages?afterTimestamp=${lastMessageTimestampRef.current}&_=${Date.now()}`,
+          `/api/rooms/${roomId}/messages?afterTimestamp=${lastMessageTimestampRef.current}&_=${Date.now()}`,
           { cache: "no-store" },
         );
 
@@ -223,7 +223,7 @@ export const Chat = ({
                 name: msg.isAgent ? "Eliza" : USER_NAME,
                 text: messageText,
                 senderId: msg.userId,
-                roomId: conversationId,
+                roomId: roomId,
                 createdAt: typeof msg.createdAt === "number"
                   ? msg.createdAt
                   : new Date(msg.createdAt || Date.now()).getTime(),
@@ -277,7 +277,7 @@ export const Chat = ({
         pollingIntervalRef.current = null;
       }
     };
-  }, [isAgentThinking, conversationId]);
+  }, [isAgentThinking, roomId]);
 
   // Send message function
   const sendMessage = useCallback(
@@ -285,7 +285,7 @@ export const Chat = ({
       if (
         !messageText.trim() ||
         !userId ||
-        !conversationId ||
+        !roomId ||
         inputDisabled ||
         !unifiedConnected
       ) {
@@ -299,7 +299,7 @@ export const Chat = ({
         name: USER_NAME,
         text: messageText,
         senderId: userId,
-        roomId: conversationId,
+        roomId: roomId,
         createdAt: Date.now(),
         source: CHAT_SOURCE,
         isLoading: false,
@@ -310,7 +310,7 @@ export const Chat = ({
       setInputDisabled(true);
 
       const doPost = async () =>
-        fetch(`/api/conversations/${conversationId}/messages`, {
+        fetch(`/api/rooms/${roomId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId, text: messageText, clientMessageId }),
@@ -367,7 +367,7 @@ export const Chat = ({
         }
       }
     },
-    [userId, conversationId, inputDisabled, unifiedConnected],
+    [userId, roomId, inputDisabled, unifiedConnected],
   );
 
   // Handle form submit
@@ -383,7 +383,7 @@ export const Chat = ({
         return;
       }
 
-      let activeConversationId = conversationId;
+      let activeConversationId = roomId;
       if (!activeConversationId) {
         activeConversationId = await createNewConversation();
         if (!activeConversationId) return; // creation failed
@@ -393,16 +393,16 @@ export const Chat = ({
       await sendMessage(trimmed);
       setInput("");
     },
-    [input, unifiedConnected, userId, conversationId, createNewConversation, sendMessage],
+    [input, unifiedConnected, userId, roomId, createNewConversation, sendMessage],
   );
 
   // Handle creating a new conversation when there isn't one
   useEffect(() => {
-    if (!conversationId && userId && unifiedConnected) {
+    if (!roomId && userId && unifiedConnected) {
       // Automatically create a conversation for this wallet when connected
       createNewConversation();
     }
-  }, [conversationId, userId, unifiedConnected, createNewConversation]);
+  }, [roomId, userId, unifiedConnected, createNewConversation]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {

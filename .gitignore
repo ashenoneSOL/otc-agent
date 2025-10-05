@@ -62,7 +62,6 @@ cache/
 elizaos/
 .elizadb/
 
-bun.lock
 /generated/prisma
 
 # Log files
@@ -94,3 +93,4 @@ prisma/dev.db-journal
 data/
 
 .anchor
+test-results/

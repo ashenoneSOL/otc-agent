@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { agentRuntime } from "@/lib/agent-runtime";
 
-// POST /api/conversations/[conversationId]/messages - Send a message
+// POST /api/rooms/[roomId]/messages - Send a message
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ conversationId: string }> },
+  { params }: { params: { roomId: string } },
 ) {
   try {
-    const resolvedParams = await params;
-    const { conversationId } = resolvedParams;
+    const { roomId } = params;
     const body = await request.json();
     const { userId, text, attachments, clientMessageId } = body;
 
-    if (!conversationId) {
-      console.error("[Messages API] Missing conversationId");
+    if (!roomId) {
+      console.error("[Messages API] Missing roomId");
       return NextResponse.json(
-        { error: "conversationId is required" },
+        { error: "roomId is required" },
         { status: 400 },
       );
     }
@@ -38,7 +37,7 @@ export async function POST(
 
     // Handle the message
     const message = await agentRuntime.handleMessage(
-      conversationId,
+      roomId,
       userId,
       {
         text,
@@ -49,7 +48,7 @@ export async function POST(
     );
 
     console.log(`[Messages API] Message sent successfully`, {
-      conversationId,
+      roomId,
       userId,
       messageId: message.id,
     });
@@ -67,7 +66,7 @@ export async function POST(
         agentId: (message as any).agentId,
         content: message.content,
         createdAt: message.createdAt,
-        conversationId,
+        roomId,
       },
       // Include polling hint for the client
       pollForResponse: true,
@@ -98,27 +97,26 @@ export async function POST(
   }
 }
 
-// GET /api/conversations/[conversationId]/messages - Get messages (for polling)
+// GET /api/rooms/[roomId]/messages - Get messages (for polling)
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ conversationId: string }> },
+  { params }: { params: { roomId: string } },
 ) {
   try {
-    const resolvedParams = await params;
-    const { conversationId } = resolvedParams;
+    const { roomId } = params;
     const { searchParams } = new URL(request.url);
     const afterTimestamp = searchParams.get("afterTimestamp");
     const limit = searchParams.get("limit");
 
-    if (!conversationId) {
+    if (!roomId) {
       return NextResponse.json(
-        { error: "conversationId is required" },
+        { error: "roomId is required" },
         { status: 400 },
       );
     }
 
     const messages = await agentRuntime.getConversationMessages(
-      conversationId,
+      roomId,
       limit ? parseInt(limit) : 10,
       afterTimestamp ? parseInt(afterTimestamp) : undefined,
     );

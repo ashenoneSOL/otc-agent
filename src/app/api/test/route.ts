@@ -55,18 +55,18 @@ export async function GET(request: NextRequest) {
   }
 
   // Test 2: Create Conversation
-  let conversationId: string | undefined;
+  let roomId: string | undefined;
   {
-    const result = await testEndpoint(`${baseUrl}/api/conversations`, {
+    const result = await testEndpoint(`${baseUrl}/api/rooms`, {
       method: "POST",
       body: JSON.stringify({ userId: "test-user-123" }),
     });
-    const passed = result.success && result.data?.conversationId;
-    conversationId = result.data?.conversationId;
+    const passed = result.success && result.data?.roomId;
+    roomId = result.data?.roomId;
     testResults.push({
       test: "Create Conversation",
       passed,
-      conversationId,
+      roomId,
       result: result.data,
       error: result.error,
     });
@@ -74,9 +74,9 @@ export async function GET(request: NextRequest) {
   }
 
   // Test 3: Send Message
-  if (conversationId) {
+  if (roomId) {
     const result = await testEndpoint(
-      `${baseUrl}/api/conversations/${conversationId}/messages`,
+      `${baseUrl}/api/rooms/${roomId}/messages`,
       {
         method: "POST",
         body: JSON.stringify({
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Test 4: Get Messages (with retry for agent response)
-  if (conversationId) {
+  if (roomId) {
     let messages: any[] = [];
     let retries = 5;
     let agentResponded = false;
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
       await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
 
       const result = await testEndpoint(
-        `${baseUrl}/api/conversations/${conversationId}/messages`,
+        `${baseUrl}/api/rooms/${roomId}/messages`,
       );
 
       if (result.success && result.data?.messages) {
@@ -129,9 +129,9 @@ export async function GET(request: NextRequest) {
   }
 
   // Test 5: Get Conversation Details
-  if (conversationId) {
+  if (roomId) {
     const result = await testEndpoint(
-      `${baseUrl}/api/conversations/${conversationId}`,
+      `${baseUrl}/api/rooms/${roomId}`,
     );
     const passed = result.success && result.data?.messages;
     testResults.push({
@@ -147,13 +147,13 @@ export async function GET(request: NextRequest) {
   // Test 6: List User Conversations
   {
     const result = await testEndpoint(
-      `${baseUrl}/api/conversations?userId=test-user-123`,
+      `${baseUrl}/api/rooms?userId=test-user-123`,
     );
-    const passed = result.success && Array.isArray(result.data?.conversations);
+    const passed = result.success && Array.isArray(result.data?.rooms);
     testResults.push({
       test: "List User Conversations",
       passed,
-      conversationCount: result.data?.conversations?.length,
+      conversationCount: result.data?.rooms?.length,
       result: result.data,
       error: result.error,
     });
@@ -192,9 +192,9 @@ export async function GET(request: NextRequest) {
   }
 
   // Test 8: OTC Quote Test
-  if (conversationId) {
+  if (roomId) {
     const result = await testEndpoint(
-      `${baseUrl}/api/conversations/${conversationId}/messages`,
+      `${baseUrl}/api/rooms/${roomId}/messages`,
       {
         method: "POST",
         body: JSON.stringify({
@@ -208,7 +208,7 @@ export async function GET(request: NextRequest) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     const messagesResult = await testEndpoint(
-      `${baseUrl}/api/conversations/${conversationId}/messages?afterTimestamp=0`,
+      `${baseUrl}/api/rooms/${roomId}/messages?afterTimestamp=0`,
     );
 
     const messages = messagesResult.data?.messages || [];

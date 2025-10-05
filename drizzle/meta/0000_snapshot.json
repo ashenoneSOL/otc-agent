@@ -4,8 +4,8 @@
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.conversations": {
-      "name": "conversations",
+    "public.rooms": {
+      "name": "rooms",
       "schema": "",
       "columns": {
         "id": {
@@ -109,7 +109,7 @@
         "messages_conversation_id_conversations_id_fk": {
           "name": "messages_conversation_id_conversations_id_fk",
           "tableFrom": "messages",
-          "tableTo": "conversations",
+          "tableTo": "rooms",
           "columnsFrom": [
             "conversation_id"
           ],

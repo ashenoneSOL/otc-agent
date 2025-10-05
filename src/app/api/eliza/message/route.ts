@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     const origin = request.nextUrl.origin;
     // Create conversation
-    const createRes = await fetch(`${origin}/api/conversations`, {
+    const createRes = await fetch(`${origin}/api/rooms`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId }),
@@ -31,11 +31,11 @@ export async function POST(request: NextRequest) {
       );
     }
     const createData = await createRes.json();
-    const conversationId = createData.conversationId;
+    const roomId = createData.roomId;
 
     // Send message
     const msgRes = await fetch(
-      `${origin}/api/conversations/${conversationId}/messages`,
+      `${origin}/api/rooms/${roomId}/messages`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      conversationId,
+      roomId,
       message: msgData?.message,
       text: (msgData?.message?.content?.text as string) || "",
     });

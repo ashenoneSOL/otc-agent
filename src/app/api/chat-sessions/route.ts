@@ -13,14 +13,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get user's conversations from our database
-    console.log(`[API] Fetching conversations for user: ${userId}`);
+    // Get user's rooms from our database
+    console.log(`[API] Fetching rooms for user: ${userId}`);
 
-    const conversations = await agentRuntime.getUserConversations(userId);
+    const rooms = await agentRuntime.getUserConversations(userId);
 
-    // Transform conversations to include additional metadata
+    // Transform rooms to include additional metadata
     const sessions = await Promise.all(
-      conversations.map(async (conv) => {
+      rooms.map(async (conv) => {
         try {
           // Get messages for this conversation to find the first message and count
           const messages = await agentRuntime.getConversationMessages(

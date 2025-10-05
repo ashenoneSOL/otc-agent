@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { agentRuntime } from "../../../../lib/agent-runtime";
 
 interface RouteParams {
-  params: Promise<{
+  params: {
     sessionId: string;
-  }>;
+  };
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const { sessionId } = await params;
+    const { sessionId } = params;
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "50");
 
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
-    const { sessionId } = await params;
+    const { sessionId } = params;
     const body = await request.json();
     const { message, userId } = body;
 

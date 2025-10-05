@@ -1,18 +1,14 @@
 // Serverless-compatible agent runtime with Drizzle ORM for Next.js
+import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { eq, desc, gt, gte, and, asc, sql } from "drizzle-orm";
 // DO NOT replace with an agent-simple.ts, it won't work!
-import agent from "./agent";
+import { AgentRuntime, ChannelType, EventType, Memory, elizaLogger, stringToUuid } from "@elizaos/core";
 import {
   db,
-  conversations,
   messages,
-  type Conversation,
-  type Message,
-  type NewConversation,
-  type NewMessage,
+  rooms,
 } from "../db";
-import { AgentRuntime, EventType, elizaLogger } from "@elizaos/core";
+import agent from "./agent";
 
 const globalAny = globalThis as any;
 if (typeof globalAny.__elizaMigrationsRan === "undefined")
@@ -31,8 +27,6 @@ async function tableExists(table: string): Promise<boolean> {
     return false;
   }
 }
-
-export { Message, Conversation };
 
 class AgentRuntimeManager {
   private static instance: AgentRuntimeManager;
@@ -159,7 +153,7 @@ class AgentRuntimeManager {
       try {
         await (db as any).execute?.(
           sql.raw(`
-          CREATE TABLE IF NOT EXISTS conversations (
+          CREATE TABLE IF NOT EXISTS rooms (
             id text PRIMARY KEY,
             user_id text NOT NULL,
             title text,
@@ -173,7 +167,7 @@ class AgentRuntimeManager {
           sql.raw(`
           CREATE TABLE IF NOT EXISTS messages (
             id text PRIMARY KEY,
-            conversation_id text NOT NULL REFERENCES conversations(id),
+            conversation_id text NOT NULL REFERENCES rooms(id),
             user_id text NOT NULL,
             agent_id text,
             content text NOT NULL,
@@ -184,7 +178,7 @@ class AgentRuntimeManager {
         );
       } catch (coreErr) {
         console.warn(
-          "[AgentRuntime] Failed ensuring core tables (conversations/messages):",
+          "[AgentRuntime] Failed ensuring core tables (rooms/messages):",
           coreErr,
         );
       }
@@ -313,79 +307,40 @@ class AgentRuntimeManager {
     }
   }
 
-  private async ensureAgentAndRoomRecords(
-    conversationId: string,
-  ): Promise<void> {
-    try {
-      // Ensure agent row exists for runtime.agentId
-      if ((await tableExists("agents")) && this.runtime?.agentId) {
-        const safeName = agent.character.name.replace(/'/g, "''");
-        await (db as any).execute?.(
-          sql.raw(
-            `INSERT INTO agents (id, name, enabled) VALUES ('${this.runtime.agentId}', '${safeName}', true)
-           ON CONFLICT (id) DO NOTHING`,
-          ),
-        );
-      }
-      // Ensure room row exists for this conversation (used by plugin tables)
-      if (await tableExists("rooms")) {
-        await (db as any).execute?.(
-          sql.raw(
-            `INSERT INTO rooms (id, "agentId", source, "type") VALUES ('${conversationId}', '${this.runtime?.agentId ?? ""}', 'web', 'chat')
-           ON CONFLICT (id) DO NOTHING`,
-          ),
-        );
-      }
-    } catch (err) {
-      console.warn("[AgentRuntime] Failed ensuring agent/room records:", err);
-    }
-  }
-
   // Helper method to handle messages
   public async handleMessage(
-    conversationId: string,
+    roomId: string,
     userId: string,
     content: { text?: string; attachments?: any[] },
     agentId?: string,
     clientMessageId?: string,
-  ): Promise<Message> {
+  ): Promise<Memory> {
     // store raw input; display sanitization occurs in providers
 
     // Get the runtime instance
     const runtime = await this.getRuntime();
 
-    // Ensure conversation exists (create if missing)
-    try {
-      const existing = await this.getConversation(conversationId);
-      if (!existing) {
-        console.log(
-          "[AgentRuntime] Conversation not found. Creating new conversation:",
-          conversationId,
-        );
-        const newConversation: NewConversation = {
-          id: conversationId,
-          userId,
-          title: "New Conversation",
-        };
-        await db.insert(conversations).values(newConversation);
-      }
-    } catch (convError) {
-      console.error(
-        "[AgentRuntime] Error ensuring conversation exists:",
-        convError,
-      );
-      throw convError;
-    }
+    await runtime.ensureRoomExists({
+      id: roomId as `${string}-${string}-${string}-${string}-${string}`,
+      source: "web",
+      type: ChannelType.DM,
+      channelId: roomId,
+      serverId: "otc-desk-server",
+      worldId: stringToUuid("otc-desk-world"),
+      agentId: runtime.agentId,
+    });
+
+    console.log("Room exists for sure now:", roomId);
 
     // Create user message
-    const userMessage: NewMessage = {
-      id: clientMessageId || uuidv4(),
-      conversationId,
-      userId,
-      agentId: agentId || "otc-desk-agent",
-      content: JSON.stringify(content),
-      isAgent: false,
-      createdAt: new Date(),
+    const userMessage: Memory = {
+      roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
+      entityId: userId as `${string}-${string}-${string}-${string}-${string}`,
+      agentId: (agentId || stringToUuid("otc-desk-agent")) as `${string}-${string}-${string}-${string}-${string}`,
+      content: {
+        text: content.text || "",
+        attachments: content.attachments || [],
+      },
     };
 
     // Store user message in database
@@ -403,112 +358,74 @@ class AgentRuntimeManager {
       throw error;
     }
 
-    // Ensure agent/room records exist for plugin memory writes
-    await this.ensureAgentAndRoomRecords(conversationId);
-
     // Emit MESSAGE_RECEIVED and delegate handling to plugins
     console.log("[AgentRuntime] Emitting MESSAGE_RECEIVED event to plugins");
 
     let agentResponded = false;
-    try {
-      await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-        runtime,
-        message: {
-          id: userMessage.id,
+    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+      runtime,
+      message: {
+        id: userMessage.id,
+        content: {
+          text: content.text || "",
+          attachments: content.attachments || [],
+        },
+        userId,
+        agentId: runtime.agentId,
+        roomId: roomId,
+        createdAt: Date.now(),
+      },
+      callback: async (result: { text?: string; attachments?: any[] }) => {
+        const responseText = result?.text || "";
+
+        const agentMessage: Memory = {
+          id: uuidv4() as `${string}-${string}-${string}-${string}-${string}`,
+          roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
+          entityId: stringToUuid("otc-desk-agent") as `${string}-${string}-${string}-${string}-${string}`,
+          agentId: runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
           content: {
-            text: content.text || "",
-            attachments: content.attachments || [],
+            text: responseText,
+            type: "agent",
           },
-          userId,
-          agentId: runtime.agentId,
-          roomId: conversationId,
-          createdAt: Date.now(),
-        },
-        callback: async (result: { text?: string; attachments?: any[] }) => {
-          const responseText = result?.text || "";
+        };
 
-          const agentMessage: NewMessage = {
-            id: uuidv4(),
-            conversationId,
-            userId: "otc-desk-agent",
-            agentId: "otc-desk-agent",
-            content: JSON.stringify({
-              text: responseText,
-              type: "agent",
-            }),
-            isAgent: true,
-            createdAt: new Date(),
-          };
+        try {
+          console.log(
+            "[AgentRuntime] Inserting agent message:",
+            agentMessage.id,
+          );
+          await db.insert(messages).values(agentMessage);
+          console.log("[AgentRuntime] Agent message inserted successfully");
+          agentResponded = true;
+        } catch (error) {
+          console.error(
+            "[AgentRuntime] Error inserting agent message:",
+            error,
+          );
+        }
 
-          try {
-            console.log(
-              "[AgentRuntime] Inserting agent message:",
-              agentMessage.id,
-            );
-            await db.insert(messages).values(agentMessage);
-            console.log("[AgentRuntime] Agent message inserted successfully");
-            agentResponded = true;
-          } catch (error) {
-            console.error(
-              "[AgentRuntime] Error inserting agent message:",
-              error,
-            );
-          }
-
-          try {
-            await db
-              .update(conversations)
-              .set({ lastMessageAt: new Date(), updatedAt: new Date() })
-              .where(eq(conversations.id, conversationId));
-            console.log("[AgentRuntime] Updated conversation timestamp");
-          } catch (error) {
-            console.error("[AgentRuntime] Error updating conversation:", error);
-          }
-        },
-      });
-    } catch (error) {
-      console.error(
-        "[AgentRuntime] Error during MESSAGE_RECEIVED handling:",
-        error,
-      );
-    }
-
-    // If no plugin produced a response, provide a helpful default agent reply
-    if (!agentResponded) {
-      const fallbackText =
-        "I’m here to help you with an OTC quote for ElizaOS. Shaw leads the ElizaOS project; tell me your lockup (weeks or months) and target discount and I’ll propose terms.";
-
-      const fallbackMessage: NewMessage = {
-        id: uuidv4(),
-        conversationId,
-        userId: "otc-desk-agent",
-        agentId: "otc-desk-agent",
-        content: JSON.stringify({ text: fallbackText, type: "agent" }),
-        isAgent: true,
-        createdAt: new Date(),
-      };
-
-      try {
-        await db.insert(messages).values(fallbackMessage);
-        await db
-          .update(conversations)
-          .set({ lastMessageAt: new Date(), updatedAt: new Date() })
-          .where(eq(conversations.id, conversationId));
-      } catch (err) {
-        console.warn("[AgentRuntime] Failed to insert fallback agent reply:", err);
-      }
-    }
+        try {
+          await db
+            .update(rooms)
+            .set({ lastMessageAt: new Date(), updatedAt: new Date() })
+            .where(eq(rooms.id, roomId));
+          console.log("[AgentRuntime] Updated conversation timestamp");
+        } catch (error) {
+          console.error("[AgentRuntime] Error updating conversation:", error);
+        }
+      },
+    });
 
     return insertedUserMessage;
   }
 
   // Get messages for a conversation
   public async getConversationMessages(
-    conversationId: string,
+    roomId: string,
     limit = 50,
     afterTimestamp?: number,
-  ): Promise<Message[]> {
-    const baseWhere = eq(messages.conversationId, conversationId);
+  ): Promise<Memory[]> {
+    const baseWhere = eq(messages.roomId, roomId);
     const whereClause = afterTimestamp
       ? and(baseWhere, gte(messages.createdAt, new Date(afterTimestamp)))
       : baseWhere;
@@ -525,40 +442,40 @@ class AgentRuntimeManager {
 
   // Create a new conversation
   public async createConversation(userId: string): Promise<string> {
-    const conversationId = uuidv4();
+    const roomId = uuidv4();
 
-    const newConversation: NewConversation = {
-      id: conversationId,
+    const newConversation = {
+      id: roomId,
       userId,
       title: "New Conversation",
     };
 
-    await db.insert(conversations).values(newConversation);
+    await db.insert(rooms).values(newConversation);
 
-    return conversationId;
+    return roomId;
   }
 
-  // Get user's conversations
-  public async getUserConversations(userId: string): Promise<Conversation[]> {
+  // Get user's rooms
+  public async getUserConversations(userId: string): Promise<Memory[]> {
     const userConversations = await db
       .select()
-      .from(conversations)
-      .where(eq(conversations.userId, userId))
+      .from(rooms)
+      .where(eq(rooms.userId, userId))
       .orderBy(
-        desc(conversations.lastMessageAt),
-        desc(conversations.createdAt),
+        desc(rooms.lastMessageAt),
+        desc(rooms.createdAt),
       );
 
     return userConversations;
   }
 
   public async getConversation(
-    conversationId: string,
-  ): Promise<Conversation | undefined> {
+    roomId: string,
+  ): Promise<Memory | undefined> {
     const [conversation] = await db
       .select()
-      .from(conversations)
-      .where(eq(conversations.id, conversationId));
+      .from(rooms)
+      .where(eq(rooms.id, roomId));
 
     return conversation;
   }

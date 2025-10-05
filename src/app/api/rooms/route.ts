@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { agentRuntime } from "@/lib/agent-runtime";
 import { v4 as uuidv4 } from "uuid";
-import { db, messages, conversations } from "@/db";
+import { db, messages, rooms } from "@/db";
 import { eq } from "drizzle-orm";
 import { quoteAction } from "@/lib/plugin-otc-desk/actions/quote";
 
-// GET /api/conversations - Get user's conversations
+// GET /api/rooms - Get user's rooms
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -18,17 +18,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const conversations = await agentRuntime.getUserConversations(userId);
+    const rooms = await agentRuntime.getUserConversations(userId);
 
     return NextResponse.json({
       success: true,
-      conversations,
+      rooms,
     });
   } catch (error) {
-    console.error("[Conversations API] Error getting conversations:", error);
+    console.error("[Conversations API] Error getting rooms:", error);
     return NextResponse.json(
       {
-        error: "Failed to get conversations",
+        error: "Failed to get rooms",
         details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/conversations - Create new conversation
+// POST /api/rooms - Create new conversation
 export async function POST(request: NextRequest) {
   try {
     console.log("[Conversations API] POST request received");
@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const conversationId = await agentRuntime.createConversation(userId);
-    console.log("[Conversations API] Created conversation:", conversationId);
+    const roomId = await agentRuntime.createConversation(userId);
+    console.log("[Conversations API] Created conversation:", roomId);
 
     // Generate and send an initial agent offer message for this conversation
     try {
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
         },
         userId,
         agentId: runtime.agentId,
-        roomId: conversationId,
+        roomId: roomId,
         createdAt: Date.now(),
       };
 
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
         // Insert the agent message so the client sees the initial offer immediately
         const agentMessage = {
           id: uuidv4(),
-          conversationId,
+          roomId,
           userId: "otc-desk-agent",
           agentId: "otc-desk-agent",
           content: JSON.stringify({ text: agentResponseText, type: "agent" }),
@@ -96,9 +96,9 @@ export async function POST(request: NextRequest) {
 
         await db.insert(messages).values(agentMessage);
         await db
-          .update(conversations)
+          .update(rooms)
           .set({ lastMessageAt: new Date(), updatedAt: new Date() })
-          .where(eq(conversations.id, conversationId));
+          .where(eq(rooms.id, roomId));
       }
     } catch (initErr) {
       console.warn(
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      conversationId,
+      roomId,
       createdAt: Date.now(),
     });
   } catch (error) {

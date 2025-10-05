@@ -1,27 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { agentRuntime } from "@/lib/agent-runtime";
 
-// GET /api/conversations/[conversationId] - Get conversation details and messages
+// GET /api/rooms/[roomId] - Get conversation details and messages
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ conversationId: string }> },
+  { params }: { params: { roomId: string } },
 ) {
   try {
-    const resolvedParams = await params;
-    const { conversationId } = resolvedParams;
+    const { roomId } = params;
     const { searchParams } = new URL(request.url);
     const afterTimestamp = searchParams.get("afterTimestamp");
     const limit = searchParams.get("limit");
 
-    if (!conversationId) {
+    if (!roomId) {
       return NextResponse.json(
-        { error: "conversationId is required" },
+        { error: "roomId is required" },
         { status: 400 },
       );
     }
 
     const rawMessages = await agentRuntime.getConversationMessages(
-      conversationId,
+      roomId,
       limit ? parseInt(limit) : 50,
       afterTimestamp ? parseInt(afterTimestamp) : undefined,
     );
@@ -45,7 +44,7 @@ export async function GET(
     return NextResponse.json(
       {
         success: true,
-        conversationId,
+        roomId,
         messages: simple,
         count: simple.length,
       },
