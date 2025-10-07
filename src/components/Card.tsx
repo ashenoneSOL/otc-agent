@@ -40,7 +40,7 @@ export default function Card({
             className="h-[24px] w-[24px] place-self-center select-none"
             draggable={false}
           />
-          <p className="text-[12px] text-[#64FFAA80]/50">
+          <p className="text-[12px] text-[#64FFAA80]/50 py-4">
           Tokens are auto-released to your wallet on unlock.
           </p>
         </div>

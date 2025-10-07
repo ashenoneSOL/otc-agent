@@ -21,7 +21,6 @@ export interface QuoteMemory {
   lockupMonths: number;
   lockupDays: number;
   paymentCurrency: PaymentCurrency;
-  // Price is determined by Chainlink oracle on-chain, not stored in quote
   totalUsd: number;
   discountUsd: number;
   discountedUsd: number;
@@ -109,7 +108,7 @@ export class QuoteService extends Service {
     discountBps: number;
     lockupMonths: number;
   }): string {
-    const secret = process.env.QUOTE_SIGNATURE_SECRET || "dev-secret-DO-NOT-USE-IN-PRODUCTION";
+    const secret = process.env.WORKER_AUTH_TOKEN || "dev-secret-DO-NOT-USE-IN-PRODUCTION";
     const payload = JSON.stringify(data);
     return crypto.createHmac("sha256", secret).update(payload).digest("hex");
   }
@@ -221,6 +220,19 @@ export class QuoteService extends Service {
     const quote = await this.runtime.getCache<QuoteMemory>(QUOTE_KEY(quoteId));
     if (!quote) throw new Error(`Quote not found: ${quoteId}`);
     return quote;
+  }
+
+  async getQuoteByOfferId(offerId: string): Promise<QuoteMemory | null> {
+    const allQuoteIds = (await this.runtime.getCache<string[]>(ALL_QUOTES_KEY)) ?? [];
+
+    for (const quoteId of allQuoteIds) {
+      const quote = await this.runtime.getCache<QuoteMemory>(QUOTE_KEY(quoteId));
+      if (quote && quote.offerId === offerId) {
+        return quote;
+      }
+    }
+
+    return null;
   }
 
   async updateQuoteStatus(

@@ -60,6 +60,24 @@ export async function createQuoteShareImage(
   return { file, dataUrl };
 }
 
+// Load and cache the business image
+let businessImageCache: HTMLImageElement | null = null;
+
+async function loadBusinessImage(): Promise<HTMLImageElement> {
+  if (businessImageCache) return businessImageCache;
+  
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      businessImageCache = img;
+      resolve(img);
+    };
+    img.onerror = reject;
+    img.src = "/business.png";
+  });
+}
+
 // Generate a share image for a completed deal (purchase)
 export async function createDealShareImage(args: {
   tokenAmount: number;
@@ -89,6 +107,16 @@ export async function createDealShareImage(args: {
   ctx.globalAlpha = 0.12;
   ctx.fillRect(0, 0, width, height);
   ctx.globalAlpha = 1;
+
+  // Load and draw business image in top right
+  try {
+    const businessImg = await loadBusinessImage();
+    const imgWidth = 200;
+    const imgHeight = (businessImg.height / businessImg.width) * imgWidth;
+    ctx.drawImage(businessImg, width - imgWidth - 60, 60, imgWidth, imgHeight);
+  } catch (error) {
+    console.error("Failed to load business image:", error);
+  }
 
   // Title
   ctx.fillStyle = "#ffffff";

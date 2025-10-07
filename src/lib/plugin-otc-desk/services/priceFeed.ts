@@ -20,7 +20,7 @@ const FALLBACK_ETH_PRICE = 3500;
 async function getCachedPrice(key: string): Promise<PriceCache | null> {
   const { agentRuntime } = await import("../../agent-runtime");
   const runtime = await agentRuntime.getRuntime();
-  return await runtime.getCache<PriceCache>(`price:${key}`) ?? null;
+  return (await runtime.getCache<PriceCache>(`price:${key}`)) ?? null;
 }
 
 async function setCachedPrice(key: string, value: PriceCache): Promise<void> {
@@ -33,34 +33,29 @@ async function setCachedPrice(key: string, value: PriceCache): Promise<void> {
  * Fetch ElizaOS price from CoinGecko API
  */
 async function fetchElizaPriceFromCoinGecko(): Promise<number | null> {
-  try {
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ELIZAOS_TOKEN.coingeckoId}&vs_currencies=usd`,
-      {
-        headers: {
-          Accept: "application/json",
-        },
+  const response = await fetch(
+    `https://api.coingecko.com/api/v3/simple/price?ids=${ELIZAOS_TOKEN.coingeckoId}&vs_currencies=usd`,
+    {
+      headers: {
+        Accept: "application/json",
       },
-    );
-
-    if (!response.ok) {
-      console.warn(`CoinGecko API returned ${response.status} for ElizaOS`);
-      return null;
     }
+  );
 
-    const data = await response.json();
-    const price = data[ELIZAOS_TOKEN.coingeckoId]?.usd;
-
-    if (typeof price !== "number") {
-      console.warn(`Invalid price data for ElizaOS:`, data);
-      return null;
-    }
-
-    return price;
-  } catch (error) {
-    console.error(`Failed to fetch ElizaOS price:`, error);
+  if (!response.ok) {
+    console.warn(`CoinGecko API returned ${response.status} for ElizaOS`);
     return null;
   }
+
+  const data = await response.json();
+  const price = data[ELIZAOS_TOKEN.coingeckoId]?.usd;
+
+  if (typeof price !== "number") {
+    console.warn(`Invalid price data for ElizaOS:`, data);
+    return null;
+  }
+
+  return price;
 }
 
 /**
@@ -104,31 +99,27 @@ export async function getEthPriceUsd(): Promise<number> {
     return cached.price;
   }
 
-  try {
-    // Fetch from CoinGecko
-    const response = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
-      {
-        headers: {
-          Accept: "application/json",
-        },
+  // Fetch from CoinGecko
+  const response = await fetch(
+    "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+    {
+      headers: {
+        Accept: "application/json",
       },
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      const price = data.ethereum?.usd;
-
-      if (typeof price === "number") {
-        await setCachedPrice(cacheKey, {
-          price,
-          timestamp: Date.now(),
-        });
-        return price;
-      }
     }
-  } catch (error) {
-    console.error("Failed to fetch ETH price:", error);
+  );
+
+  if (response.ok) {
+    const data = await response.json();
+    const price = data.ethereum?.usd;
+
+    if (typeof price === "number") {
+      await setCachedPrice(cacheKey, {
+        price,
+        timestamp: Date.now(),
+      });
+      return price;
+    }
   }
 
   // Fallback ETH price
@@ -160,7 +151,7 @@ export function formatElizaAmount(amount: string | number): string {
  * Convert ElizaOS amount to USD value
  */
 export async function getElizaValueUsd(
-  amount: string | number,
+  amount: string | number
 ): Promise<number> {
   const price = await getElizaPriceUsd();
   const num = typeof amount === "string" ? parseFloat(amount) : amount;

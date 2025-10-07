@@ -22,11 +22,11 @@ export async function GET(request: NextRequest) {
   // Always require auth in production
   if (process.env.NODE_ENV === "production" && !CRON_SECRET) {
     console.error(
-      "[Reconciliation Cron] No CRON_SECRET configured in production",
+      "[Reconciliation Cron] No CRON_SECRET configured in production"
     );
     return NextResponse.json(
       { error: "Server configuration error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 
@@ -40,33 +40,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    console.log("[Reconciliation Cron] Starting reconciliation task...");
+  console.log("[Reconciliation Cron] Starting reconciliation task...");
 
-    const startTime = Date.now();
-    await runReconciliationTask();
-    const duration = Date.now() - startTime;
+  const startTime = Date.now();
+  await runReconciliationTask();
+  const duration = Date.now() - startTime;
 
-    console.log(`[Reconciliation Cron] Completed in ${duration}ms`);
+  console.log(`[Reconciliation Cron] Completed in ${duration}ms`);
 
-    return NextResponse.json({
-      success: true,
-      action: "reconcile_all",
-      duration,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("[Reconciliation Cron] Error:", error);
-
-    // Still return 200 to prevent cron service from retrying immediately
-    // Log the error for monitoring systems to catch
-    return NextResponse.json({
-      success: false,
-      error: "Reconciliation task failed",
-      details: error instanceof Error ? error.message : "Unknown error",
-      timestamp: new Date().toISOString(),
-    });
-  }
+  return NextResponse.json({
+    success: true,
+    action: "reconcile_all",
+    duration,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 // Support POST for some cron services

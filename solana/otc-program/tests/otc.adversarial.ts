@@ -21,64 +21,61 @@ describe("otc adversarial", () => {
   let agent: Keypair;
   let tokenMint: PublicKey;
   let usdcMint: PublicKey;
-  let desk: PublicKey;
+  let desk: Keypair;
   let deskTokenTreasury: PublicKey;
   let deskUsdcTreasury: PublicKey;
 
   beforeEach(async () => {
     owner = Keypair.generate();
     agent = Keypair.generate();
+    desk = Keypair.generate();
     await airdrop(owner.publicKey, 2e9);
     await airdrop(agent.publicKey, 2e9);
     tokenMint = await createMint(provider.connection, owner, owner.publicKey, null, 9);
     usdcMint = await createMint(provider.connection, owner, owner.publicKey, null, 6);
-    ;
-    [desk] = PublicKey.findProgramAddressSync([Buffer.from("desk"), owner.publicKey.toBuffer()], program.programId);
-    deskTokenTreasury = getAssociatedTokenAddressSync(tokenMint, desk, true);
-    deskUsdcTreasury = getAssociatedTokenAddressSync(usdcMint, desk, true);
-    await getOrCreateAssociatedTokenAccount(provider.connection, owner, tokenMint, desk, true);
-    await getOrCreateAssociatedTokenAccount(provider.connection, owner, usdcMint, desk, true);
+    deskTokenTreasury = getAssociatedTokenAddressSync(tokenMint, desk.publicKey, true);
+    deskUsdcTreasury = getAssociatedTokenAddressSync(usdcMint, desk.publicKey, true);
+    await getOrCreateAssociatedTokenAccount(provider.connection, owner, tokenMint, desk.publicKey, true);
+    await getOrCreateAssociatedTokenAccount(provider.connection, owner, usdcMint, desk.publicKey, true);
 
     await program.methods
       .initDesk(new BN(500000000), new BN("1000000000000000"), new BN(60), new BN(0), new BN(365*24*3600))
-      .accounts({ owner: owner.publicKey, agent: agent.publicKey, tokenMint, usdcMint, desk, deskTokenTreasury, deskUsdcTreasury, payer: owner.publicKey, systemProgram: SystemProgram.programId, tokenProgram: TOKEN_PROGRAM_ID })
-      .signers([owner])
+      .accounts({ owner: owner.publicKey, agent: agent.publicKey, tokenMint, usdcMint, desk: desk.publicKey, deskTokenTreasury, deskUsdcTreasury, payer: owner.publicKey, systemProgram: SystemProgram.programId, tokenProgram: TOKEN_PROGRAM_ID })
+      .signers([owner, desk])
       .rpc();
 
     const ownerTokenAta = getAssociatedTokenAddressSync(tokenMint, owner.publicKey);
     await getOrCreateAssociatedTokenAccount(provider.connection, owner, tokenMint, owner.publicKey);
     await mintTo(provider.connection, owner, tokenMint, ownerTokenAta, owner, BigInt(1_000_000_000000000) as any);
     await program.methods.depositTokens(new BN("500000000000000"))
-      .accounts({ desk, owner: owner.publicKey, ownerTokenAta, deskTokenTreasury, tokenProgram: TOKEN_PROGRAM_ID })
+      .accounts({ desk: desk.publicKey, owner: owner.publicKey, ownerTokenAta, deskTokenTreasury, tokenProgram: TOKEN_PROGRAM_ID })
       .signers([owner]).rpc();
 
     await program.methods.setPrices(new BN(1_000_000_000), new BN(100_000_000_00), new BN(0), new BN(3600))
-      .accounts({ desk, owner: owner.publicKey }).signers([owner]).rpc();
+      .accounts({ desk: desk.publicKey, owner: owner.publicKey }).signers([owner]).rpc();
   });
 
   it("rejects createOffer when insufficient inventory (reserved)", async () => {
     const user = Keypair.generate();
     await airdrop(user.publicKey, 2e9);
-    const deskAccount = await program.account.desk.fetch(desk);
+    const deskAccount = await program.account.desk.fetch(desk.publicKey);
     const id = new BN(deskAccount.nextOfferId.toString());
-    const idBuf = Buffer.alloc(8);
-    idBuf.writeBigUInt64LE(BigInt(id.toString()));
-    const [offer] = PublicKey.findProgramAddressSync([Buffer.from("offer"), desk.toBuffer(), idBuf], program.programId);
+    const offer = Keypair.generate();
 
-    await program.methods.createOffer(id, new BN("1000000000"), 0, 1, new BN(0))
-      .accountsStrict({ desk, deskTokenTreasury, beneficiary: user.publicKey, offer, systemProgram: SystemProgram.programId })
-      .signers([user]).rpc();
-    await program.methods.setApprover(user.publicKey, true).accounts({ desk, owner: owner.publicKey }).signers([owner]).rpc();
-    await program.methods.approveOffer(id).accounts({ desk, offer, approver: user.publicKey }).signers([user]).rpc();
+    await program.methods.createOffer(new BN("1000000000"), 0, 1, new BN(0))
+      .accountsStrict({ desk: desk.publicKey, deskTokenTreasury, beneficiary: user.publicKey, offer: offer.publicKey, systemProgram: SystemProgram.programId })
+      .signers([user, offer]).rpc();
+    await program.methods.setApprover(user.publicKey, true).accounts({ desk: desk.publicKey, owner: owner.publicKey }).signers([owner]).rpc();
+    await program.methods.approveOffer(id).accounts({ desk: desk.publicKey, offer: offer.publicKey, approver: user.publicKey }).signers([user]).rpc();
 
     const payerUsdc = await getOrCreateAssociatedTokenAccount(provider.connection, owner, usdcMint, user.publicKey);
     await mintTo(provider.connection, owner, usdcMint, payerUsdc.address, owner, BigInt(1_000_000_000) as any);
-    await program.methods.fulfillOfferUsdc(id).accounts({ desk, offer, deskTokenTreasury, deskUsdcTreasury, payerUsdcAta: payerUsdc.address, payer: user.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([user]).rpc();
+    await program.methods.fulfillOfferUsdc(id).accounts({ desk: desk.publicKey, offer: offer.publicKey, deskTokenTreasury, deskUsdcTreasury, payerUsdcAta: payerUsdc.address, payer: user.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([user]).rpc();
 
     // Attempt to withdraw below reserved should fail
     const withdrawAmount = new BN("500000000000000");
     try {
-      await program.methods.withdrawTokens(withdrawAmount).accounts({ desk, owner: owner.publicKey, deskTokenTreasury, ownerTokenAta: getAssociatedTokenAddressSync(tokenMint, owner.publicKey), tokenProgram: TOKEN_PROGRAM_ID }).signers([owner]).rpc();
+      await program.methods.withdrawTokens(withdrawAmount).accounts({ desk: desk.publicKey, deskSigner: desk.publicKey, owner: owner.publicKey, deskTokenTreasury, ownerTokenAta: getAssociatedTokenAddressSync(tokenMint, owner.publicKey), tokenProgram: TOKEN_PROGRAM_ID }).signers([owner, desk]).rpc();
       expect.fail("withdrawTokens should fail due to reserved balance");
     } catch (e) {
       // ok
@@ -88,20 +85,18 @@ describe("otc adversarial", () => {
   it("rejects fulfill when expired (checked add)", async () => {
     const user = Keypair.generate();
     await airdrop(user.publicKey, 2e9);
-    const d = await program.account.desk.fetch(desk);
+    const d = await program.account.desk.fetch(desk.publicKey);
     const id = new BN(d.nextOfferId.toString());
-    const idBuf = Buffer.alloc(8);
-    idBuf.writeBigUInt64LE(BigInt(id.toString()));
-    const [offer] = PublicKey.findProgramAddressSync([Buffer.from("offer"), desk.toBuffer(), idBuf], program.programId);
-    await program.methods.createOffer(id, new BN("1000000000"), 0, 1, new BN(0)).accountsStrict({ desk, deskTokenTreasury, beneficiary: user.publicKey, offer, systemProgram: SystemProgram.programId }).signers([user]).rpc();
-    await program.methods.setApprover(user.publicKey, true).accounts({ desk, owner: owner.publicKey }).signers([owner]).rpc();
-    await program.methods.approveOffer(id).accounts({ desk, offer, approver: user.publicKey }).signers([user]).rpc();
+    const offer = Keypair.generate();
+    await program.methods.createOffer(new BN("1000000000"), 0, 1, new BN(0)).accountsStrict({ desk: desk.publicKey, deskTokenTreasury, beneficiary: user.publicKey, offer: offer.publicKey, systemProgram: SystemProgram.programId }).signers([user, offer]).rpc();
+    await program.methods.setApprover(user.publicKey, true).accounts({ desk: desk.publicKey, owner: owner.publicKey }).signers([owner]).rpc();
+    await program.methods.approveOffer(id).accounts({ desk: desk.publicKey, offer: offer.publicKey, approver: user.publicKey }).signers([user]).rpc();
 
     // artificially set quote_expiry_secs very small by owner
-    await program.methods.setLimits(new BN(500000000), new BN("1000000000000000"), new BN(1), new BN(0), new BN(365*24*3600)).accounts({ desk, owner: owner.publicKey }).signers([owner]).rpc();
+    await program.methods.setLimits(new BN(500000000), new BN("1000000000000000"), new BN(1), new BN(0), new BN(365*24*3600)).accounts({ desk: desk.publicKey, owner: owner.publicKey }).signers([owner]).rpc();
     await new Promise(r => setTimeout(r, 1500));
     try {
-      await program.methods.fulfillOfferUsdc(id).accounts({ desk, offer, deskTokenTreasury, deskUsdcTreasury, payerUsdcAta: getAssociatedTokenAddressSync(usdcMint, user.publicKey), payer: user.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([user]).rpc();
+      await program.methods.fulfillOfferUsdc(id).accounts({ desk: desk.publicKey, offer: offer.publicKey, deskTokenTreasury, deskUsdcTreasury, payerUsdcAta: getAssociatedTokenAddressSync(usdcMint, user.publicKey), payer: user.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([user]).rpc();
       expect.fail("fulfill should fail due to expiry");
     } catch (e) {}
   });
@@ -109,21 +104,19 @@ describe("otc adversarial", () => {
   it("enforces desk ownership of treasuries in fulfill", async () => {
     const user = Keypair.generate();
     await airdrop(user.publicKey, 2e9);
-    const d = await program.account.desk.fetch(desk);
+    const d = await program.account.desk.fetch(desk.publicKey);
     const id = new BN(d.nextOfferId.toString());
-    const idBuf = Buffer.alloc(8);
-    idBuf.writeBigUInt64LE(BigInt(id.toString()));
-    const [offer] = PublicKey.findProgramAddressSync([Buffer.from("offer"), desk.toBuffer(), idBuf], program.programId);
+    const offer = Keypair.generate();
 
-    await program.methods.createOffer(id, new BN("1000000000"), 0, 1, new BN(0)).accountsStrict({ desk, deskTokenTreasury, beneficiary: user.publicKey, offer, systemProgram: SystemProgram.programId }).signers([user]).rpc();
-    await program.methods.setApprover(user.publicKey, true).accounts({ desk, owner: owner.publicKey }).signers([owner]).rpc();
-    await program.methods.approveOffer(id).accounts({ desk, offer, approver: user.publicKey }).signers([user]).rpc();
+    await program.methods.createOffer(new BN("1000000000"), 0, 1, new BN(0)).accountsStrict({ desk: desk.publicKey, deskTokenTreasury, beneficiary: user.publicKey, offer: offer.publicKey, systemProgram: SystemProgram.programId }).signers([user, offer]).rpc();
+    await program.methods.setApprover(user.publicKey, true).accounts({ desk: desk.publicKey, owner: owner.publicKey }).signers([owner]).rpc();
+    await program.methods.approveOffer(id).accounts({ desk: desk.publicKey, offer: offer.publicKey, approver: user.publicKey }).signers([user]).rpc();
 
     // Craft a fake treasury owned by user
     const fakeTreasury = getAssociatedTokenAddressSync(tokenMint, user.publicKey);
     await getOrCreateAssociatedTokenAccount(provider.connection, owner, tokenMint, user.publicKey);
     try {
-      await program.methods.fulfillOfferSol(id).accounts({ desk, offer, deskTokenTreasury: fakeTreasury, payer: user.publicKey, systemProgram: SystemProgram.programId }).signers([user]).rpc();
+      await program.methods.fulfillOfferSol(id).accounts({ desk: desk.publicKey, offer: offer.publicKey, deskTokenTreasury: fakeTreasury, payer: user.publicKey, systemProgram: SystemProgram.programId }).signers([user]).rpc();
       expect.fail("fulfill should fail due to treasury owner constraint");
     } catch (e) {}
   });

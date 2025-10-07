@@ -171,12 +171,12 @@ export const ChatMessage = memo(function ChatMessage({
         )}
       >
         {!isUser && (
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 flex items-center justify-center overflow-hidden">
+          <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center overflow-hidden">
             <Image
               src="/tokens/eliza.svg"
               alt="Eliza"
-              width={20}
-              height={20}
+              width={48}
+              height={48}
               className="object-contain"
               unoptimized
             />
@@ -265,8 +265,8 @@ export const ChatMessage = memo(function ChatMessage({
         </div>
 
         {isUser && (
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-            <UserCircleIcon className="w-5 h-5 text-white" />
+          <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center">
+            <UserCircleIcon className="w-12 h-12 text-white" />
           </div>
         )}
       </div>

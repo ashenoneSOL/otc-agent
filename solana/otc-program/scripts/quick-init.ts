@@ -2,12 +2,12 @@ import pkg from "@coral-xyz/anchor";
 const anchor: any = pkg as any;
 const { BN } = anchor;
 import { PublicKey, SystemProgram, Keypair } from "@solana/web3.js";
-import { 
-  TOKEN_PROGRAM_ID, 
-  createMint, 
-  getOrCreateAssociatedTokenAccount, 
+import {
+  TOKEN_PROGRAM_ID,
+  createMint,
+  getOrCreateAssociatedTokenAccount,
   mintTo,
-  getAssociatedTokenAddressSync 
+  getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import * as fs from "fs";
 import { fileURLToPath } from "url";
@@ -44,7 +44,10 @@ async function main() {
 
   // Generate agent and desk keypairs
   const agent = Keypair.generate();
-  const agentSig = await provider.connection.requestAirdrop(agent.publicKey, 1e9);
+  const agentSig = await provider.connection.requestAirdrop(
+    agent.publicKey,
+    1e9
+  );
   await provider.connection.confirmTransaction(agentSig, "confirmed");
   console.log("🤖 Agent:", agent.publicKey.toString());
 
@@ -53,72 +56,126 @@ async function main() {
 
   // Create token mints
   console.log("\n🪙 Creating token mints...");
-  const tokenMint = await createMint(provider.connection, owner, owner.publicKey, null, 9);
+  console.log("⚠️  NOTE: Using 9 decimals for native Solana token (standard)");
+  console.log("    CCIP bridge to Base will preserve these decimals!");
+  console.log("    See CCIP-BRIDGE-CHECKLIST.md for production considerations.\n");
+  
+  const tokenMint = await createMint(
+    provider.connection,
+    owner,
+    owner.publicKey,
+    null,
+    9  // ⚠️ CRITICAL: This determines decimals on BOTH chains when bridging via CCIP
+  );
   console.log("✅ Token Mint:", tokenMint.toString());
 
-  const usdcMint = await createMint(provider.connection, owner, owner.publicKey, null, 6);
+  const usdcMint = await createMint(
+    provider.connection,
+    owner,
+    owner.publicKey,
+    null,
+    6
+  );
   console.log("✅ USDC Mint:", usdcMint.toString());
 
   // Create token accounts for desk
   console.log("\n📦 Creating desk token accounts...");
-  const deskTokenAta = getAssociatedTokenAddressSync(tokenMint, desk.publicKey, true);
-  const deskUsdcAta = getAssociatedTokenAddressSync(usdcMint, desk.publicKey, true);
-  
-  await getOrCreateAssociatedTokenAccount(provider.connection, owner, tokenMint, desk.publicKey, true);
+  const deskTokenAta = getAssociatedTokenAddressSync(
+    tokenMint,
+    desk.publicKey,
+    true
+  );
+  const deskUsdcAta = getAssociatedTokenAddressSync(
+    usdcMint,
+    desk.publicKey,
+    true
+  );
+
+  await getOrCreateAssociatedTokenAccount(
+    provider.connection,
+    owner,
+    tokenMint,
+    desk.publicKey,
+    true
+  );
   console.log("✅ Desk token ATA:", deskTokenAta.toString());
 
-  await getOrCreateAssociatedTokenAccount(provider.connection, owner, usdcMint, desk.publicKey, true);
+  await getOrCreateAssociatedTokenAccount(
+    provider.connection,
+    owner,
+    usdcMint,
+    desk.publicKey,
+    true
+  );
   console.log("✅ Desk USDC ATA:", deskUsdcAta.toString());
 
   // Initialize desk using PDA
   console.log("\n⚙️  Initializing desk...");
-  try {
-    const tx = await program.methods
-      .initDesk(
-        new BN(500_000_000),
-        new BN("1000000000000000"),
-        new BN(1800),
-        new BN(0),
-        new BN(365 * 24 * 3600)
-      )
-      .accounts({
-        payer: owner.publicKey,
-        owner: owner.publicKey,
-        agent: agent.publicKey,
-        tokenMint: tokenMint,
-        usdcMint: usdcMint,
-        desk: desk.publicKey,
-        deskTokenTreasury: deskTokenAta,
-        deskUsdcTreasury: deskUsdcAta,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .signers([owner, desk])  // Both owner and desk sign
-      .rpc();
-    
-    console.log("✅ Desk initialized! Tx:", tx);
-  } catch (err: any) {
-    console.error("❌ Init failed:", err.message);
-    if (err.logs) console.error("Logs:", err.logs);
-    throw err;
-  }
+  const tx = await program.methods
+    .initDesk(
+      new BN(500_000_000),
+      new BN("1000000000000000"),
+      new BN(1800),
+      new BN(0),
+      new BN(365 * 24 * 3600)
+    )
+    .accounts({
+      payer: owner.publicKey,
+      owner: owner.publicKey,
+      agent: agent.publicKey,
+      tokenMint: tokenMint,
+      usdcMint: usdcMint,
+      desk: desk.publicKey,
+      deskTokenTreasury: deskTokenAta,
+      deskUsdcTreasury: deskUsdcAta,
+      systemProgram: SystemProgram.programId,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    })
+    .signers([owner, desk]) // Both owner and desk sign
+    .rpc();
+
+  console.log("✅ Desk initialized! Tx:", tx);
 
   // Set prices
   console.log("\n💲 Setting prices...");
   await program.methods
-    .setPrices(new BN(1_000_000_000), new BN(100_000_000_00), new BN(0), new BN(3600))
+    .setPrices(
+      new BN(1_000_000_000),
+      new BN(100_000_000_00),
+      new BN(0),
+      new BN(3600)
+    )
     .accounts({ desk: desk.publicKey, owner: owner.publicKey })
     .signers([owner])
     .rpc();
   console.log("✅ Prices set");
 
+  // Add owner as approver
+  console.log("\n👤 Adding owner as approver...");
+  await program.methods
+    .setApprover(owner.publicKey, true)
+    .accounts({ desk: desk.publicKey, owner: owner.publicKey })
+    .signers([owner])
+    .rpc();
+  console.log("✅ Owner added as approver");
+
   // Mint tokens to owner
   console.log("\n💎 Minting tokens...");
   const ownerTokenAta = await getOrCreateAssociatedTokenAccount(
-    provider.connection, owner, tokenMint, owner.publicKey
+    provider.connection,
+    owner,
+    tokenMint,
+    owner.publicKey
   );
-  
-  await mintTo(provider.connection, owner, tokenMint, ownerTokenAta.address, owner, 1_000_000_000_000_000);
+
+  await mintTo(
+    provider.connection,
+    owner,
+    tokenMint,
+    ownerTokenAta.address,
+    owner,
+    1_000_000_000_000_000
+  );
   console.log("✅ Minted 1,000,000 tokens to owner");
 
   // Deposit to desk
@@ -162,7 +219,10 @@ async function main() {
     NEXT_PUBLIC_SOLANA_TOKEN_MINT: tokenMint.toString(),
     NEXT_PUBLIC_SOLANA_USDC_MINT: usdcMint.toString(),
   };
-  fs.writeFileSync("/tmp/solana-otc-config.json", JSON.stringify(envData, null, 2));
+  fs.writeFileSync(
+    "/tmp/solana-otc-config.json",
+    JSON.stringify(envData, null, 2)
+  );
   console.log("\n✅ Config saved to /tmp/solana-otc-config.json");
 }
 

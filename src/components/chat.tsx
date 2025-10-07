@@ -73,34 +73,27 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
   const createNewRoom = useCallback(async () => {
     if (!entityId) return null;
 
-    try {
-      const response = await fetch("/api/rooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entityId }),
-      });
+    const response = await fetch("/api/rooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entityId }),
+    });
 
-      if (!response.ok) {
-        throw new Error("Failed to create room");
-      }
-
-      const data = await response.json();
-      const newRoomId = data.roomId;
-
-      setRoomId(newRoomId);
-      // Persist room per-wallet
-      try {
-        if (entityId) {
-          localStorage.setItem(`otc-desk-room-${entityId}`, newRoomId);
-        }
-      } catch {}
-      setMessages([]);
-
-      return newRoomId;
-    } catch (error) {
-      throw error;
-      return null;
+    if (!response.ok) {
+      throw new Error("Failed to create room");
     }
+
+    const data = await response.json();
+    const newRoomId = data.roomId;
+
+    setRoomId(newRoomId);
+    // Persist room per-wallet
+    if (entityId) {
+      localStorage.setItem(`otc-desk-room-${entityId}`, newRoomId);
+    }
+    setMessages([]);
+
+    return newRoomId;
   }, [entityId]);
 
   // Load room data
@@ -108,19 +101,120 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
     if (!roomId || !entityId) return;
 
     const loadRoom = async () => {
-      try {
-        setIsLoadingHistory(true);
+      setIsLoadingHistory(true);
 
-        const response = await fetch(`/api/rooms/${roomId}/messages`, {
-          cache: "no-store",
+      const response = await fetch(`/api/rooms/${roomId}/messages`, {
+        cache: "no-store",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const messages = data.messages || [];
+
+        // Format messages for display with generous parsing
+        const formattedMessages = messages
+          .filter((msg: any) => {
+            // Parse message text to check if we should filter it
+            let messageText = "";
+            if (msg.content?.text) {
+              messageText = msg.content.text;
+            } else if (msg.text) {
+              messageText = msg.text;
+            } else if (msg.content && typeof msg.content === "string") {
+              messageText = msg.content;
+            }
+
+            // Filter out system messages
+            return !messageText.startsWith("Executed action:");
+          })
+          .map((msg: any) => {
+            // Parse message text from various possible formats
+            let messageText = "";
+            if (msg.content?.text) {
+              messageText = msg.content.text;
+            } else if (msg.text) {
+              messageText = msg.text;
+            } else if (msg.content && typeof msg.content === "string") {
+              messageText = msg.content;
+            } else if (msg.content) {
+              messageText = JSON.stringify(msg.content);
+            }
+
+            return {
+              id: msg.id || `msg-${msg.createdAt}`,
+              name: msg.entityId === msg.agentId ? "Eliza" : USER_NAME,
+              text: messageText,
+              senderId: msg.entityId,
+              roomId: roomId,
+              createdAt:
+                typeof msg.createdAt === "number"
+                  ? msg.createdAt
+                  : new Date(msg.createdAt || Date.now()).getTime(),
+              source: CHAT_SOURCE,
+              isLoading: false,
+              serverMessageId: msg.id, // Store server ID for deduplication
+            };
+          });
+
+        // Deduplicate: remove optimistic client messages and use server versions
+        setMessages((prev) => {
+          // Filter out optimistic user messages (client-side only)
+          const withoutOptimistic = prev.filter(
+            (m) => !(m as any).isUserMessage
+          );
+
+          // Merge and dedupe by server ID
+          const byServerId = new Map<string, any>();
+          withoutOptimistic.forEach((m) => {
+            byServerId.set(m.id, m);
+          });
+          formattedMessages.forEach((m: any) => {
+            byServerId.set(m.serverMessageId, m);
+          });
+
+          const result = Array.from(byServerId.values());
+          result.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+          return result;
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          const messages = data.messages || [];
+        // Update last message timestamp
+        if (formattedMessages.length > 0) {
+          lastMessageTimestampRef.current =
+            formattedMessages[formattedMessages.length - 1].createdAt;
+        }
+      }
+      setIsLoadingHistory(false);
+    };
 
-          // Format messages for display with generous parsing
-          const formattedMessages = messages
+    loadRoom();
+  }, [roomId, entityId]);
+
+  // Poll for new messages when agent is thinking
+  useEffect(() => {
+    if (!isAgentThinking || !roomId) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Poll every second for new messages
+    pollingIntervalRef.current = setInterval(async () => {
+      const response = await fetch(
+        `/api/rooms/${roomId}/messages?afterTimestamp=${lastMessageTimestampRef.current}&_=${Date.now()}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const newMessages = data.messages || [];
+
+        if (newMessages.length > 0) {
+          const formattedMessages = newMessages
             .filter((msg: any) => {
               // Parse message text to check if we should filter it
               let messageText = "";
@@ -164,164 +258,59 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
               };
             });
 
-          // Deduplicate: remove optimistic client messages and use server versions
           setMessages((prev) => {
-            // Filter out optimistic user messages (client-side only)
-            const withoutOptimistic = prev.filter(
-              (m) => !(m as any).isUserMessage,
+            console.log(
+              `[Polling] Received ${formattedMessages.length} new messages`,
+              formattedMessages.map((m: any) => ({ id: m.serverMessageId, text: m.text.substring(0, 50) }))
             );
 
-            // Merge and dedupe by server ID
+            // Remove optimistic client messages - they'll be replaced by server versions
+            const withoutOptimistic = prev.filter(
+              (m) => !(m as any).isUserMessage
+            );
+
+            // Merge with new messages and dedupe by server ID
             const byServerId = new Map<string, any>();
             withoutOptimistic.forEach((m) => {
-              byServerId.set(m.id, m);
+              const key = (m as any).serverMessageId || m.id;
+              byServerId.set(key, m);
             });
             formattedMessages.forEach((m: any) => {
               byServerId.set(m.serverMessageId, m);
             });
 
-            const result = Array.from(byServerId.values());
-            result.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+            const merged = Array.from(byServerId.values());
+            merged.sort(
+              (a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0)
+            );
 
-            return result;
+            console.log(
+              `[Polling] After deduplication: ${merged.length} total messages (was ${prev.length})`
+            );
+            
+            // Force a re-render by returning a new array reference
+            return [...merged];
           });
 
           // Update last message timestamp
-          if (formattedMessages.length > 0) {
-            lastMessageTimestampRef.current =
-              formattedMessages[formattedMessages.length - 1].createdAt;
-          }
-        }
-      } catch (error) {
-        throw error;
-      } finally {
-        setIsLoadingHistory(false);
-      }
-    };
+          const lastNewMessage =
+            formattedMessages[formattedMessages.length - 1];
+          lastMessageTimestampRef.current = lastNewMessage.createdAt;
 
-    loadRoom();
-  }, [roomId, entityId]);
-
-  // Poll for new messages when agent is thinking
-  useEffect(() => {
-    if (!isAgentThinking || !roomId) {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-      return;
-    }
-
-    // Poll every second for new messages
-    pollingIntervalRef.current = setInterval(async () => {
-      try {
-        const response = await fetch(
-          `/api/rooms/${roomId}/messages?afterTimestamp=${lastMessageTimestampRef.current}&_=${Date.now()}`,
-          {
-            cache: "no-store",
-          },
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          const newMessages = data.messages || [];
-
-          if (newMessages.length > 0) {
-            const formattedMessages = newMessages
-              .filter((msg: any) => {
-                // Parse message text to check if we should filter it
-                let messageText = "";
-                if (msg.content?.text) {
-                  messageText = msg.content.text;
-                } else if (msg.text) {
-                  messageText = msg.text;
-                } else if (msg.content && typeof msg.content === "string") {
-                  messageText = msg.content;
-                }
-
-                // Filter out system messages
-                return !messageText.startsWith("Executed action:");
-              })
-              .map((msg: any) => {
-                // Parse message text from various possible formats
-                let messageText = "";
-                if (msg.content?.text) {
-                  messageText = msg.content.text;
-                } else if (msg.text) {
-                  messageText = msg.text;
-                } else if (msg.content && typeof msg.content === "string") {
-                  messageText = msg.content;
-                } else if (msg.content) {
-                  messageText = JSON.stringify(msg.content);
-                }
-
-                return {
-                  id: msg.id || `msg-${msg.createdAt}`,
-                  name: msg.entityId === msg.agentId ? "Eliza" : USER_NAME,
-                  text: messageText,
-                  senderId: msg.entityId,
-                  roomId: roomId,
-                  createdAt:
-                    typeof msg.createdAt === "number"
-                      ? msg.createdAt
-                      : new Date(msg.createdAt || Date.now()).getTime(),
-                  source: CHAT_SOURCE,
-                  isLoading: false,
-                  serverMessageId: msg.id, // Store server ID for deduplication
-                };
-              });
-
-            setMessages((prev) => {
-              console.log(
-                `[Polling] Received ${formattedMessages.length} new messages`,
-              );
-
-              // Remove optimistic client messages - they'll be replaced by server versions
-              const withoutOptimistic = prev.filter(
-                (m) => !(m as any).isUserMessage,
-              );
-
-              // Merge with new messages and dedupe by server ID
-              const byServerId = new Map<string, any>();
-              withoutOptimistic.forEach((m) => {
-                const key = (m as any).serverMessageId || m.id;
-                byServerId.set(key, m);
-              });
-              formattedMessages.forEach((m: any) => {
-                byServerId.set(m.serverMessageId, m);
-              });
-
-              const merged = Array.from(byServerId.values());
-              merged.sort(
-                (a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0),
-              );
-
-              console.log(
-                `[Polling] After deduplication: ${merged.length} total messages`,
-              );
-              return merged;
-            });
-
-            // Update last message timestamp
-            const lastNewMessage =
-              formattedMessages[formattedMessages.length - 1];
-            lastMessageTimestampRef.current = lastNewMessage.createdAt;
-
-            // Check if we received an agent message
-            const hasAgentMessage = newMessages.some(
-              (msg: any) => msg.entityId === msg.agentId,
-            );
-            if (hasAgentMessage) {
-              console.log(
-                "[Polling] Agent response received, stopping polling",
-              );
+          // Check if we received an agent message
+          const hasAgentMessage = newMessages.some(
+            (msg: any) => msg.entityId === msg.agentId
+          );
+          if (hasAgentMessage) {
+            console.log("[Polling] Agent response received, will continue polling for 3 more seconds");
+            // Continue polling for a bit longer to catch any delayed messages
+            setTimeout(() => {
+              console.log("[Polling] Delayed stop after agent response");
               setIsAgentThinking(false);
               setInputDisabled(false);
-            }
+            }, 3000);
           }
         }
-      } catch {
-        // Ignore polling errors - they're expected when messages aren't ready
       }
     }, 1000);
 
@@ -352,7 +341,7 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
         entityId,
         roomId,
         inputDisabled,
-        unifiedConnected,
+        unifiedConnected
       );
       if (
         !messageText.trim() ||
@@ -395,71 +384,37 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
           keepalive: true,
         });
 
-      try {
-        let response = await doPost();
-        if (!response.ok) {
-          // Retry once on transient server errors
-          await new Promise((r) => setTimeout(r, 800));
-          response = await doPost();
-        }
-        if (!response.ok) throw new Error("Failed to send message");
+      let response = await doPost();
+      if (!response.ok) {
+        // Retry once on transient server errors
+        await new Promise((r) => setTimeout(r, 800));
+        response = await doPost();
+      }
+      if (!response.ok) throw new Error("Failed to send message");
 
-        // Prefer server timestamp to avoid client/server clock skew missing agent replies
-        try {
-          const result = await response.json();
-          const serverCreatedAt = result?.message?.createdAt
-            ? new Date(result.message.createdAt).getTime()
-            : undefined;
-          if (
-            typeof serverCreatedAt === "number" &&
-            !Number.isNaN(serverCreatedAt)
-          ) {
-            // Set to just before our message so we catch both our message and agent's response
-            lastMessageTimestampRef.current = serverCreatedAt - 100;
-            console.log(
-              `[Send Message] Set polling timestamp to ${lastMessageTimestampRef.current} (server time: ${serverCreatedAt})`,
-            );
-          } else {
-            // Fallback: use current time minus a buffer
-            lastMessageTimestampRef.current = Date.now() - 1000;
-            console.log(
-              `[Send Message] Set polling timestamp to ${lastMessageTimestampRef.current} (fallback)`,
-            );
-          }
-        } catch {
-          // If parsing fails, use current time with buffer to ensure we catch responses
-          lastMessageTimestampRef.current = Date.now() - 1000;
-          console.log(
-            `[Send Message] Set polling timestamp to ${lastMessageTimestampRef.current} (error fallback)`,
-          );
-        }
-      } catch (error) {
-        // On network errors, try one delayed retry before failing
-        const isNetworkError = error instanceof TypeError;
-        if (isNetworkError) {
-          try {
-            await new Promise((r) => setTimeout(r, 1200));
-            const retryRes = await doPost();
-            if (!retryRes.ok) throw new Error("Failed to send message");
-          } catch (finalErr) {
-            setIsAgentThinking(false);
-            setInputDisabled(false);
-            setMessages((prev) =>
-              prev.filter((msg) => msg.id !== userMessage.id),
-            );
-            throw finalErr;
-          }
-        } else {
-          setIsAgentThinking(false);
-          setInputDisabled(false);
-          setMessages((prev) =>
-            prev.filter((msg) => msg.id !== userMessage.id),
-          );
-          throw error;
-        }
+      // Prefer server timestamp to avoid client/server clock skew missing agent replies
+      const result = await response.json();
+      const serverCreatedAt = result?.message?.createdAt
+        ? new Date(result.message.createdAt).getTime()
+        : undefined;
+      if (
+        typeof serverCreatedAt === "number" &&
+        !Number.isNaN(serverCreatedAt)
+      ) {
+        // Set to just before our message so we catch both our message and agent's response
+        lastMessageTimestampRef.current = serverCreatedAt - 100;
+        console.log(
+          `[Send Message] Set polling timestamp to ${lastMessageTimestampRef.current} (server time: ${serverCreatedAt})`
+        );
+      } else {
+        // Fallback: use current time minus a buffer
+        lastMessageTimestampRef.current = Date.now() - 1000;
+        console.log(
+          `[Send Message] Set polling timestamp to ${lastMessageTimestampRef.current} (fallback)`
+        );
       }
     },
-    [entityId, roomId, inputDisabled, unifiedConnected],
+    [entityId, roomId, inputDisabled, unifiedConnected]
   );
 
   // Handle form submit
@@ -492,7 +447,7 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
         textareaRef.current?.focus();
       }, 0);
     },
-    [input, unifiedConnected, entityId, roomId, createNewRoom, sendMessage],
+    [input, unifiedConnected, entityId, roomId, createNewRoom, sendMessage]
   );
 
   // Handle creating a new room when there isn't one
@@ -520,7 +475,7 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
     console.log(
       "[Quote Update] Scanning",
       messages.length,
-      "messages for quote",
+      "messages for quote"
     );
 
     // Find the latest quote in messages
@@ -528,43 +483,39 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
       const msg = messages[i];
       if (!msg || msg.name === USER_NAME) continue;
 
-      try {
-        const parsed = parseMessageXML(
-          typeof msg.text === "string"
-            ? msg.text
-            : (msg as any).content?.text || "",
-        );
+      const parsed = parseMessageXML(
+        typeof msg.text === "string"
+          ? msg.text
+          : (msg as any).content?.text || ""
+      );
 
-        if (parsed?.type === "otc_quote" && parsed.data) {
-          const newQuote = parsed.data;
-          const newQuoteId = newQuote.quoteId;
-          const prevQuoteId = previousQuoteIdRef.current;
+      if (parsed?.type === "otc_quote" && parsed.data) {
+        const newQuote = parsed.data;
+        const newQuoteId = newQuote.quoteId;
+        const prevQuoteId = previousQuoteIdRef.current;
 
-          // Only update if quote actually changed
-          if (prevQuoteId !== newQuoteId) {
-            console.log("[Quote Update] Quote changed:", {
-              prevQuoteId,
-              newQuoteId,
-            });
+        // Only update if quote actually changed
+        if (prevQuoteId !== newQuoteId) {
+          console.log("[Quote Update] Quote changed:", {
+            prevQuoteId,
+            newQuoteId,
+          });
 
-            // Trigger glow effect only if there was a previous quote
-            if (prevQuoteId) {
-              console.log("[Quote Update] Triggering glow effect");
-              setIsOfferGlowing(true);
-              setTimeout(() => {
-                console.log("[Quote Update] Stopping glow effect");
-                setIsOfferGlowing(false);
-              }, 5000);
-            }
-
-            // Update the ref and state
-            previousQuoteIdRef.current = newQuoteId;
-            setCurrentQuote(newQuote);
+          // Trigger glow effect only if there was a previous quote
+          if (prevQuoteId) {
+            console.log("[Quote Update] Triggering glow effect");
+            setIsOfferGlowing(true);
+            setTimeout(() => {
+              console.log("[Quote Update] Stopping glow effect");
+              setIsOfferGlowing(false);
+            }, 5000);
           }
-          break;
+
+          // Update the ref and state
+          previousQuoteIdRef.current = newQuoteId;
+          setCurrentQuote(newQuote);
         }
-      } catch (e) {
-        console.error("[Quote Update] Error parsing message:", e);
+        break;
       }
     }
   }, [messages]);
@@ -576,25 +527,23 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
   const handleClearChat = useCallback(async () => {
     if (!entityId) return;
 
-    try {
-      // Clear local storage for this wallet
-      localStorage.removeItem(`otc-desk-room-${entityId}`);
+    // Clear local storage for this wallet
+    localStorage.removeItem(`otc-desk-room-${entityId}`);
 
-      // Create a new room
-      const newRoomId = await createNewRoom();
-      if (newRoomId) {
-        // Clear messages and reset state
-        setMessages([]);
-        setCurrentQuote(null);
-        previousQuoteIdRef.current = null;
-        setRoomId(newRoomId);
-        console.log("[ClearChat] Created new room:", newRoomId);
-      }
-
-      setShowClearChatModal(false);
-    } catch (error) {
-      console.error("[ClearChat] Failed to clear chat:", error);
+    // Create a new room
+    const newRoomId = await createNewRoom();
+    if (!newRoomId) {
+      throw new Error("Failed to create new room");
     }
+
+    // Clear messages and reset state
+    setMessages([]);
+    setCurrentQuote(null);
+    previousQuoteIdRef.current = null;
+    setRoomId(newRoomId);
+    console.log("[ClearChat] Created new room:", newRoomId);
+
+    setShowClearChatModal(false);
   }, [entityId, createNewRoom]);
 
   return (
@@ -701,7 +650,7 @@ function ChatHeader({
                 <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                   {Math.round(
                     (currentQuote as any).lockupMonths ||
-                      ((currentQuote as any).lockupDays || 0) / 30,
+                      ((currentQuote as any).lockupDays || 0) / 30
                   )}{" "}
                   months
                 </span>
@@ -773,10 +722,8 @@ function ChatBody({
       <Dialog
         open={showConnectOverlay}
         onClose={() => {
-          try {
-            localStorage.setItem("otc-desk-connect-overlay-seen", "1");
-            localStorage.setItem("otc-desk-connect-overlay-dismissed", "1");
-          } catch {}
+          localStorage.setItem("otc-desk-connect-overlay-seen", "1");
+          localStorage.setItem("otc-desk-connect-overlay-dismissed", "1");
           setShowConnectOverlay(false);
         }}
       >
@@ -809,16 +756,14 @@ function ChatBody({
                   <button
                     type="button"
                     onClick={() => {
-                      try {
-                        localStorage.setItem(
-                          "otc-desk-connect-overlay-seen",
-                          "1",
-                        );
-                        localStorage.setItem(
-                          "otc-desk-connect-overlay-dismissed",
-                          "1",
-                        );
-                      } catch {}
+                      localStorage.setItem(
+                        "otc-desk-connect-overlay-seen",
+                        "1"
+                      );
+                      localStorage.setItem(
+                        "otc-desk-connect-overlay-dismissed",
+                        "1"
+                      );
                       setShowConnectOverlay(false);
                     }}
                     className="absolute top-2 right-2 rounded-full bg-white/10 text-white hover:bg-white/20 p-1"
@@ -862,7 +807,7 @@ function ChatBody({
           {/* Chat Messages - only scrollable area */}
           <div
             ref={messagesContainerRef}
-            className="flex-1 min-h-0 overflow-y-auto"
+            className="flex-1 min-h-0 overflow-y-auto px-4 mb-2"
           >
             {isLoadingHistory ? (
               <div className="flex items-center justify-center min-h-full">

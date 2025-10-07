@@ -93,7 +93,7 @@ export function useOTC(): {
   getRequiredPayment: (
     offerId: bigint,
     currency: "ETH" | "USDC",
-  ) => Promise<bigint | undefined>;
+  ) => Promise<bigint>;
 } {
   const { address: account } = useAccount();
   const chainId = useChainId();
@@ -189,12 +189,18 @@ export function useOTC(): {
     functionName: "getOffersForBeneficiary",
     args: [account as Address],
     chainId: hardhat.id,
-    query: { enabled: enabled && Boolean(account) },
+    query: { 
+      enabled: enabled && Boolean(account),
+      refetchInterval: 2000,
+      staleTime: 0, // Always refetch - don't use cache
+      gcTime: 0, // Don't keep old data
+    },
   });
-  const myOfferIds = useMemo(
-    () => (myOfferIdsRes.data as bigint[] | undefined) ?? [],
-    [myOfferIdsRes.data],
-  );
+  const myOfferIds = useMemo(() => {
+    const ids = (myOfferIdsRes.data as bigint[] | undefined) ?? [];
+    console.log("[useOTC] My offer IDs from contract:", ids.map(id => id.toString()));
+    return ids;
+  }, [myOfferIdsRes.data]);
 
   // Using type assertion to avoid deep type instantiation issue
   const myOffersContracts = myOfferIds.map((id) => ({
@@ -207,7 +213,12 @@ export function useOTC(): {
 
   const myOffersRes = useReadContracts({
     contracts: myOffersContracts,
-    query: { enabled: enabled && myOfferIds.length > 0 },
+    query: { 
+      enabled: enabled && myOfferIds.length > 0,
+      refetchInterval: 2000,
+      staleTime: 0, // Always refetch - critical for showing latest paid/fulfilled state
+      gcTime: 0, // Don't keep stale data
+    },
   } as any);
 
   const openOfferIdsRes = useReadContract({
@@ -353,22 +364,19 @@ export function useOTC(): {
   async function getRequiredPayment(
     offerId: bigint,
     currency: "ETH" | "USDC",
-  ): Promise<bigint | undefined> {
-    if (!otcAddress) return undefined;
-    try {
-      const functionName =
-        currency === "ETH" ? "requiredEthWei" : "requiredUsdcAmount";
-      const result = await publicClient.readContract({
-        address: otcAddress,
-        abi,
-        functionName,
-        args: [offerId],
-      } as any);
-      return result as bigint;
-    } catch (error) {
-      console.error("Error getting required payment:", error);
-      return undefined;
+  ): Promise<bigint> {
+    if (!otcAddress) {
+      throw new Error("OTC address not configured");
     }
+    const functionName =
+      currency === "ETH" ? "requiredEthWei" : "requiredUsdcAmount";
+    const result = await publicClient.readContract({
+      address: otcAddress,
+      abi,
+      functionName,
+      args: [offerId],
+    } as any);
+    return result as bigint;
   }
 
   const agentAddr = (agentRes.data as Address | undefined) ?? undefined;
@@ -390,11 +398,76 @@ export function useOTC(): {
 
   const myOffers: (Offer & { id: bigint })[] = useMemo(() => {
     const base = myOffersRes.data ?? [];
-    return myOfferIds.map((id, idx) => {
-      const result = base[idx]?.result as Offer | undefined;
-      return { id, ...(result ?? ({} as Offer)) } as Offer & { id: bigint };
+    console.log("[useOTC] myOfferIds:", myOfferIds.map(id => id.toString()));
+    console.log("[useOTC] Raw response count:", base.length);
+    console.log("[useOTC] Using contract address:", otcAddress);
+    console.log("[useOTC] Wagmi query status:", {
+      isLoading: myOffersRes.isLoading,
+      isError: myOffersRes.isError,
+      isFetching: myOffersRes.isFetching,
     });
-  }, [myOfferIds, myOffersRes.data]);
+    
+    const offers = myOfferIds.map((id, idx) => {
+      const rawResult = base[idx]?.result;
+      
+      console.log(`[useOTC] Offer ${id} raw result:`, rawResult);
+      
+      // Contract returns array: [beneficiary, tokenAmount, discountBps, createdAt, unlockTime,
+      //   priceUsdPerToken, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]
+      if (Array.isArray(rawResult)) {
+        const [
+          beneficiary,
+          tokenAmount,
+          discountBps,
+          createdAt,
+          unlockTime,
+          priceUsdPerToken,
+          ethUsdPrice,
+          currency,
+          approved,
+          paid,
+          fulfilled,
+          cancelled,
+          payer,
+          amountPaid,
+        ] = rawResult;
+        
+        console.log(`[useOTC] Offer ${id} parsed:`, { 
+          paid, 
+          fulfilled, 
+          cancelled,
+          beneficiary,
+          tokenAmount: tokenAmount?.toString(),
+        });
+        
+        return {
+          id,
+          beneficiary,
+          tokenAmount,
+          discountBps,
+          createdAt,
+          unlockTime,
+          priceUsdPerToken,
+          ethUsdPrice,
+          currency,
+          approved,
+          paid,
+          fulfilled,
+          cancelled,
+          payer,
+          amountPaid,
+        } as Offer & { id: bigint };
+      }
+      
+      console.warn(`[useOTC] Offer ${id}: Invalid data format`, rawResult);
+      return { id, paid: false, fulfilled: false, cancelled: false } as Offer & { id: bigint };
+    });
+    
+    console.log("[useOTC] Total offers parsed:", offers.length);
+    const paidOffers = offers.filter(o => o.paid);
+    console.log("[useOTC] Paid offers:", paidOffers.length, paidOffers.map(o => o.id.toString()));
+    return offers;
+  }, [myOfferIds, myOffersRes.data, myOffersRes.isLoading, myOffersRes.isError, myOffersRes.isFetching, otcAddress]);
 
   return {
     otcAddress,

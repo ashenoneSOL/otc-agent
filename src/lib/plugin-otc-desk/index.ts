@@ -46,7 +46,7 @@ function extractResponseText(text: string): string | null {
     const fallbackMatch = text.match(/<(\w+)>([\s\S]*?)<\/\1>/);
     if (fallbackMatch && fallbackMatch[2] !== undefined) {
       logger.warn(
-        `Found <${fallbackMatch[1]}> tag instead of <response>. Using its content.`,
+        `Found <${fallbackMatch[1]}> tag instead of <response>. Using its content.`
       );
       const fallbackContent = fallbackMatch[2].trim();
       return fallbackContent || null; // Return null if content is empty after trimming
@@ -136,11 +136,11 @@ type MediaData = {
 // Helper functions for response ID tracking in serverless environment
 async function getLatestResponseId(
   runtime: IAgentRuntime,
-  roomId: string,
+  roomId: string
 ): Promise<string | null> {
   return (
     (await runtime.getCache<string>(
-      `response_id:${runtime.agentId}:${roomId}`,
+      `response_id:${runtime.agentId}:${roomId}`
     )) ?? null
   );
 }
@@ -148,7 +148,7 @@ async function getLatestResponseId(
 async function setLatestResponseId(
   runtime: IAgentRuntime,
   roomId: string,
-  responseId: string,
+  responseId: string
 ): Promise<void> {
   if (!responseId || typeof responseId !== "string") {
     console.error("[setLatestResponseId] Invalid responseId:", responseId);
@@ -159,17 +159,12 @@ async function setLatestResponseId(
     key,
     responseId: responseId.substring(0, 8),
   });
-  try {
-    await runtime.setCache(key, responseId);
-  } catch (error) {
-    console.error("[setLatestResponseId] Error setting cache:", error);
-    throw error;
-  }
+  await runtime.setCache(key, responseId);
 }
 
 async function clearLatestResponseId(
   runtime: IAgentRuntime,
-  roomId: string,
+  roomId: string
 ): Promise<void> {
   const key = `response_id:${runtime.agentId}:${roomId}`;
   console.log("[clearLatestResponseId] Deleting cache key:", key);
@@ -188,7 +183,7 @@ async function clearLatestResponseId(
  * @returns {Promise<MediaData[]>} - A Promise that resolves with an array of MediaData objects.
  */
 export async function fetchMediaData(
-  attachments: Media[],
+  attachments: Media[]
 ): Promise<MediaData[]> {
   return Promise.all(
     attachments.map(async (attachment: Media) => {
@@ -209,9 +204,9 @@ export async function fetchMediaData(
       //   return { data: mediaBuffer, mediaType };
       // }
       throw new Error(
-        `File not found: ${attachment.url}. Make sure the path is correct.`,
+        `File not found: ${attachment.url}. Make sure the path is correct.`
       );
-    }),
+    })
   );
 }
 
@@ -230,7 +225,7 @@ const messageReceivedHandler = async ({
   const responseId = v4();
   console.log(
     "[MessageHandler] Generated response ID:",
-    responseId.substring(0, 8),
+    responseId.substring(0, 8)
   );
 
   // Set this as the latest response ID for this room (using runtime cache for serverless)
@@ -276,272 +271,244 @@ const messageReceivedHandler = async ({
   });
 
   const processingPromise = (async () => {
-    try {
-      if (message.entityId === runtime.agentId) {
-        throw new Error("Message is from the agent itself");
-      }
+    if (message.entityId === runtime.agentId) {
+      throw new Error("Message is from the agent itself");
+    }
 
-      // First, save the incoming message
-      await Promise.all([runtime.createMemory(message, "messages")]);
+    // First, save the incoming message
+    await Promise.all([runtime.createMemory(message, "messages")]);
 
-      const state = await runtime.composeState(message, ["RECENT_MESSAGES"]);
+    const state = await runtime.composeState(message, ["RECENT_MESSAGES"]);
 
-      const prompt = composePromptFromState({
-        state,
-        template:
-          runtime.character.templates?.messageHandlerTemplate ||
-          messageHandlerTemplate,
+    const prompt = composePromptFromState({
+      state,
+      template:
+        runtime.character.templates?.messageHandlerTemplate ||
+        messageHandlerTemplate,
+    });
+
+    console.log("*** PROMPT ***\n", prompt);
+
+    let responseContent: string = "";
+
+    // Retry if missing required fields
+    let retries = 0;
+    const maxRetries = 3;
+
+    while (retries < maxRetries && (!responseContent || !responseContent)) {
+      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
       });
 
-      console.log("*** PROMPT ***\n", prompt);
-
-      let responseContent: string = "";
-
-      // Retry if missing required fields
-      let retries = 0;
-      const maxRetries = 3;
-
-      while (retries < maxRetries && (!responseContent || !responseContent)) {
-        const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt,
-        });
-
-        logger.debug(`*** Raw LLM Response ***\n${response}`);
-        console.log("[MessageHandler] LLM response length:", response.length);
-        console.log(
-          "[MessageHandler] LLM response preview:",
-          response.substring(0, 500),
-        );
-
-        // Attempt to parse the XML response
-        const extractedContent = extractResponseText(response);
-
-        if (!extractedContent) {
-          logger.warn(
-            "*** Missing required fields (thought or actions), retrying... ***",
-          );
-          responseContent = "";
-        } else {
-          responseContent = extractedContent;
-          break;
-        }
-        retries++;
-      }
-
-      // Check if this is still the latest response ID for this room
-      const currentResponseId = await getLatestResponseId(
-        runtime,
-        message.roomId,
-      );
-      if (currentResponseId !== responseId) {
-        logger.info(
-          `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`,
-        );
-        return;
-      }
-
-      // Clean up the response ID
-      await clearLatestResponseId(runtime, message.roomId);
-
-      // Parse actions from response - support both XML tags and function-call syntax
-      const xmlActionMatch = responseContent.match(/<action>(.*?)<\/action>/gi);
-      const functionActionMatch = responseContent.match(
-        /\b(CREATE_OTC_QUOTE|ACCEPT_ELIZAOS_QUOTE|SHOW_ELIZAOS_HISTORY)\s*\(/gi,
+      logger.debug(`*** Raw LLM Response ***\n${response}`);
+      console.log("[MessageHandler] LLM response length:", response.length);
+      console.log(
+        "[MessageHandler] LLM response preview:",
+        response.substring(0, 500)
       );
 
-      const actionNames: string[] = [];
+      // Attempt to parse the XML response
+      const extractedContent = extractResponseText(response);
 
-      // Parse XML format: <action>CREATE_OTC_QUOTE</action>
-      if (xmlActionMatch) {
-        actionNames.push(
-          ...xmlActionMatch.map((match) =>
-            match.replace(/<\/?action>/gi, "").trim(),
-          ),
+      if (!extractedContent) {
+        logger.warn(
+          "*** Missing required fields (thought or actions), retrying... ***"
         );
+        responseContent = "";
+      } else {
+        responseContent = extractedContent;
+        break;
       }
+      retries++;
+    }
 
-      // Parse function-call format: CREATE_OTC_QUOTE({...})
-      if (functionActionMatch) {
-        actionNames.push(
-          ...functionActionMatch.map((match) =>
-            match.replace(/\s*\(.*/g, "").trim(),
-          ),
+    // Check if this is still the latest response ID for this room
+    const currentResponseId = await getLatestResponseId(
+      runtime,
+      message.roomId
+    );
+    if (currentResponseId !== responseId) {
+      logger.info(
+        `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
+      );
+      return;
+    }
+
+    // Clean up the response ID
+    await clearLatestResponseId(runtime, message.roomId);
+
+    // Parse actions from response - support both XML tags and function-call syntax
+    const xmlActionMatch = responseContent.match(/<action>(.*?)<\/action>/gi);
+    const functionActionMatch = responseContent.match(
+      /\b(CREATE_OTC_QUOTE|ACCEPT_ELIZAOS_QUOTE|SHOW_ELIZAOS_HISTORY)\s*\(/gi
+    );
+
+    const actionNames: string[] = [];
+
+    // Parse XML format: <action>CREATE_OTC_QUOTE</action>
+    if (xmlActionMatch) {
+      actionNames.push(
+        ...xmlActionMatch.map((match) =>
+          match.replace(/<\/?action>/gi, "").trim()
+        )
+      );
+    }
+
+    // Parse function-call format: CREATE_OTC_QUOTE({...})
+    if (functionActionMatch) {
+      actionNames.push(
+        ...functionActionMatch.map((match) =>
+          match.replace(/\s*\(.*/g, "").trim()
+        )
+      );
+    }
+
+    // Parse and save quote if present in response (don't trigger action handler)
+    const quoteMatch = responseContent.match(/<quote>([\s\S]*?)<\/quote>/i);
+    if (quoteMatch) {
+      console.log(
+        "[MessageHandler] Detected <quote> XML in response, parsing and saving"
+      );
+      // Simple regex-based parsing (server-side compatible)
+      const quoteXml = quoteMatch[0];
+      const getTag = (tag: string) => {
+        const match = quoteXml.match(
+          new RegExp(`<${tag}>([^<]*)<\/${tag}>`, "i")
         );
-      }
-
-      // Parse and save quote if present in response (don't trigger action handler)
-      const quoteMatch = responseContent.match(/<quote>([\s\S]*?)<\/quote>/i);
-      if (quoteMatch) {
-        console.log(
-          "[MessageHandler] Detected <quote> XML in response, parsing and saving",
-        );
-        try {
-          // Simple regex-based parsing (server-side compatible)
-          const quoteXml = quoteMatch[0];
-          const getTag = (tag: string) => {
-            const match = quoteXml.match(
-              new RegExp(`<${tag}>([^<]*)<\/${tag}>`, "i"),
-            );
-            return match ? match[1].trim() : "";
-          };
-          const getNumTag = (tag: string) => {
-            const val = getTag(tag);
-            return val ? parseFloat(val) : 0;
-          };
-
-          const quoteId = getTag("quoteId");
-          if (quoteId) {
-            const { walletToEntityId } = await import("@/lib/entityId");
-            const entityId = message.entityId.toString();
-
-            const quoteData = {
-              id: (await import("uuid")).v4(),
-              quoteId,
-              entityId: walletToEntityId(entityId),
-              beneficiary: entityId.toLowerCase(),
-              tokenAmount: getTag("tokenAmount") || "0",
-              discountBps: getNumTag("discountBps"),
-              apr: 0,
-              lockupMonths: getNumTag("lockupMonths"),
-              lockupDays: getNumTag("lockupDays"),
-              paymentCurrency: getTag("paymentCurrency") as any,
-              priceUsdPerToken: getNumTag("pricePerToken"),
-              totalUsd: 0,
-              discountUsd: 0,
-              discountedUsd: 0,
-              paymentAmount: "0",
-              signature: "",
-              status: "active" as any,
-              createdAt: Date.now(),
-              executedAt: 0,
-              rejectedAt: 0,
-              approvedAt: 0,
-              offerId: "",
-              transactionHash: "",
-              blockNumber: 0,
-              rejectionReason: "",
-              approvalNote: "",
-            };
-
-            await runtime.setCache(`quote:${quoteId}`, quoteData);
-            console.log("[MessageHandler] Quote saved to cache:", quoteId);
-          }
-        } catch (e) {
-          console.error("[MessageHandler] Failed to parse/save quote:", e);
-        }
-      }
-
-      console.log("[MessageHandler] Detected actions:", actionNames);
-
-      // Create response memory with parsed actions
-      const responseMemory: Memory = {
-        id: createUniqueUuid(runtime, message.id),
-        entityId: runtime.agentId,
-        roomId: message.roomId,
-        worldId: message.worldId,
-        content: {
-          text: responseContent,
-          source: "agent",
-          inReplyTo: message.id,
-          actions: actionNames.length > 0 ? actionNames : undefined,
-        },
+        return match ? match[1].trim() : "";
+      };
+      const getNumTag = (tag: string) => {
+        const val = getTag(tag);
+        return val ? parseFloat(val) : 0;
       };
 
-      // Process actions if any were found
-      if (actionNames.length > 0) {
-        console.log("[MessageHandler] Processing actions:", actionNames);
+      const quoteId = getTag("quoteId");
+      if (quoteId) {
+        const { walletToEntityId } = await import("@/lib/entityId");
+        const entityId = message.entityId.toString();
 
-        // Process actions first, which will call the action handler
-        await runtime.processActions(
-          message,
-          [responseMemory],
-          state,
-          async (content) => {
-            console.log("[MessageHandler] Action callback received:", {
-              action: content.action,
-              hasText: !!content.text,
-            });
+        const quoteData = {
+          id: (await import("uuid")).v4(),
+          quoteId,
+          entityId: walletToEntityId(entityId),
+          beneficiary: entityId.toLowerCase(),
+          tokenAmount: getTag("tokenAmount") || "0",
+          discountBps: getNumTag("discountBps"),
+          apr: 0,
+          lockupMonths: getNumTag("lockupMonths"),
+          lockupDays: getNumTag("lockupDays"),
+          paymentCurrency: getTag("paymentCurrency") as any,
+          priceUsdPerToken: getNumTag("pricePerToken"),
+          totalUsd: 0,
+          discountUsd: 0,
+          discountedUsd: 0,
+          paymentAmount: "0",
+          signature: "",
+          status: "active" as any,
+          createdAt: Date.now(),
+          executedAt: 0,
+          rejectedAt: 0,
+          approvedAt: 0,
+          offerId: "",
+          transactionHash: "",
+          blockNumber: 0,
+          rejectionReason: "",
+          approvalNote: "",
+        };
 
-            // The action handler provides the actual response text
-            const finalResponseText = content.text || responseContent;
-
-            // Save the response to database
-            const finalResponseMemory: Memory = {
-              id: responseMemory.id,
-              entityId: runtime.agentId,
-              roomId: message.roomId,
-              worldId: message.worldId,
-              content: {
-                text: finalResponseText,
-                source: "agent",
-                inReplyTo: message.id,
-              },
-            };
-
-            await runtime.createMemory(finalResponseMemory, "messages");
-            console.log("[MessageHandler] Response saved to database");
-
-            // Send to frontend
-            if (callback) {
-              await callback({
-                text: finalResponseText,
-              });
-            }
-            return [];
-          },
-        );
-      } else {
-        // No actions - save and send the response
-        console.log(
-          "[MessageHandler] No actions, saving response and calling callback",
-        );
-        await runtime.createMemory(responseMemory, "messages");
-        console.log("[MessageHandler] Response saved, sending to frontend");
-        await callback({
-          text: responseContent,
-        });
-        console.log("[MessageHandler] Callback completed");
+        await runtime.setCache(`quote:${quoteId}`, quoteData);
+        console.log("[MessageHandler] Quote saved to cache:", quoteId);
       }
-
-      // Emit run ended event on successful completion
-      await runtime.emitEvent(EventType.RUN_ENDED, {
-        runtime,
-        runId,
-        messageId: message.id,
-        roomId: message.roomId,
-        entityId: message.entityId,
-        startTime,
-        status: "completed",
-        endTime: Date.now(),
-        duration: Date.now() - startTime,
-        source: "messageHandler",
-      });
-    } catch (error) {
-      // Emit run ended event with error
-      await runtime.emitEvent(EventType.RUN_ENDED, {
-        runtime,
-        runId,
-        messageId: message.id,
-        roomId: message.roomId,
-        entityId: message.entityId,
-        startTime,
-        status: "completed",
-        endTime: Date.now(),
-        duration: Date.now() - startTime,
-        error: error.message,
-        source: "messageHandler",
-      });
-      throw error;
     }
+
+    console.log("[MessageHandler] Detected actions:", actionNames);
+
+    // Create response memory with parsed actions
+    const responseMemory: Memory = {
+      id: createUniqueUuid(runtime, message.id),
+      entityId: runtime.agentId,
+      roomId: message.roomId,
+      worldId: message.worldId,
+      content: {
+        text: responseContent,
+        source: "agent",
+        inReplyTo: message.id,
+        actions: actionNames.length > 0 ? actionNames : undefined,
+      },
+    };
+
+    // Process actions if any were found
+    if (actionNames.length > 0) {
+      console.log("[MessageHandler] Processing actions:", actionNames);
+
+      // Process actions first, which will call the action handler
+      await runtime.processActions(
+        message,
+        [responseMemory],
+        state,
+        async (content) => {
+          console.log("[MessageHandler] Action callback received:", {
+            action: content.action,
+            hasText: !!content.text,
+          });
+
+          // The action handler provides the actual response text
+          const finalResponseText = content.text || responseContent;
+
+          // Save the response to database
+          const finalResponseMemory: Memory = {
+            id: responseMemory.id,
+            entityId: runtime.agentId,
+            roomId: message.roomId,
+            worldId: message.worldId,
+            content: {
+              text: finalResponseText,
+              source: "agent",
+              inReplyTo: message.id,
+            },
+          };
+
+          await runtime.createMemory(finalResponseMemory, "messages");
+          console.log("[MessageHandler] Response saved to database");
+
+          // Send to frontend
+          if (callback) {
+            await callback({
+              text: finalResponseText,
+            });
+          }
+          return [];
+        }
+      );
+    } else {
+      // No actions - save and send the response
+      console.log(
+        "[MessageHandler] No actions, saving response and calling callback"
+      );
+      await runtime.createMemory(responseMemory, "messages");
+      console.log("[MessageHandler] Response saved, sending to frontend");
+      await callback({
+        text: responseContent,
+      });
+      console.log("[MessageHandler] Callback completed");
+    }
+
+    // Emit run ended event on successful completion
+    await runtime.emitEvent(EventType.RUN_ENDED, {
+      runtime,
+      runId,
+      messageId: message.id,
+      roomId: message.roomId,
+      entityId: message.entityId,
+      startTime,
+      status: "completed",
+      endTime: Date.now(),
+      duration: Date.now() - startTime,
+      source: "messageHandler",
+    });
   })();
 
-  try {
-    await Promise.race([processingPromise, timeoutPromise]);
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-  }
+  await Promise.race([processingPromise, timeoutPromise]);
 };
 
 /**
@@ -565,44 +532,38 @@ const syncSingleUser = async (
   serverId: string,
   channelId: string,
   type: ChannelType,
-  source: string,
+  source: string
 ) => {
-  try {
-    const entity = await runtime.getEntityById(entityId);
-    logger.info(
-      `Syncing user: ${(entity?.metadata?.[source] as any)?.username || entityId}`,
-    );
+  const entity = await runtime.getEntityById(entityId);
+  logger.info(
+    `Syncing user: ${(entity?.metadata?.[source] as any)?.username || entityId}`
+  );
 
-    // Ensure we're not using WORLD type and that we have a valid channelId
-    if (!channelId) {
-      logger.warn(`Cannot sync user ${entity?.id} without a valid channelId`);
-      return;
-    }
-
-    const roomId = createUniqueUuid(runtime, channelId);
-    const worldId = createUniqueUuid(runtime, serverId);
-
-    await runtime.ensureConnection({
-      entityId,
-      roomId,
-      userName: (entity?.metadata?.[source] as any)?.username || entityId,
-      name:
-        (entity?.metadata?.[source] as any)?.name ||
-        (entity?.metadata?.[source] as any)?.username ||
-        `User${entityId}`,
-      source,
-      channelId,
-      serverId,
-      type,
-      worldId,
-    });
-
-    logger.success(`Successfully synced user: ${entity?.id}`);
-  } catch (error) {
-    logger.error(
-      `Error syncing user: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  // Ensure we're not using WORLD type and that we have a valid channelId
+  if (!channelId) {
+    logger.warn(`Cannot sync user ${entity?.id} without a valid channelId`);
+    return;
   }
+
+  const roomId = createUniqueUuid(runtime, channelId);
+  const worldId = createUniqueUuid(runtime, serverId);
+
+  await runtime.ensureConnection({
+    entityId,
+    roomId,
+    userName: (entity?.metadata?.[source] as any)?.username || entityId,
+    name:
+      (entity?.metadata?.[source] as any)?.name ||
+      (entity?.metadata?.[source] as any)?.username ||
+      `User${entityId}`,
+    source,
+    channelId,
+    serverId,
+    type,
+    worldId,
+  });
+
+  logger.success(`Successfully synced user: ${entity?.id}`);
 };
 
 /**
@@ -616,91 +577,76 @@ const handleServerSync = async ({
   source,
 }: WorldPayload) => {
   logger.debug(`Handling server sync event for server: ${world.name}`);
-  try {
-    // Create/ensure the world exists for this server
-    await runtime.ensureWorldExists({
-      id: world.id,
-      name: world.name,
-      agentId: runtime.agentId,
-      serverId: world.serverId,
-      metadata: {
-        ...world.metadata,
-      },
-    });
+  // Create/ensure the world exists for this server
+  await runtime.ensureWorldExists({
+    id: world.id,
+    name: world.name,
+    agentId: runtime.agentId,
+    serverId: world.serverId,
+    metadata: {
+      ...world.metadata,
+    },
+  });
 
-    // First sync all rooms/channels
-    if (rooms && rooms.length > 0) {
-      for (const room of rooms) {
-        await runtime.ensureRoomExists({
-          id: room.id,
-          name: room.name,
-          source: source,
-          type: room.type,
-          channelId: room.channelId,
-          serverId: world.serverId,
-          worldId: world.id,
-        });
-      }
+  // First sync all rooms/channels
+  if (rooms && rooms.length > 0) {
+    for (const room of rooms) {
+      await runtime.ensureRoomExists({
+        id: room.id,
+        name: room.name,
+        source: source,
+        type: room.type,
+        channelId: room.channelId,
+        serverId: world.serverId,
+        worldId: world.id,
+      });
     }
-
-    // Then sync all users
-    if (entities && entities.length > 0) {
-      // Process entities in batches to avoid overwhelming the system
-      const batchSize = 50;
-      for (let i = 0; i < entities.length; i += batchSize) {
-        const entityBatch = entities.slice(i, i + batchSize);
-
-        // check if user is in any of these rooms in rooms
-        const firstRoomUserIsIn = rooms.length > 0 ? rooms[0] : null;
-
-        // Process each user in the batch
-        await Promise.all(
-          entityBatch.map(async (entity: Entity) => {
-            try {
-              if (!firstRoomUserIsIn || !entity.id) {
-                logger.warn(`Skipping entity sync - missing room or entity id`);
-                return;
-              }
-              await runtime.ensureConnection({
-                entityId: entity.id,
-                roomId: firstRoomUserIsIn.id,
-                userName:
-                  (entity.metadata?.[source] as any)?.username || entity.id,
-                name:
-                  (entity.metadata?.[source] as any)?.name ||
-                  (entity.metadata?.[source] as any)?.username ||
-                  `User${entity.id}`,
-                source: source,
-                channelId: firstRoomUserIsIn.channelId,
-                serverId: world.serverId,
-                type: firstRoomUserIsIn.type,
-                worldId: world.id,
-              });
-            } catch (err) {
-              logger.warn(
-                `Failed to sync user ${entity.metadata?.username || entity.id}: ${err}`,
-              );
-            }
-          }),
-        );
-
-        // Add a small delay between batches if not the last batch
-        if (i + batchSize < entities.length) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
-      }
-    }
-
-    logger.debug(
-      `Successfully synced standardized world structure for ${world.name}`,
-    );
-  } catch (error) {
-    logger.error(
-      `Error processing standardized server data: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
   }
+
+  // Then sync all users
+  if (entities && entities.length > 0) {
+    // Process entities in batches to avoid overwhelming the system
+    const batchSize = 50;
+    for (let i = 0; i < entities.length; i += batchSize) {
+      const entityBatch = entities.slice(i, i + batchSize);
+
+      // check if user is in any of these rooms in rooms
+      const firstRoomUserIsIn = rooms.length > 0 ? rooms[0] : null;
+
+      // Process each user in the batch
+      await Promise.all(
+        entityBatch.map(async (entity: Entity) => {
+          if (!firstRoomUserIsIn || !entity.id) {
+            logger.warn(`Skipping entity sync - missing room or entity id`);
+            return;
+          }
+          await runtime.ensureConnection({
+            entityId: entity.id,
+            roomId: firstRoomUserIsIn.id,
+            userName: (entity.metadata?.[source] as any)?.username || entity.id,
+            name:
+              (entity.metadata?.[source] as any)?.name ||
+              (entity.metadata?.[source] as any)?.username ||
+              `User${entity.id}`,
+            source: source,
+            channelId: firstRoomUserIsIn.channelId,
+            serverId: world.serverId,
+            type: firstRoomUserIsIn.type,
+            worldId: world.id,
+          });
+        })
+      );
+
+      // Add a small delay between batches if not the last batch
+      if (i + batchSize < entities.length) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+  }
+
+  logger.debug(
+    `Successfully synced standardized world structure for ${world.name}`
+  );
 };
 
 /**
@@ -724,51 +670,45 @@ const controlMessageHandler = async ({
     roomId: UUID;
   };
 }) => {
-  try {
-    logger.debug(
-      `[controlMessageHandler] Processing control message: ${message.payload.action} for room ${message.roomId}`,
-    );
+  logger.debug(
+    `[controlMessageHandler] Processing control message: ${message.payload.action} for room ${message.roomId}`
+  );
 
-    // Here we would use a WebSocket service to send the control message to the frontend
-    // This would typically be handled by a registered service with sendMessage capability
+  // Here we would use a WebSocket service to send the control message to the frontend
+  // This would typically be handled by a registered service with sendMessage capability
 
-    // Get any registered WebSocket service
-    const serviceNames = Array.from(runtime.getAllServices().keys());
-    const websocketServiceName = serviceNames.find(
-      (name: string) =>
-        name.toLowerCase().includes("websocket") ||
-        name.toLowerCase().includes("socket"),
-    );
+  // Get any registered WebSocket service
+  const serviceNames = Array.from(runtime.getAllServices().keys());
+  const websocketServiceName = serviceNames.find(
+    (name: string) =>
+      name.toLowerCase().includes("websocket") ||
+      name.toLowerCase().includes("socket")
+  );
 
-    if (websocketServiceName) {
-      const websocketService = runtime.getService(websocketServiceName);
-      if (websocketService && "sendMessage" in websocketService) {
-        // Send the control message through the WebSocket service
-        await (websocketService as any).sendMessage({
-          type: "controlMessage",
-          payload: {
-            action: message.payload.action,
-            target: message.payload.target,
-            roomId: message.roomId,
-          },
-        });
+  if (websocketServiceName) {
+    const websocketService = runtime.getService(websocketServiceName);
+    if (websocketService && "sendMessage" in websocketService) {
+      // Send the control message through the WebSocket service
+      await (websocketService as any).sendMessage({
+        type: "controlMessage",
+        payload: {
+          action: message.payload.action,
+          target: message.payload.target,
+          roomId: message.roomId,
+        },
+      });
 
-        logger.debug(
-          `[controlMessageHandler] Control message ${message.payload.action} sent successfully`,
-        );
-      } else {
-        logger.error(
-          "[controlMessageHandler] WebSocket service does not have sendMessage method",
-        );
-      }
+      logger.debug(
+        `[controlMessageHandler] Control message ${message.payload.action} sent successfully`
+      );
     } else {
       logger.error(
-        "[controlMessageHandler] No WebSocket service found to send control message",
+        "[controlMessageHandler] WebSocket service does not have sendMessage method"
       );
     }
-  } catch (error) {
+  } else {
     logger.error(
-      `[controlMessageHandler] Error processing control message: ${error}`,
+      "[controlMessageHandler] No WebSocket service found to send control message"
     );
   }
 };
@@ -810,7 +750,7 @@ const events = {
       // Check for required fields
       if (!payload.worldId || !payload.metadata?.type || !payload.roomId) {
         logger.warn(
-          `Skipping entity sync - missing worldId, roomId, or metadata.type`,
+          `Skipping entity sync - missing worldId, roomId, or metadata.type`
         );
         return;
       }
@@ -826,28 +766,24 @@ const events = {
         serverId,
         channelId,
         channelType,
-        payload.source,
+        payload.source
       );
     },
   ],
 
   [EventType.ENTITY_LEFT]: [
     async (payload: EntityPayload) => {
-      try {
-        // Update entity to inactive
-        const entity = await payload.runtime.getEntityById(payload.entityId);
-        if (entity) {
-          entity.metadata = {
-            ...entity.metadata,
-            status: "INACTIVE",
-            leftAt: Date.now(),
-          };
-          await payload.runtime.updateEntity(entity);
-        }
-        logger.info(`User ${payload.entityId} left world ${payload.worldId}`);
-      } catch (error) {
-        logger.error(`Error handling user left: ${error.message}`);
+      // Update entity to inactive
+      const entity = await payload.runtime.getEntityById(payload.entityId);
+      if (entity) {
+        entity.metadata = {
+          ...entity.metadata,
+          status: "INACTIVE",
+          leftAt: Date.now(),
+        };
+        await payload.runtime.updateEntity(entity);
       }
+      logger.info(`User ${payload.entityId} left world ${payload.worldId}`);
     },
   ],
 

@@ -15,11 +15,15 @@ async function main() {
 
   // 1. Deploy ElizaOS Token
   console.log("1️⃣ Deploying ElizaOS Token...");
+  console.log("⚠️  NOTE: This uses 18 decimals for local testing.");
+  console.log("    For CCIP bridged tokens, decimals MUST match Solana native token!");
+  console.log("    See CCIP-BRIDGE-CHECKLIST.md for production deployment.\n");
+  
   const MockERC20 = await ethers.getContractFactory("MockERC20");
   const elizaToken = await MockERC20.deploy(
     "ElizaOS",
     "ElizaOS",
-    18,
+    18, // ⚠️ For production: Use same decimals as your Solana native token (likely 9)
     ethers.parseEther("100000000") // 100M ElizaOS tokens
   );
   await elizaToken.waitForDeployment();
@@ -98,6 +102,11 @@ async function main() {
 
   // 7. Fund test accounts
   console.log("\n7️⃣ Setting up test accounts...");
+  
+  // Fund agent with USDC so it can pay for offers
+  const agentUsdcAmount = BigInt(100000) * BigInt(10 ** 6); // 100k USDC
+  await usdcToken.transfer(agent.address, agentUsdcAmount);
+  console.log("  ✓ Agent funded with 100,000 USDC (for paying user offers)");
   
   // Create test wallet for user
   const testWallet = ethers.Wallet.createRandom();

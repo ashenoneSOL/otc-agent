@@ -6,137 +6,124 @@ import { stringToUuid } from "@elizaos/core";
 
 // GET /api/rooms - Get user's rooms
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const entityId = searchParams.get("entityId");
+  const { searchParams } = new URL(request.url);
+  const entityId = searchParams.get("entityId");
 
-    if (!entityId) {
-      return NextResponse.json(
-        { error: "entityId is required" },
-        { status: 400 },
-      );
-    }
-
-    const runtime = await agentRuntime.getRuntime();
-    const roomIds = await runtime.getRoomsForParticipants([
-      stringToUuid(entityId) as any,
-    ]);
-
-    // Get room details
-    const rooms = await Promise.all(
-      roomIds.map(async (roomId) => {
-        const room = await runtime.getRoom(roomId);
-        return {
-          id: roomId,
-          ...room,
-        };
-      }),
-    );
-
-    return NextResponse.json({
-      success: true,
-      rooms,
-    });
-  } catch (error) {
-    console.error("[Rooms API] Error getting rooms:", error);
+  if (!entityId) {
     return NextResponse.json(
-      {
-        error: "Failed to get rooms",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+      { error: "entityId is required" },
+      { status: 400 },
     );
   }
+
+  const runtime = await agentRuntime.getRuntime();
+  const roomIds = await runtime.getRoomsForParticipants([
+    stringToUuid(entityId) as any,
+  ]);
+
+  // Get room details
+  const rooms = await Promise.all(
+    roomIds.map(async (roomId) => {
+      const room = await runtime.getRoom(roomId);
+      return {
+        id: roomId,
+        ...room,
+      };
+    }),
+  );
+
+  return NextResponse.json({
+    success: true,
+    rooms,
+  });
 }
 
 // POST /api/rooms - Create new room
 export async function POST(request: NextRequest) {
-  try {
-    console.log("[Rooms API] POST request received");
-    const body = await request.json();
-    const { entityId } = body;
-    console.log("[Rooms API] entityId:", entityId);
+  console.log("[Rooms API] POST request received");
+  const body = await request.json();
+  const { entityId } = body;
+  console.log("[Rooms API] entityId:", entityId);
 
-    if (!entityId) {
-      return NextResponse.json(
-        { error: "entityId is required" },
-        { status: 400 },
-      );
-    }
+  if (!entityId) {
+    return NextResponse.json(
+      { error: "entityId is required" },
+      { status: 400 },
+    );
+  }
 
-    const runtime = await agentRuntime.getRuntime();
-    const roomId = uuidv4();
+  const runtime = await agentRuntime.getRuntime();
+  const roomId = uuidv4();
 
-    // Ensure room exists
-    await runtime.ensureRoomExists({
-      id: roomId as any,
-      source: "web",
-      type: "DM" as any,
-      channelId: roomId,
-      serverId: "otc-desk-server",
-      worldId: stringToUuid("otc-desk-world") as any,
-      agentId: runtime.agentId,
-    });
+  // Ensure room exists
+  await runtime.ensureRoomExists({
+    id: roomId as any,
+    source: "web",
+    type: "DM" as any,
+    channelId: roomId,
+    serverId: "otc-desk-server",
+    worldId: stringToUuid("otc-desk-world") as any,
+    agentId: runtime.agentId,
+  });
 
-    console.log("[Rooms API] Created room:", roomId, "for entity:", entityId);
+  console.log("[Rooms API] Created room:", roomId, "for entity:", entityId);
 
-    // Create initial welcome message with default quote
-    try {
-      console.log(
-        "[Rooms API] Creating initial welcome message for wallet:",
-        entityId,
-      );
+  // Create initial welcome message with default quote
+  console.log(
+    "[Rooms API] Creating initial welcome message for wallet:",
+    entityId,
+  );
 
-      // Ensure entity exists in database to prevent foreign key errors
-      const userEntityId = walletToEntityId(entityId);
-      await runtime.ensureConnection({
-        entityId: userEntityId as any,
-        roomId: roomId as any,
-        userName: entityId,
-        name: entityId,
-        source: "web",
-        channelId: roomId,
-        serverId: "otc-desk-server",
-        type: "DM" as any,
-        worldId: stringToUuid("otc-desk-world") as any,
-      });
+  // Ensure entity exists in database to prevent foreign key errors
+  const userEntityId = walletToEntityId(entityId);
+  await runtime.ensureConnection({
+    entityId: userEntityId as any,
+    roomId: roomId as any,
+    userName: entityId,
+    name: entityId,
+    source: "web",
+    channelId: roomId,
+    serverId: "otc-desk-server",
+    type: "DM" as any,
+    worldId: stringToUuid("otc-desk-world") as any,
+  });
 
-      // Save initial quote to cache
-      const initialQuoteId = `OTC-${userEntityId.substring(0, 12).toUpperCase()}`;
-      const initialQuoteData = {
-        id: uuidv4(),
-        quoteId: initialQuoteId,
-        entityId: userEntityId,
-        beneficiary: entityId.toLowerCase(),
-        tokenAmount: "0",
-        discountBps: 1000,
-        apr: 0,
-        lockupMonths: 5,
-        lockupDays: 150,
-        paymentCurrency: "USDC" as any,
-        priceUsdPerToken: 0.00127,
-        totalUsd: 0,
-        discountUsd: 0,
-        discountedUsd: 0,
-        paymentAmount: "0",
-        signature: "",
-        status: "active" as any,
-        createdAt: Date.now(),
-        executedAt: 0,
-        rejectedAt: 0,
-        approvedAt: 0,
-        offerId: "",
-        transactionHash: "",
-        blockNumber: 0,
-        rejectionReason: "",
-        approvalNote: "",
-      };
+  // Save initial quote to cache
+  const initialQuoteId = `OTC-${userEntityId.substring(0, 12).toUpperCase()}`;
+  const initialQuoteData = {
+    id: uuidv4(),
+    quoteId: initialQuoteId,
+    entityId: userEntityId,
+    beneficiary: entityId.toLowerCase(),
+    tokenAmount: "0",
+    discountBps: 1000,
+    apr: 0,
+    lockupMonths: 5,
+    lockupDays: 150,
+    paymentCurrency: "USDC" as any,
+    priceUsdPerToken: 0.00127,
+    totalUsd: 0,
+    discountUsd: 0,
+    discountedUsd: 0,
+    paymentAmount: "0",
+    signature: "",
+    status: "active" as any,
+    createdAt: Date.now(),
+    executedAt: 0,
+    rejectedAt: 0,
+    approvedAt: 0,
+    offerId: "",
+    transactionHash: "",
+    blockNumber: 0,
+    rejectionReason: "",
+    approvalNote: "",
+  };
 
-      await runtime.setCache(`quote:${initialQuoteId}`, initialQuoteData);
-      console.log("[Rooms API] Initial quote saved to cache:", initialQuoteId);
+  await runtime.setCache(`quote:${initialQuoteId}`, initialQuoteData);
+  console.log("[Rooms API] Initial quote saved to cache:", initialQuoteId);
 
-      // Create a welcome message with default quote terms
-      const welcomeMessage = `I can offer a 10.00% discount with a 5-month lockup.
+  // Create a welcome message with default quote terms
+  const welcomeMessage = `I can offer a 10.00% discount with a 5-month lockup.
 
 📊 **Quote Terms** (ID: ${initialQuoteId})
 • **Discount: 10.00%**
@@ -159,42 +146,24 @@ export async function POST(request: NextRequest) {
 </quote>
 <!-- XML_END -->`;
 
-      const agentMessage = {
-        id: uuidv4(),
-        roomId,
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: {
-          text: welcomeMessage,
-          type: "agent",
-        },
-        createdAt: Date.now(),
-      } as any;
+  const agentMessage = {
+    id: uuidv4(),
+    roomId,
+    entityId: runtime.agentId,
+    agentId: runtime.agentId,
+    content: {
+      text: welcomeMessage,
+      type: "agent",
+    },
+    createdAt: Date.now(),
+  } as any;
 
-      await runtime.createMemory(agentMessage, "messages");
-      console.log("[Rooms API] ✅ Initial welcome message created");
-    } catch (initErr) {
-      console.error("[Rooms API] Failed to create initial message:", initErr);
-    }
+  await runtime.createMemory(agentMessage, "messages");
+  console.log("[Rooms API] ✅ Initial welcome message created");
 
-    return NextResponse.json({
-      success: true,
-      roomId,
-      createdAt: Date.now(),
-    });
-  } catch (error) {
-    console.error("[Rooms API] Detailed error:", error);
-    console.error(
-      "[Rooms API] Error stack:",
-      error instanceof Error ? error.stack : "No stack",
-    );
-    return NextResponse.json(
-      {
-        error: "Failed to create room",
-        details: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : undefined,
-      },
-      { status: 500 },
-    );
-  }
+  return NextResponse.json({
+    success: true,
+    roomId,
+    createdAt: Date.now(),
+  });
 }

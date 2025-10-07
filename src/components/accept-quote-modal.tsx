@@ -49,7 +49,6 @@ export function AcceptQuoteModal({
 }: AcceptQuoteModalProps) {
   const { isConnected, address } = useAccount();
   const { activeFamily, isConnected: unifiedConnected } = useMultiWallet();
-  const chainId = useChainId();
   const router = useRouter();
   const {
     otcAddress,
@@ -61,8 +60,6 @@ export function AcceptQuoteModal({
     approveUsdc,
     getRequiredPayment,
   } = useOTC();
-
-  const { signMessageAsync } = useSignMessage();
 
   const abi = useMemo(() => otcArtifact.abi as Abi, []);
   const rpcUrl =
@@ -114,13 +111,7 @@ export function AcceptQuoteModal({
   const SOLANA_RPC =
     (process.env.NEXT_PUBLIC_SOLANA_RPC_URL as string | undefined) ||
     "http://127.0.0.1:8899";
-  const SOLANA_PROGRAM_ID =
-    (process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID as string | undefined) ||
-    "8X2wDShtcJ5mFrcsJPjK8tQCD16zBqzsUGwhSCM4ggko";
   const SOLANA_DESK = process.env.NEXT_PUBLIC_SOLANA_DESK as string | undefined;
-  const SOLANA_DESK_OWNER = process.env.NEXT_PUBLIC_SOLANA_DESK_OWNER as
-    | string
-    | undefined;
   const SOLANA_TOKEN_MINT = process.env.NEXT_PUBLIC_SOLANA_TOKEN_MINT as
     | string
     | undefined;
@@ -290,10 +281,6 @@ export function AcceptQuoteModal({
       isEth ? "ETH" : "USDC"
     );
 
-    if (!requiredAmount) {
-      throw new Error("Could not determine required payment amount");
-    }
-
     console.log(
       `[AcceptQuote] Required payment: ${requiredAmount} ${currency}`
     );
@@ -358,36 +345,33 @@ export function AcceptQuoteModal({
     setStep("creating");
 
     /**
-     * TRANSACTION FLOW (Optimized for Security)
+     * TRANSACTION FLOW (Optimized UX - Backend Pays)
      *
-     * OLD FLOW (3 separate steps with risk):
-     * 1. User creates offer → 2. Approver approves → 3. User pays
-     * Problem: Offer can be approved but never paid (wasted approval, stuck state)
-     *
-     * NEW FLOW (2 user transactions, approval happens between):
-     * 1. User creates offer
-     * 2. User pre-authorizes payment (USDC: approve allowance; ETH: verify funds)
-     * 3. Backend approves offer (approver wallet)
-     * 4. User payment executes IMMEDIATELY (minimized window)
+     * requireApproverToFulfill = true (set in contract)
+     * 
+     * Flow:
+     * 1. User creates offer (1 wallet signature - ONLY user interaction)
+     * 2. Backend approves offer (using agent wallet)
+     * 3. Backend pays for offer (using agent's ETH/USDC)
+     * 4. Deal saved to database with offerId
+     * 5. User redirected to deal page
      *
      * Benefits:
-     * - User commits to payment BEFORE approval happens
-     * - Payment executes immediately after approval (atomic-like)
-     * - Reduces risk of approved-but-unpaid offers
-     * - Clear error messages if payment fails after approval
-     *
-     * Contract constraint: fulfillOffer() requires o.approved == true
-     * So we cannot pay before approval, but we CAN prepare payment first.
+     * - User signs ONCE only (great UX)
+     * - No risk of user abandoning after approval
+     * - Backend controls payment execution
+     * - Consistent pricing (no user slippage)
      */
 
-    // Solana path
-    if (isSolanaActive) {
-      // Basic config checks
-      if (!SOLANA_DESK || !SOLANA_TOKEN_MINT || !SOLANA_USDC_MINT) {
-        throw new Error(
-          "Solana OTC configuration is incomplete. Please check your environment variables."
-        );
-      }
+    try {
+      // Solana path
+      if (isSolanaActive) {
+        // Basic config checks
+        if (!SOLANA_DESK || !SOLANA_TOKEN_MINT || !SOLANA_USDC_MINT) {
+          throw new Error(
+            "Solana OTC configuration is incomplete. Please check your environment variables."
+          );
+        }
 
       const connection = new Connection(SOLANA_RPC, "confirmed");
       // @ts-ignore - wallet adapter injects window.solana
@@ -557,14 +541,76 @@ export function AcceptQuoteModal({
 
       console.log("Offer paid");
 
+      // Auto-claim tokens (backend handles this after lockup expires)
+      console.log("Requesting automatic token distribution...");
+      try {
+        const claimRes = await fetch("/api/solana/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            offerAddress: offerKeypair.publicKey.toString(),
+            beneficiary: wallet.publicKey.toString(),
+          }),
+        });
+
+        if (claimRes.ok) {
+          const claimData = await claimRes.json();
+          if (claimData.scheduled) {
+            console.log(
+              `✅ Tokens will be automatically distributed after lockup (${Math.floor(claimData.secondsRemaining / 86400)} days)`
+            );
+          } else {
+            console.log("✅ Tokens immediately distributed");
+          }
+        } else {
+          console.warn("Claim scheduling failed, tokens will be claimable manually");
+        }
+      } catch (e) {
+        console.warn("Auto-claim check failed (non-critical):", e);
+      }
+
+      // Save deal completion to database
+      if (initialQuote?.quoteId) {
+        try {
+          const response = await fetch("/api/deal-completion", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "complete",
+              quoteId: initialQuote.quoteId,
+              tokenAmount: String(tokenAmount),
+              paymentCurrency: currency,
+              offerId: nextOfferId.toString(),
+              transactionHash: "",
+              chain: "solana",
+              offerAddress: offerKeypair.publicKey.toString(),
+            }),
+          });
+
+          if (response.ok) {
+            console.log("✅ Deal completion saved");
+          } else {
+            console.warn("Failed to save deal completion:", await response.text());
+          }
+        } catch (e) {
+          console.warn("Deal completion save failed (non-critical):", e);
+        }
+      }
+
       setStep("complete");
       setIsProcessing(false);
       onComplete?.({ offerId: BigInt(nextOfferId.toString()) });
+      
+      // Redirect to deal page after showing success
+      if (initialQuote?.quoteId) {
+        setTimeout(() => {
+          router.push(`/deal/${initialQuote.quoteId}`);
+        }, 2000);
+      }
       return;
     }
 
     // Update quote with user's selected amount and currency before creating offer
-    // Price will be determined by Chainlink oracle on-chain, so we don't calculate it here
     if (initialQuote?.quoteId) {
       console.log("[AcceptQuote] Updating quote with user selections:", {
         quoteId: initialQuote.quoteId,
@@ -591,6 +637,17 @@ export function AcceptQuoteModal({
       console.log("[AcceptQuote] ✅ Quote updated with user selections");
     }
 
+    // Validate beneficiary matches connected wallet
+    if (
+      initialQuote?.beneficiary &&
+      address &&
+      initialQuote.beneficiary.toLowerCase() !== address.toLowerCase()
+    ) {
+      throw new Error(
+        `Wallet mismatch: Quote is for ${initialQuote.beneficiary.slice(0, 6)}... but you're connected as ${address.slice(0, 6)}...`
+      );
+    }
+
     // Determine new offer id ahead of time
     const nextId = await readNextOfferId();
     const newOfferId = nextId; // offerId will equal current nextOfferId
@@ -600,13 +657,20 @@ export function AcceptQuoteModal({
     const tokenAmountWei = BigInt(tokenAmount) * 10n ** 18n;
     const lockupSeconds = BigInt(lockupDays * 24 * 60 * 60);
     const paymentCurrency = currency === "ETH" ? 0 : 1;
-    await createOffer({
+    
+    const createTxHash = (await createOffer({
       tokenAmountWei,
       discountBps,
       paymentCurrency,
       lockupSeconds,
-    });
-    console.log(`[AcceptQuote] ✅ Offer created: ${newOfferId}`);
+    })) as `0x${string}`;
+    
+    console.log(`[AcceptQuote] ✅ Offer created: ${newOfferId}, tx: ${createTxHash}`);
+    
+    // Wait for transaction to be mined before backend processes it
+    console.log("[AcceptQuote] Waiting for offer creation to be confirmed...");
+    await publicClient.waitForTransactionReceipt({ hash: createTxHash });
+    console.log("[AcceptQuote] ✅ Offer confirmed on-chain");
 
     // Step 2: Request backend approval (and auto-fulfillment if enabled)
     setStep("await_approval");
@@ -631,73 +695,83 @@ export function AcceptQuoteModal({
       approveData.approvalTx || approveData.txHash
     );
 
-    let paymentTxHash: `0x${string}` | undefined;
-
-    // Check if backend auto-fulfilled (when requireApproverToFulfill is true)
-    if (approveData.autoFulfilled && approveData.fulfillTx) {
-      console.log(
-        `[AcceptQuote] ✅ Backend auto-fulfilled:`,
-        approveData.fulfillTx
+    // Backend should have auto-fulfilled (requireApproverToFulfill=true)
+    if (!approveData.autoFulfilled || !approveData.fulfillTx) {
+      throw new Error(
+        "Backend did not automatically fulfill offer. Contact support."
       );
-      paymentTxHash = approveData.fulfillTx as `0x${string}`;
-    } else {
-      // User must fulfill manually (when requireApproverToFulfill is false)
-      console.log(
-        `[AcceptQuote] Executing payment immediately after approval...`
-      );
-      paymentTxHash = await fulfillWithRetry(newOfferId);
-      console.log(`[AcceptQuote] ✅ Payment executed: ${paymentTxHash}`);
     }
 
+    const paymentTxHash = approveData.fulfillTx as `0x${string}`;
+    console.log(`[AcceptQuote] ✅ Backend auto-fulfilled:`, paymentTxHash);
+
+    // Verify payment was actually made on-chain
+    console.log("[AcceptQuote] Verifying payment on-chain...");
+    const finalOffer = await readOffer(newOfferId);
+    const isPaidFinal = finalOffer[9]; // paid flag at index 9
+    
+    if (!isPaidFinal) {
+      throw new Error(
+        "Backend reported success but offer not paid on-chain. Please contact support with offer ID: " +
+          newOfferId
+      );
+    }
+    console.log("[AcceptQuote] ✅ Payment verified on-chain");
+
+    // Notify backend of completion - MUST succeed before showing success
+    if (!initialQuote?.quoteId) {
+      throw new Error("Missing quote ID - cannot save deal completion");
+    }
+
+    console.log("[AcceptQuote] Saving deal completion:", {
+      quoteId: initialQuote.quoteId,
+      offerId: String(newOfferId),
+      tokenAmount: String(tokenAmount),
+      currency,
+      txHash: paymentTxHash,
+    });
+
+    const saveRes = await fetch("/api/deal-completion", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "complete",
+        quoteId: initialQuote.quoteId,
+        tokenAmount: String(tokenAmount),
+        paymentCurrency: currency,
+        offerId: String(newOfferId),
+        transactionHash: paymentTxHash,
+      }),
+    });
+
+    if (!saveRes.ok) {
+      const errorText = await saveRes.text();
+      throw new Error(
+        `Deal completion save failed: ${errorText}. Your offer is paid but not saved. Offer ID: ${newOfferId}`
+      );
+    }
+
+    const saveData = await saveRes.json();
+    console.log("[AcceptQuote] ✅ Deal completion saved:", saveData);
+
+    // NOW show success (everything confirmed)
     setStep("complete");
     setIsProcessing(false);
 
-    // Notify backend of completion with user-selected amount for persistence
-    if (initialQuote?.quoteId) {
-      console.log("[AcceptQuote] Saving deal completion:", {
-        quoteId: initialQuote.quoteId,
-        offerId: String(newOfferId),
-        tokenAmount: String(tokenAmount),
-        currency,
-        txHash: paymentTxHash,
-      });
-
-      const response = await fetch("/api/deal-completion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "complete",
-          quoteId: initialQuote.quoteId,
-          tokenAmount: String(tokenAmount),
-          paymentCurrency: currency,
-          offerId: String(newOfferId),
-          transactionHash: paymentTxHash || "",
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("[AcceptQuote] Deal completion saved:", data);
-        
-        // Redirect to deal completion page for sharing
-        router.push(`/deal/${initialQuote.quoteId}`);
-      } else {
-        console.error("[AcceptQuote] Failed to save deal completion:", await response.text());
-      }
-    }
-
     onComplete?.({ offerId: newOfferId, txHash: paymentTxHash });
+    
+    // Auto-redirect after showing success briefly
+    setTimeout(() => {
+      router.push(`/deal/${initialQuote.quoteId}`);
+    }, 2000);
+    } catch (e) {
+      console.error("[AcceptQuote] Error:", e);
+      setError(e instanceof Error ? e.message : "Transaction failed");
+      setIsProcessing(false);
+      setStep("amount");
+    }
   };
-
-  // Price will be determined by Chainlink oracle on-chain
-  // We use a placeholder for UI estimation only - actual price is fetched on-chain
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _estimatedUsd = useMemo(() => {
-    // Cannot accurately estimate without on-chain oracle price
-    // This is just for UI display, actual cost will be determined at execution
-    return 0;
-  }, []);
-
+  
   const estPerTokenUsd = useMemo(() => {
     // Cannot accurately estimate without on-chain oracle price
     // This is just for UI display, actual cost will be determined at execution
@@ -1006,7 +1080,7 @@ export function AcceptQuoteModal({
               </div>
               <h3 className="font-semibold mb-2">Deal Complete!</h3>
               <p className="text-sm text-zinc-400">
-                Your purchase is complete. You'll receive your tokens at
+                Your purchase is complete. You&apos;ll receive your tokens at
                 maturity.
               </p>
             </div>

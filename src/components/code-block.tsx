@@ -95,16 +95,12 @@ export function CodeBlock({ className, children }) {
   }, [children, element, resolvedTheme, language, getLanguageExtension]);
 
   const copyToClipboard = async () => {
-    try {
-      await navigator.clipboard.writeText(children.trim());
-      setCopySuccess("Copied!");
+    await navigator.clipboard.writeText(children.trim());
+    setCopySuccess("Copied!");
 
-      setTimeout(() => {
-        setCopySuccess("");
-      }, 500);
-    } catch {
-      setCopySuccess("Failed to copy.");
-    }
+    setTimeout(() => {
+      setCopySuccess("");
+    }, 500);
   };
 
   return children.includes("\n") ? (

@@ -361,25 +361,27 @@ pub mod otc {
     }
 
     pub fn claim(ctx: Context<Claim>, _offer_id: u64) -> Result<()> {
-        let desk_ai = ctx.accounts.desk.to_account_info();
-        let desk_key = desk_ai.key();
-        let desk_owner = ctx.accounts.desk.owner;
-        let (expected, bump) = Pubkey::find_program_address(&[b"desk", desk_owner.as_ref()], &crate::ID);
-        require!(expected == desk_key, OtcError::NotOwner);
-        // Removed PDA validation - now using keypairs for offers
-        let bump_bytes = [bump];
-        let seeds: [&[u8]; 3] = [b"desk", desk_owner.as_ref(), &bump_bytes];
-        let signer_seeds: &[&[&[u8]]] = &[&seeds];
-        let paused = ctx.accounts.desk.paused;
-        require!(!paused, OtcError::Paused);
+        // Desk keypair signs to authorize token transfer
+        let desk = &ctx.accounts.desk;
+        require!(!desk.paused, OtcError::Paused);
+        require!(ctx.accounts.desk_signer.key() == desk.key(), OtcError::NotOwner);
+        
         let offer_key = ctx.accounts.offer.key();
         let offer = &mut ctx.accounts.offer;
         require!(ctx.accounts.beneficiary.key() == offer.beneficiary, OtcError::NotOwner);
         require!(offer.paid && !offer.cancelled && !offer.fulfilled, OtcError::BadState);
-        let now = Clock::get()?.unix_timestamp; require!(now >= offer.unlock_time, OtcError::Locked);
-        let cpi_accounts = SplTransfer { from: ctx.accounts.desk_token_treasury.to_account_info(), to: ctx.accounts.beneficiary_token_ata.to_account_info(), authority: desk_ai };
-        let cpi_ctx = CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), cpi_accounts, signer_seeds);
+        let now = Clock::get()?.unix_timestamp;
+        require!(now >= offer.unlock_time, OtcError::Locked);
+        
+        // Transfer tokens from desk treasury to beneficiary (desk_signer authorizes)
+        let cpi_accounts = SplTransfer {
+            from: ctx.accounts.desk_token_treasury.to_account_info(),
+            to: ctx.accounts.beneficiary_token_ata.to_account_info(),
+            authority: ctx.accounts.desk_signer.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
         token::transfer(cpi_ctx, offer.token_amount)?;
+        
         let desk_mut = &mut ctx.accounts.desk;
         desk_mut.token_reserved = desk_mut.token_reserved.checked_sub(offer.token_amount).ok_or(OtcError::Overflow)?;
         offer.fulfilled = true;
@@ -388,55 +390,56 @@ pub mod otc {
     }
 
     pub fn withdraw_tokens(ctx: Context<WithdrawTokens>, amount: u64) -> Result<()> {
+        // Desk keypair signs to authorize withdrawal
         only_owner(&ctx.accounts.desk, &ctx.accounts.owner.key())?;
-        let desk_ai = ctx.accounts.desk.to_account_info();
-        let (expected, bump) = Pubkey::find_program_address(&[b"desk", ctx.accounts.desk.owner.as_ref()], &crate::ID);
-        require!(expected == ctx.accounts.desk.key(), OtcError::NotOwner);
-        let bump_bytes = [bump];
-        let seeds: [&[u8]; 3] = [b"desk", ctx.accounts.desk.owner.as_ref(), &bump_bytes];
-        let signer_seeds: &[&[&[u8]]] = &[&seeds];
+        require!(ctx.accounts.desk_signer.key() == ctx.accounts.desk.key(), OtcError::NotOwner);
         // Prevent withdrawing below reserved
         let after_amount = ctx.accounts.desk_token_treasury.amount.checked_sub(amount).ok_or(OtcError::Overflow)?;
         require!(after_amount >= ctx.accounts.desk.token_reserved, OtcError::InsuffInv);
-        let cpi_accounts = SplTransfer { from: ctx.accounts.desk_token_treasury.to_account_info(), to: ctx.accounts.owner_token_ata.to_account_info(), authority: desk_ai };
-        let cpi_ctx = CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), cpi_accounts, signer_seeds);
+        let cpi_accounts = SplTransfer {
+            from: ctx.accounts.desk_token_treasury.to_account_info(),
+            to: ctx.accounts.owner_token_ata.to_account_info(),
+            authority: ctx.accounts.desk_signer.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
         token::transfer(cpi_ctx, amount)?;
         Ok(())
     }
 
     pub fn withdraw_usdc(ctx: Context<WithdrawUsdc>, amount: u64) -> Result<()> {
+        // Desk keypair signs to authorize withdrawal
         only_owner(&ctx.accounts.desk, &ctx.accounts.owner.key())?;
-        let desk_ai = ctx.accounts.desk.to_account_info();
-        let (expected, bump) = Pubkey::find_program_address(&[b"desk", ctx.accounts.desk.owner.as_ref()], &crate::ID);
-        require!(expected == ctx.accounts.desk.key(), OtcError::NotOwner);
-        let bump_bytes = [bump];
-        let seeds: [&[u8]; 3] = [b"desk", ctx.accounts.desk.owner.as_ref(), &bump_bytes];
-        let signer_seeds: &[&[&[u8]]] = &[&seeds];
-        let cpi_accounts = SplTransfer { from: ctx.accounts.desk_usdc_treasury.to_account_info(), to: ctx.accounts.to_usdc_ata.to_account_info(), authority: desk_ai };
-        let cpi_ctx = CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), cpi_accounts, signer_seeds);
+        require!(ctx.accounts.desk_signer.key() == ctx.accounts.desk.key(), OtcError::NotOwner);
+        let cpi_accounts = SplTransfer {
+            from: ctx.accounts.desk_usdc_treasury.to_account_info(),
+            to: ctx.accounts.to_usdc_ata.to_account_info(),
+            authority: ctx.accounts.desk_signer.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
         token::transfer(cpi_ctx, amount)?;
         Ok(())
     }
 
     pub fn withdraw_sol(ctx: Context<WithdrawSol>, lamports: u64) -> Result<()> {
+        // Desk keypair signs to authorize withdrawal
         only_owner(&ctx.accounts.desk, &ctx.accounts.owner.key())?;
-        let (expected, bump) = Pubkey::find_program_address(&[b"desk", ctx.accounts.desk.owner.as_ref()], &crate::ID);
-        require!(expected == ctx.accounts.desk.key(), OtcError::NotOwner);
-        let bump_bytes = [bump];
-        let seeds: [&[u8]; 3] = [b"desk", ctx.accounts.desk.owner.as_ref(), &bump_bytes];
-        let signer_seeds: &[&[&[u8]]] = &[&seeds];
+        require!(ctx.accounts.desk_signer.key() == ctx.accounts.desk.key(), OtcError::NotOwner);
         // keep rent-exempt minimum
         let rent = Rent::get()?;
         let min_rent = rent.minimum_balance(8 + Desk::SIZE);
         let current = ctx.accounts.desk.to_account_info().lamports();
         let after = current.checked_sub(lamports).ok_or(OtcError::Overflow)?;
         require!(after >= min_rent, OtcError::BadState);
-        let ix = anchor_lang::solana_program::system_instruction::transfer(&ctx.accounts.desk.key(), &ctx.accounts.to.key(), lamports);
-        anchor_lang::solana_program::program::invoke_signed(&ix, &[
-            ctx.accounts.desk.to_account_info(),
+        let ix = anchor_lang::solana_program::system_instruction::transfer(
+            &ctx.accounts.desk_signer.key(),
+            &ctx.accounts.to.key(),
+            lamports
+        );
+        anchor_lang::solana_program::program::invoke(&ix, &[
+            ctx.accounts.desk_signer.to_account_info(),
             ctx.accounts.to.to_account_info(),
             ctx.accounts.system_program.to_account_info(),
-        ], signer_seeds)?;
+        ])?;
         Ok(())
     }
 }
@@ -554,13 +557,14 @@ pub struct FulfillOfferSol<'info> {
 pub struct Claim<'info> {
     #[account(mut)]
     pub desk: Account<'info, Desk>,
+    pub desk_signer: Signer<'info>,
     #[account(mut)]
     pub offer: Account<'info, Offer>,
-    #[account(mut, constraint = desk_token_treasury.mint == desk.token_mint, constraint = desk_token_treasury.owner == desk.key())]
+    #[account(mut)]
     pub desk_token_treasury: Account<'info, TokenAccount>,
-    #[account(mut, constraint = beneficiary_token_ata.mint == desk.token_mint, constraint = beneficiary_token_ata.owner == beneficiary.key())]
+    #[account(mut)]
     pub beneficiary_token_ata: Account<'info, TokenAccount>,
-    pub beneficiary: Signer<'info>,
+    pub beneficiary: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
 }
 
@@ -569,9 +573,10 @@ pub struct WithdrawTokens<'info> {
     pub owner: Signer<'info>,
     #[account(mut, has_one = owner)]
     pub desk: Account<'info, Desk>,
-    #[account(mut, constraint = desk_token_treasury.mint == desk.token_mint, constraint = desk_token_treasury.owner == desk.key())]
+    pub desk_signer: Signer<'info>,
+    #[account(mut)]
     pub desk_token_treasury: Account<'info, TokenAccount>,
-    #[account(mut, constraint = owner_token_ata.mint == desk.token_mint, constraint = owner_token_ata.owner == owner.key())]
+    #[account(mut)]
     pub owner_token_ata: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
 }
@@ -581,9 +586,10 @@ pub struct WithdrawUsdc<'info> {
     pub owner: Signer<'info>,
     #[account(mut, has_one = owner)]
     pub desk: Account<'info, Desk>,
-    #[account(mut, constraint = desk_usdc_treasury.mint == desk.usdc_mint, constraint = desk_usdc_treasury.owner == desk.key())]
+    pub desk_signer: Signer<'info>,
+    #[account(mut)]
     pub desk_usdc_treasury: Account<'info, TokenAccount>,
-    #[account(mut, constraint = to_usdc_ata.mint == desk.usdc_mint, constraint = to_usdc_ata.owner == owner.key())]
+    #[account(mut)]
     pub to_usdc_ata: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
 }
@@ -592,6 +598,7 @@ pub struct WithdrawUsdc<'info> {
 pub struct WithdrawSol<'info> {
     #[account(mut)]
     pub desk: Account<'info, Desk>,
+    pub desk_signer: Signer<'info>,
     pub owner: Signer<'info>,
     /// CHECK: system account
     #[account(mut)]

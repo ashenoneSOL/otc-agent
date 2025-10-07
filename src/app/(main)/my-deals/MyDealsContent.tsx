@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useAccount } from "wagmi";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 import { Button } from "@/components/button";
 import {
@@ -13,6 +14,7 @@ import {
   TableRow,
 } from "@/components/table";
 import { useOTC } from "@/hooks/contracts/useOTC";
+import { useMultiWallet } from "@/components/multiwallet";
 import { createDealShareImage } from "@/utils/share-card";
 import {
   ensureXAuth,
@@ -39,16 +41,12 @@ function formatTokenAmount(amountWei: bigint): string {
 }
 
 function computeUsd8(offer: any): bigint {
-  try {
-    const ta = BigInt(offer?.tokenAmount ?? 0n);
-    const priceUsdPerToken = BigInt(offer?.priceUsdPerToken ?? 0n); // 8d
-    const dbps = BigInt(offer?.discountBps ?? 0n);
-    const usd8 =
-      (((ta * priceUsdPerToken) / 10n ** 18n) * (10_000n - dbps)) / 10_000n;
-    return usd8;
-  } catch {
-    return 0n;
-  }
+  const ta = BigInt(offer?.tokenAmount ?? 0n);
+  const priceUsdPerToken = BigInt(offer?.priceUsdPerToken ?? 0n); // 8d
+  const dbps = BigInt(offer?.discountBps ?? 0n);
+  const usd8 =
+    (((ta * priceUsdPerToken) / 10n ** 18n) * (10_000n - dbps)) / 10_000n;
+  return usd8;
 }
 
 function formatUsd(amount: number): string {
@@ -66,7 +64,9 @@ function getLockupLabel(createdAt: bigint, unlockTime: bigint): string {
 }
 
 export function MyDealsContent() {
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
+  const solWallet = useWallet();
+  const { activeFamily } = useMultiWallet();
   const {
     myOffers,
     claim,
@@ -77,15 +77,105 @@ export function MyDealsContent() {
   } = useOTC();
   const [sortAsc, setSortAsc] = useState(true);
   const [refunding, setRefunding] = useState<bigint | null>(null);
+  const [solanaDeals, setSolanaDeals] = useState<any[]>([]);
 
-  const inProgress = useMemo(
-    () =>
-      (myOffers ?? []).filter((o) => {
-        // In-progress means paid, not fulfilled, not cancelled
-        return Boolean(o?.paid) && !o?.fulfilled && !o?.cancelled;
-      }),
-    [myOffers],
-  );
+  // Fetch Solana deals from database
+  useEffect(() => {
+    if (activeFamily === "solana" && solWallet.publicKey) {
+      fetch(`/api/deal-completion?wallet=${solWallet.publicKey.toString()}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.deals) {
+            console.log(
+              "[MyDeals] Loaded Solana deals from DB:",
+              data.deals.length
+            );
+            setSolanaDeals(data.deals);
+          }
+        })
+        .catch((err) => {
+          console.error("[MyDeals] Failed to load Solana deals:", err);
+        });
+    } else if (activeFamily === "evm" && address) {
+      fetch(`/api/deal-completion?wallet=${address}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.deals) {
+            console.log(
+              "[MyDeals] Loaded EVM deals from DB:",
+              data.deals.length
+            );
+          }
+        })
+        .catch((err) => console.error(err));
+    }
+  }, [activeFamily, solWallet.publicKey, address]);
+
+  const inProgress = useMemo(() => {
+    // For Solana, use database deals; for EVM, use contract offers
+    if (activeFamily === "solana" && solanaDeals.length > 0) {
+      console.log(
+        "[MyDeals] Using Solana deals from database:",
+        solanaDeals.length
+      );
+      // Transform database deals to match offer structure
+      return solanaDeals.map((deal: any) => ({
+        id: BigInt(deal.offerId || 0),
+        beneficiary: solWallet.publicKey?.toString() || "",
+        tokenAmount: BigInt(deal.tokenAmount || 0) * BigInt(1e9), // Convert to wei equivalent
+        discountBps: deal.discountBps || 1000,
+        createdAt: BigInt(
+          Math.floor(new Date(deal.createdAt).getTime() / 1000)
+        ),
+        unlockTime: BigInt(
+          Math.floor(new Date(deal.createdAt).getTime() / 1000) + 180 * 86400
+        ), // 6 months default
+        priceUsdPerToken: BigInt(100_000_000), // $1.00 in 8 decimals
+        ethUsdPrice: BigInt(0),
+        currency: deal.paymentCurrency === "SOL" ? 0 : 1,
+        approved: true,
+        paid: true,
+        fulfilled: false,
+        cancelled: false,
+        payer: solWallet.publicKey?.toString() || "",
+        amountPaid: BigInt(0),
+      }));
+    }
+
+    const offers = myOffers ?? [];
+    console.log("[MyDeals] Total offers from contract:", offers.length);
+    console.log("[MyDeals] Raw offers data:", offers);
+
+    const filtered = offers.filter((o) => {
+      // In-progress means paid, not fulfilled, not cancelled
+      const isPaid = Boolean(o?.paid);
+      const isFulfilled = Boolean(o?.fulfilled);
+      const isCancelled = Boolean(o?.cancelled);
+      const hasValidId = o?.id !== undefined && o?.id !== null;
+      const hasTokenAmount = o?.tokenAmount && o.tokenAmount > 0n;
+
+      console.log(`[MyDeals] Offer ${o?.id}:`, {
+        id: o?.id?.toString(),
+        isPaid,
+        isFulfilled,
+        isCancelled,
+        hasValidId,
+        hasTokenAmount,
+        beneficiary: o?.beneficiary,
+        tokenAmount: o?.tokenAmount?.toString(),
+        discountBps: o?.discountBps?.toString(),
+        approved: o?.approved,
+      });
+
+      // Filter: must have valid data and be in paid-but-not-fulfilled state
+      return (
+        hasValidId && hasTokenAmount && isPaid && !isFulfilled && !isCancelled
+      );
+    });
+
+    console.log("[MyDeals] Filtered in-progress offers:", filtered.length);
+    return filtered;
+  }, [myOffers, activeFamily, solanaDeals, solWallet.publicKey]);
 
   const sorted = useMemo(() => {
     const list = [...inProgress];
@@ -178,8 +268,8 @@ export function MyDealsContent() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-                <Table striped>
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden px-4 sm:px-6">
+                <Table striped bleed>
                   <TableHead>
                     <TableRow>
                       <TableHeader>Amount (ElizaOS)</TableHeader>
@@ -196,6 +286,7 @@ export function MyDealsContent() {
                       </TableHeader>
                       <TableHeader>Discount</TableHeader>
                       <TableHeader>Lockup Duration</TableHeader>
+                      <TableHeader>Status</TableHeader>
                       <TableHeader className="text-right">Action</TableHeader>
                     </TableRow>
                   </TableHead>
@@ -221,25 +312,44 @@ export function MyDealsContent() {
                               {lockup}
                             </span>
                           </TableCell>
+                          <TableCell>
+                            {matured ? (
+                              <span className="inline-flex items-center rounded-full bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 text-xs font-medium">
+                                Ready to Claim
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-amber-600/15 text-amber-700 dark:text-amber-400 px-2 py-0.5 text-xs font-medium">
+                                Locked
+                              </span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <div className="flex gap-2 justify-end">
                               <Button
-                                color={
-                                  (matured ? "emerald" : "zinc") as
-                                    | "emerald"
-                                    | "zinc"
-                                }
-                                disabled={!matured || isClaiming}
-                                onClick={async () => {
-                                  await claim(o.id);
+                                color="zinc"
+                                onClick={() => {
+                                  // API will lookup quote by offerId and redirect to deal page
+                                  window.location.href = `/api/quote/by-offer/${o.id}`;
                                 }}
+                                className="!px-4 !py-2"
                               >
-                                {matured
-                                  ? isClaiming
-                                    ? "Withdrawing…"
-                                    : "Withdraw"
-                                  : "Locked"}
+                                View Deal
                               </Button>
+                              {matured && (
+                                <Button
+                                  color={
+                                    (matured ? "emerald" : "zinc") as
+                                      | "emerald"
+                                      | "zinc"
+                                  }
+                                  disabled={!matured || isClaiming}
+                                  onClick={async () => {
+                                    await claim(o.id);
+                                  }}
+                                >
+                                  {isClaiming ? "Withdrawing…" : "Withdraw"}
+                                </Button>
+                              )}
                               {/* Emergency refund button - show if enabled and deal is stuck */}
                               {emergencyRefundsEnabled && !matured && (
                                 <Button
@@ -253,27 +363,19 @@ export function MyDealsContent() {
 
                                     if (daysSinceCreation < 90) {
                                       alert(
-                                        `Emergency refund available in ${Math.ceil(90 - daysSinceCreation)} days`,
+                                        `Emergency refund available in ${Math.ceil(90 - daysSinceCreation)} days`
                                       );
                                       return;
                                     }
 
                                     if (
                                       confirm(
-                                        "Request emergency refund? This will cancel the deal and return your payment.",
+                                        "Request emergency refund? This will cancel the deal and return your payment."
                                       )
                                     ) {
-                                      try {
-                                        setRefunding(o.id);
-                                        await emergencyRefund(o.id);
-                                        alert("Refund successful!");
-                                      } catch (error: any) {
-                                        alert(
-                                          `Refund failed: ${error.message || "Unknown error"}`,
-                                        );
-                                      } finally {
-                                        setRefunding(null);
-                                      }
+                                      setRefunding(o.id);
+                                      await emergencyRefund(o.id);
+                                      alert("Refund successful!");
                                     }
                                   }}
                                   title="Request emergency refund (90+ days)"
@@ -286,49 +388,44 @@ export function MyDealsContent() {
                               <Button
                                 color="zinc"
                                 onClick={async () => {
-                                  try {
-                                    const discountPct =
-                                      Number(o.discountBps ?? 0n) / 100;
-                                    const months = Math.max(
-                                      1,
-                                      Math.round(
-                                        (Number(o.unlockTime) -
-                                          Number(o.createdAt)) /
-                                          (30 * 24 * 60 * 60),
-                                      ),
-                                    );
-                                    const tokenAmount =
-                                      Number(o.tokenAmount) / 1e18;
-                                    const shareText = `I just completed an OTC deal for ${tokenAmount.toLocaleString()} ElizaOS at ${discountPct.toFixed(0)}% with ${months}-month lockup. #ElizaOS #OTC`;
-                                    const { dataUrl } =
-                                      await createDealShareImage({
-                                        tokenAmount,
-                                        discountBps: Number(
-                                          o.discountBps ?? 0n,
-                                        ),
-                                        lockupMonths: months,
-                                        paymentCurrency:
-                                          Number(o.currency ?? 0) === 0
-                                            ? "ETH"
-                                            : "USDC",
-                                      });
-                                    const creds = getXCreds();
-                                    if (
-                                      !creds?.oauth1Token ||
-                                      !creds?.oauth1TokenSecret
-                                    ) {
-                                      setPendingShare({
-                                        text: shareText,
-                                        dataUrl,
-                                      });
-                                      ensureXAuth({ text: shareText, dataUrl });
-                                    } else {
-                                      await shareOnX(shareText, dataUrl, creds);
-                                    }
-                                  } catch {
-                                    // ignore
+                                  const discountPct =
+                                    Number(o.discountBps ?? 0n) / 100;
+                                  const months = Math.max(
+                                    1,
+                                    Math.round(
+                                      (Number(o.unlockTime) -
+                                        Number(o.createdAt)) /
+                                        (30 * 24 * 60 * 60)
+                                    )
+                                  );
+                                  const tokenAmount =
+                                    Number(o.tokenAmount) / 1e18;
+                                  const shareText = `I just completed an OTC deal for ${tokenAmount.toLocaleString()} ElizaOS at ${discountPct.toFixed(0)}% with ${months}-month lockup. #ElizaOS #OTC`;
+                                  const { dataUrl } =
+                                    await createDealShareImage({
+                                      tokenAmount,
+                                      discountBps: Number(o.discountBps ?? 0n),
+                                      lockupMonths: months,
+                                      paymentCurrency:
+                                        Number(o.currency ?? 0) === 0
+                                          ? "ETH"
+                                          : "USDC",
+                                    });
+                                  const creds = getXCreds();
+                                  if (
+                                    !creds?.oauth1Token ||
+                                    !creds?.oauth1TokenSecret
+                                  ) {
+                                    setPendingShare({
+                                      text: shareText,
+                                      dataUrl,
+                                    });
+                                    ensureXAuth({ text: shareText, dataUrl });
+                                  } else {
+                                    await shareOnX(shareText, dataUrl, creds);
                                   }
                                 }}
+                                className="!px-4 !py-2"
                               >
                                 Share
                               </Button>

@@ -15,26 +15,43 @@ export default function DealPage() {
 
   useEffect(() => {
     async function loadDeal() {
-      try {
-        const quoteId = params.id as string;
-        if (!quoteId) {
-          router.push("/");
-          return;
-        }
+      const quoteId = params.id as string;
+      if (!quoteId) {
+        router.push("/");
+        return;
+      }
 
-        // Fetch the executed quote details
-        const response = await fetch(`/api/quote/executed/${quoteId}`);
+      // Retry logic - service may not be ready immediately after redirect
+      let retries = 3;
+      let delay = 500;
+
+      while (retries > 0) {
+        console.log(`[DealPage] Fetching deal (${4 - retries}/3):`, quoteId);
+
+        const response = await fetch(`/api/quote/executed/${quoteId}`, {
+          cache: "no-store",
+        });
+
         if (!response.ok) {
+          const errorText = await response.text();
+          console.warn("[DealPage] Fetch failed:", errorText);
+
+          // Retry if service not ready
+          if (errorText.includes("not registered") && retries > 1) {
+            await new Promise((r) => setTimeout(r, delay));
+            delay *= 2;
+            retries--;
+            continue;
+          }
+
           throw new Error("Deal not found");
         }
 
         const data = await response.json();
+        console.log("[DealPage] Quote loaded:", data.quote?.quoteId);
         setQuote(data.quote);
-      } catch (error) {
-        console.error("Failed to load deal:", error);
-        router.push("/");
-      } finally {
         setLoading(false);
+        return;
       }
     }
 

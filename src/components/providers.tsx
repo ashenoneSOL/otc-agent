@@ -24,7 +24,8 @@ import "@solana/wallet-adapter-react-ui/styles.css";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60 * 1000, // 1 minute
+      staleTime: 0, // Always refetch - critical for real-time contract state
+      gcTime: 0, // Don't cache old data
     },
   },
 });

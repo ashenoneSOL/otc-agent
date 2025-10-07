@@ -49,56 +49,48 @@ export default function CallbackPage() {
 
       // OAuth 1.0a
       if (oauthToken && oauthVerifier) {
-        try {
-          const resp = await fetch(
-            `${apiUrl}/api/share/oauth1/callback?oauth_token=${encodeURIComponent(oauthToken)}&oauth_verifier=${encodeURIComponent(oauthVerifier)}`,
-            { credentials: "include" },
-          );
-          if (!resp.ok) throw new Error(await resp.text());
-          const data = (await resp.json()) as OAuthResponse;
-          if (!data.oauth1_token || !data.oauth1_token_secret) {
-            throw new Error("Missing oauth1 tokens in response");
-          }
-          const credentials = {
-            entityId: data.user_id || data.entityId || "default_user",
-            accessToken: data.access_token || "",
-            refreshToken: data.refresh_token || "",
-            expiresAt: Date.now() + 86400000,
-            username: data.screen_name || data.username,
-            oauth1Token: data.oauth1_token,
-            oauth1TokenSecret: data.oauth1_token_secret,
-          } as any;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(credentials));
-          redirectToOrigin();
-        } catch (e) {
-          setError(e instanceof Error ? e.message : "OAuth 1.0a failed");
+        const resp = await fetch(
+          `${apiUrl}/api/share/oauth1/callback?oauth_token=${encodeURIComponent(oauthToken)}&oauth_verifier=${encodeURIComponent(oauthVerifier)}`,
+          { credentials: "include" },
+        );
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = (await resp.json()) as OAuthResponse;
+        if (!data.oauth1_token || !data.oauth1_token_secret) {
+          throw new Error("Missing oauth1 tokens in response");
         }
+        const credentials = {
+          entityId: data.user_id || data.entityId || "default_user",
+          accessToken: data.access_token || "",
+          refreshToken: data.refresh_token || "",
+          expiresAt: Date.now() + 86400000,
+          username: data.screen_name || data.username,
+          oauth1Token: data.oauth1_token,
+          oauth1TokenSecret: data.oauth1_token_secret,
+        } as any;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(credentials));
+        redirectToOrigin();
         return;
       }
 
       // OAuth 2.0
       if (code && state) {
-        try {
-          const resp = await fetch(
-            `${apiUrl}/api/share/oauth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
-            { credentials: "include" },
-          );
-          if (!resp.ok) throw new Error(await resp.text());
-          const tok = (await resp.json()) as OAuthResponse;
-          if (!tok.access_token || !tok.refresh_token || !tok.user_id) {
-            throw new Error("Incomplete OAuth 2.0 token data");
-          }
-          const creds = {
-            entityId: tok.user_id,
-            accessToken: tok.access_token,
-            refreshToken: tok.refresh_token,
-            expiresAt: Date.now() + (tok.expires_in || 3600) * 1000,
-          } as any;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
-          redirectToOrigin();
-        } catch (e) {
-          setError(e instanceof Error ? e.message : "OAuth 2.0 failed");
+        const resp = await fetch(
+          `${apiUrl}/api/share/oauth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+          { credentials: "include" },
+        );
+        if (!resp.ok) throw new Error(await resp.text());
+        const tok = (await resp.json()) as OAuthResponse;
+        if (!tok.access_token || !tok.refresh_token || !tok.user_id) {
+          throw new Error("Incomplete OAuth 2.0 token data");
         }
+        const creds = {
+          entityId: tok.user_id,
+          accessToken: tok.access_token,
+          refreshToken: tok.refresh_token,
+          expiresAt: Date.now() + (tok.expires_in || 3600) * 1000,
+        } as any;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
+        redirectToOrigin();
         return;
       }
 
@@ -113,7 +105,7 @@ export default function CallbackPage() {
       window.location.href = u.toString();
     }
 
-    run();
+    run().catch((e) => setError(e instanceof Error ? e.message : "OAuth failed"));
   }, []);
 
   if (error) {

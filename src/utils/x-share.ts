@@ -36,11 +36,7 @@ export function getXCreds(): XCredentials | null {
   if (typeof window === "undefined") return null;
   const stored = localStorage.getItem(STORAGE_KEY);
   if (!stored) return null;
-  try {
-    return JSON.parse(stored) as XCredentials;
-  } catch {
-    return null;
-  }
+  return JSON.parse(stored) as XCredentials;
 }
 
 export function setPendingShare(pending: PendingShare) {
@@ -72,7 +68,7 @@ export function ensureXAuth(pending?: PendingShare): boolean {
 export async function shareOnX(
   text: string,
   dataUrl: string,
-  creds?: XCredentials | null,
+  creds?: XCredentials | null
 ): Promise<{ success: boolean; tweetId?: string; tweetUrl?: string }> {
   const apiUrl = getApiUrl();
   const c = creds ?? getXCreds();
@@ -132,37 +128,25 @@ export async function resumeFreshAuth(): Promise<
   const pendingRaw = localStorage.getItem(PENDING_DEAL_SHARE_KEY);
   if (!isFresh || !pendingRaw) return { resumed: false };
 
-  try {
-    const pending = JSON.parse(pendingRaw) as PendingShare;
-    const creds = getXCreds();
-    if (!creds?.oauth1Token || !creds?.oauth1TokenSecret) {
-      return {
-        resumed: true,
-        success: false,
-        error: "Missing credentials after auth.",
-      };
-    }
-    const result = await shareOnX(pending.text, pending.dataUrl, creds);
-    clearPendingShare();
-    // Clean URL param
-    url.searchParams.delete("fresh_auth");
-    window.history.replaceState({}, "", url.toString());
-    return { resumed: true, success: true, tweetUrl: result.tweetUrl };
-  } catch (e) {
+  const pending = JSON.parse(pendingRaw) as PendingShare;
+  const creds = getXCreds();
+  if (!creds?.oauth1Token || !creds?.oauth1TokenSecret) {
     return {
       resumed: true,
       success: false,
-      error: e instanceof Error ? e.message : "Failed to resume share",
+      error: "Missing credentials after auth.",
     };
   }
+  const result = await shareOnX(pending.text, pending.dataUrl, creds);
+  clearPendingShare();
+  // Clean URL param
+  url.searchParams.delete("fresh_auth");
+  window.history.replaceState({}, "", url.toString());
+  return { resumed: true, success: true, tweetUrl: result.tweetUrl };
 }
 
 async function safeText(r: Response) {
-  try {
-    return await r.text();
-  } catch {
-    return "";
-  }
+  return await r.text();
 }
 
 export const XShareStorageKeys = {

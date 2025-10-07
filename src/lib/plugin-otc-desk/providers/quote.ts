@@ -134,7 +134,7 @@ export async function setUserQuote(
   const now = Date.now();
   
   // Generate signature
-  const secret = process.env.QUOTE_SIGNATURE_SECRET || "default-secret";
+  const secret = process.env.WORKER_AUTH_TOKEN || "default-secret";
   const payload = `${quoteId}:${entityId}:${normalized}:${quote.tokenAmount}:${quote.discountBps}:${quote.lockupMonths}`;
   const crypto = await import("crypto");
   const signature = crypto.createHmac("sha256", secret).update(payload).digest("hex");

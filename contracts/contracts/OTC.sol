@@ -49,8 +49,9 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
   }
 
   // tokens
-  IERC20 public immutable token; // token being sold (18 decimals)
+  IERC20 public immutable token; // token being sold
   IERC20 public immutable usdc;  // USDC stablecoin (6 decimals)
+  uint8 public immutable tokenDecimals; // decimals for the token being sold
 
   // Chainlink price feeds
   AggregatorV3Interface public tokenUsdFeed; // token/USD (8 decimals)
@@ -140,8 +141,10 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     // Enforce expected 8-decimal price feeds
     require(tokenUsdFeed.decimals() == 8, "token feed decimals");
     require(ethUsdFeed.decimals() == 8, "eth feed decimals");
-    // Enforce token decimals assumptions
-    require(IERC20Metadata(address(token_)).decimals() == 18, "token decimals");
+    // Read and validate token decimals (allow up to 18 decimals like Solana)
+    uint8 tokenDec = IERC20Metadata(address(token_)).decimals();
+    require(tokenDec <= 18, "token decimals");
+    tokenDecimals = tokenDec;
     require(IERC20Metadata(address(usdc_)).decimals() == 6, "usdc decimals");
   }
 
@@ -220,7 +223,8 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     require(discountBps <= 2_500, "disc");
 
     uint256 priceUsdPerToken = _readTokenUsdPrice(); // 8d
-    uint256 totalUsd = _mulDiv(tokenAmount, priceUsdPerToken, 1e18); // 8d
+    uint256 tokenDecimalsFactor = 10 ** tokenDecimals;
+    uint256 totalUsd = _mulDiv(tokenAmount, priceUsdPerToken, tokenDecimalsFactor); // 8d
     totalUsd = (totalUsd * (10_000 - discountBps)) / 10_000; // apply discount
     require(totalUsd >= minUsdAmount, "min $5");
 
@@ -289,7 +293,8 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
   function totalUsdForOffer(uint256 offerId) public view returns (uint256) {
     Offer storage o = offers[offerId];
     require(o.beneficiary != address(0), "no offer");
-    uint256 totalUsd = _mulDiv(o.tokenAmount, o.priceUsdPerToken, 1e18); // 8d
+    uint256 tokenDecimalsFactor = 10 ** tokenDecimals;
+    uint256 totalUsd = _mulDiv(o.tokenAmount, o.priceUsdPerToken, tokenDecimalsFactor); // 8d
     totalUsd = (totalUsd * (10_000 - o.discountBps)) / 10_000; // 8d
     return totalUsd;
   }

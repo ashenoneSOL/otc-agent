@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     console.error("[Cron API] No CRON_SECRET configured in production");
     return NextResponse.json(
       { error: "Server configuration error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 
@@ -54,129 +54,105 @@ export async function GET(request: NextRequest) {
   if (!OTC_ADDRESS) {
     return NextResponse.json(
       { error: "Missing configuration" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 
-  try {
-    const chain = getChain();
-    const publicClient = createPublicClient({ chain, transport: http() });
-    const abi = otcArtifact.abi as Abi;
+  const chain = getChain();
+  const publicClient = createPublicClient({ chain, transport: http() });
+  const abi = otcArtifact.abi as Abi;
 
-    // Enumerate all offers via nextOfferId
-    const nextOfferId = (await publicClient.readContract({
+  // Enumerate all offers via nextOfferId
+  const nextOfferId = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi,
+    functionName: "nextOfferId",
+    args: [],
+  } as any)) as bigint;
+
+  const now = Math.floor(Date.now() / 1000);
+  const maturedOffers: bigint[] = [];
+
+  for (let i = 1n; i < nextOfferId; i++) {
+    const offer = (await publicClient.readContract({
       address: OTC_ADDRESS,
       abi,
-      functionName: "nextOfferId",
-      args: [],
-    } as any)) as bigint;
+      functionName: "offers",
+      args: [i],
+    } as any)) as any;
 
-    const now = Math.floor(Date.now() / 1000);
-    const maturedOffers: bigint[] = [];
+    // Matured = paid, not fulfilled, not cancelled, and unlockTime passed
+    if (
+      offer?.beneficiary &&
+      offer.paid &&
+      !offer.fulfilled &&
+      !offer.cancelled &&
+      Number(offer.unlockTime) > 0 &&
+      Number(offer.unlockTime) <= now
+    ) {
+      maturedOffers.push(i);
+    }
+  }
 
-    for (let i = 1n; i < nextOfferId; i++) {
-      const offer = (await publicClient.readContract({
+  const result: {
+    maturedOffers: string[];
+    claimedOffers: string[];
+    failedOffers: { id: string; error: string }[];
+    txHash?: string;
+  } = {
+    maturedOffers: maturedOffers.map(String),
+    claimedOffers: [],
+    failedOffers: [],
+  };
+
+  // Execute autoClaim as approver if configured and there are matured offers
+  if (maturedOffers.length > 0) {
+    if (!APPROVER_PRIVATE_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Missing APPROVER_PRIVATE_KEY",
+          maturedOffers: result.maturedOffers,
+          message: "Found matured offers but cannot claim without approver key",
+        },
+        { status: 500 }
+      );
+    }
+
+    const account = privateKeyToAccount(APPROVER_PRIVATE_KEY);
+    const walletClient = createWalletClient({
+      account,
+      chain,
+      transport: http(),
+    });
+
+    // Chunk to avoid gas issues (e.g., 50 per tx)
+    const chunkSize = 50;
+    const chunks: bigint[][] = [];
+    for (let i = 0; i < maturedOffers.length; i += chunkSize) {
+      chunks.push(maturedOffers.slice(i, i + chunkSize));
+    }
+
+    for (const chunk of chunks) {
+      const hash = await walletClient.writeContract({
         address: OTC_ADDRESS,
         abi,
-        functionName: "offers",
-        args: [i],
-      } as any)) as any;
-
-      // Matured = paid, not fulfilled, not cancelled, and unlockTime passed
-      if (
-        offer?.beneficiary &&
-        offer.paid &&
-        !offer.fulfilled &&
-        !offer.cancelled &&
-        Number(offer.unlockTime) > 0 &&
-        Number(offer.unlockTime) <= now
-      ) {
-        maturedOffers.push(i);
-      }
-    }
-
-    const result: {
-      maturedOffers: string[];
-      claimedOffers: string[];
-      failedOffers: { id: string; error: string }[];
-      txHash?: string;
-    } = {
-      maturedOffers: maturedOffers.map(String),
-      claimedOffers: [],
-      failedOffers: [],
-    };
-
-    // Execute autoClaim as approver if configured and there are matured offers
-    if (maturedOffers.length > 0) {
-      if (!APPROVER_PRIVATE_KEY) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Missing APPROVER_PRIVATE_KEY",
-            maturedOffers: result.maturedOffers,
-            message:
-              "Found matured offers but cannot claim without approver key",
-          },
-          { status: 500 },
-        );
-      }
-
-      const account = privateKeyToAccount(APPROVER_PRIVATE_KEY);
-      const walletClient = createWalletClient({
+        functionName: "autoClaim",
+        args: [chunk],
         account,
-        chain,
-        transport: http(),
-      });
-
-      // Chunk to avoid gas issues (e.g., 50 per tx)
-      const chunkSize = 50;
-      const chunks: bigint[][] = [];
-      for (let i = 0; i < maturedOffers.length; i += chunkSize) {
-        chunks.push(maturedOffers.slice(i, i + chunkSize));
-      }
-
-      for (const chunk of chunks) {
-        try {
-          const hash = await walletClient.writeContract({
-            address: OTC_ADDRESS,
-            abi,
-            functionName: "autoClaim",
-            args: [chunk],
-            account,
-          } as any);
-          // wait for 1 confirmation
-          await publicClient.waitForTransactionReceipt({ hash });
-          result.txHash = hash;
-          result.claimedOffers.push(...chunk.map(String));
-        } catch (e: any) {
-          result.failedOffers.push({
-            id: chunk.map(String).join(","),
-            error: e?.message || String(e),
-          });
-        }
-      }
+      } as any);
+      // wait for 1 confirmation
+      await publicClient.waitForTransactionReceipt({ hash });
+      result.txHash = hash;
+      result.claimedOffers.push(...chunk.map(String));
     }
-
-    return NextResponse.json({
-      success: true,
-      timestamp: new Date().toISOString(),
-      ...result,
-    });
-  } catch (error) {
-    console.error("[Cron API] Error checking matured deals:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to check matured deals",
-        details:
-          process.env.NODE_ENV === "production"
-            ? "Internal server error"
-            : error instanceof Error
-              ? error.message
-              : String(error),
-      },
-      { status: 500 },
-    );
   }
+
+  return NextResponse.json({
+    success: true,
+    timestamp: new Date().toISOString(),
+    ...result,
+  });
 }
 
 // Also support POST for some cron services

@@ -25,6 +25,7 @@ interface DealCompletionProps {
 export function DealCompletion({ quote }: DealCompletionProps) {
   const router = useRouter();
   const [shareCount, setShareCount] = useState(0);
+  const [shareImageUrl, setShareImageUrl] = useState<string | null>(null);
 
   // Calculate discount-derived metrics
   const discountPercent = quote.discountBps / 100;
@@ -46,105 +47,97 @@ export function DealCompletion({ quote }: DealCompletionProps) {
   }, []);
 
   const recordDealCompletion = async () => {
-    try {
-      const response = await fetch("/api/deal-completion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "complete",
-          quoteId: quote.quoteId,
-          tokenAmount: quote.tokenAmount,
-          paymentCurrency: quote.paymentCurrency,
-          transactionHash: quote.transactionHash || "pending",
-          blockNumber: undefined, // Add if available
-          offerId: undefined, // Add if available
-        }),
-      });
+    const response = await fetch("/api/deal-completion", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "complete",
+        quoteId: quote.quoteId,
+        tokenAmount: quote.tokenAmount,
+        paymentCurrency: quote.paymentCurrency,
+        transactionHash: quote.transactionHash || "pending",
+        blockNumber: undefined, // Add if available
+        offerId: undefined, // Add if available
+      }),
+    });
 
-      if (!response.ok) {
-        throw new Error("Failed to record deal completion");
-      }
-    } catch (error) {
-      console.error("Failed to record deal completion:", error);
+    if (!response.ok) {
+      throw new Error("Failed to record deal completion");
     }
   };
 
   const generateShareImage = async () => {
-    try {
-      await createDealShareImage({
-        tokenAmount: parseFloat(quote.tokenAmount),
-        discountBps: quote.discountBps,
-        lockupMonths: quote.lockupMonths,
-        paymentCurrency: quote.paymentCurrency as "ETH" | "USDC",
-      });
-    } catch (error) {
-      console.error("Failed to generate share image:", error);
-    }
+    const { dataUrl } = await createDealShareImage({
+      tokenAmount: parseFloat(quote.tokenAmount),
+      discountBps: quote.discountBps,
+      lockupMonths: quote.lockupMonths,
+      paymentCurrency: quote.paymentCurrency as "ETH" | "USDC",
+    });
+    setShareImageUrl(dataUrl);
   };
 
   const shareToTwitter = async () => {
-    try {
-      // Generate fresh share image
-      const { file } = await createDealShareImage({
-        tokenAmount: parseFloat(quote.tokenAmount),
-        discountBps: quote.discountBps,
-        lockupMonths: quote.lockupMonths,
-        paymentCurrency: quote.paymentCurrency as "ETH" | "USDC",
-      });
+    // Generate fresh share image
+    const { file } = await createDealShareImage({
+      tokenAmount: parseFloat(quote.tokenAmount),
+      discountBps: quote.discountBps,
+      lockupMonths: quote.lockupMonths,
+      paymentCurrency: quote.paymentCurrency as "ETH" | "USDC",
+    });
 
-      const savingsText =
-        quote.discountUsd > 0 ? `$${quote.discountUsd.toFixed(2)}` : "TBD";
-      const roiText = roi > 0 ? `${roi.toFixed(1)}%` : "TBD";
+    const savingsText =
+      quote.discountUsd > 0 ? `$${quote.discountUsd.toFixed(2)}` : "TBD";
+    const roiText = roi > 0 ? `${roi.toFixed(1)}%` : "TBD";
 
-      const text = `Just secured ${parseFloat(quote.tokenAmount).toLocaleString()} ElizaOS at ${(quote.discountBps / 100).toFixed(0)}% discount on ElizaOS OTC Desk!
+    const text = `Just secured ${parseFloat(quote.tokenAmount).toLocaleString()} ElizaOS at ${(quote.discountBps / 100).toFixed(0)}% discount on ElizaOS OTC Desk!
 
 💰 Saved: ${savingsText}
 ⏱️ Lockup: ${quote.lockupMonths} months
 💎 ROI: ${roiText}`;
 
-      // Try native share first
-      if (
-        typeof navigator !== "undefined" &&
-        (navigator as any).canShare &&
-        (navigator as any).canShare({ files: [file] })
-      ) {
-        await (navigator as any).share({ text, files: [file] });
-      } else {
-        // Fallback to Twitter intent
-        const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(window.location.href)}`;
-        window.open(tweetUrl, "_blank");
-      }
-
-      // Track share
-      await fetch("/api/deal-completion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "share",
-          quoteId: quote.quoteId,
-          platform: "twitter",
-        }),
-      });
-      setShareCount(shareCount + 1);
-    } catch (error) {
-      console.error("Failed to share:", error);
+    // Try native share first
+    if (
+      typeof navigator !== "undefined" &&
+      (navigator as any).canShare &&
+      (navigator as any).canShare({ files: [file] })
+    ) {
+      await (navigator as any).share({ text, files: [file] });
+    } else {
+      // Fallback to Twitter intent
+      const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(window.location.href)}`;
+      window.open(tweetUrl, "_blank");
     }
+
+    // Track share
+    const response = await fetch("/api/deal-completion", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "share",
+        quoteId: quote.quoteId,
+        platform: "twitter",
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error("Failed to track share");
+    }
+    
+    setShareCount(shareCount + 1);
   };
 
-  const downloadImage = () => {
-    createDealShareImage({
+  const downloadImage = async () => {
+    const { dataUrl } = await createDealShareImage({
       tokenAmount: parseFloat(quote.tokenAmount),
       discountBps: quote.discountBps,
       lockupMonths: quote.lockupMonths,
       paymentCurrency: quote.paymentCurrency as "ETH" | "USDC",
-    })
-      .then(({ dataUrl }) => {
-        const a = document.createElement("a");
-        a.href = dataUrl;
-        a.download = `eliza-deal-${quote.quoteId}.jpg`;
-        a.click();
-      })
-      .catch(console.error);
+    });
+    
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = `eliza-deal-${quote.quoteId}.jpg`;
+    a.click();
   };
 
   const negotiateNewDeal = () => {
@@ -154,9 +147,9 @@ export function DealCompletion({ quote }: DealCompletionProps) {
   return (
     <div
       data-testid="deal-completion"
-      className="min-h-screen bg-gradient-to-b from-zinc-900 to-black flex items-center justify-center p-4"
+      className="bg-gradient-to-b from-zinc-900 to-black py-8 px-4"
     >
-      <div className="max-w-4xl w-full">
+      <div className="max-w-4xl w-full mx-auto">
         {/* Success Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-green-500/20 rounded-full mb-4">
@@ -189,6 +182,57 @@ export function DealCompletion({ quote }: DealCompletionProps) {
             </a>
           )}
         </div>
+
+        {/* Share Card Preview */}
+        {shareImageUrl && (
+          <div className="p-6 mb-6">
+            <div className="mb-4 rounded-lg overflow-hidden">
+              <img
+                src={shareImageUrl}
+                alt="Share card preview"
+                className="w-full h-auto"
+              />
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                onClick={shareToTwitter}
+                className="ml-auto flex items-center gap-2 !px-4 !py-2"
+                color="blue"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" />
+                </svg>
+                Share on X
+              </Button>
+
+              <Button
+                onClick={downloadImage}
+                className="flex items-center gap-2 border border-zinc-300 dark:border-zinc-700 bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 !px-4 !py-2"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
+                Download Image
+              </Button>
+
+              {shareCount > 0 && (
+                <span className="text-zinc-400 text-sm self-center ml-2">
+                  Shared {shareCount} time{shareCount > 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* P&L Card Preview */}
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6 mb-6">
@@ -295,62 +339,6 @@ export function DealCompletion({ quote }: DealCompletionProps) {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Share Actions */}
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">
-            Share Your Success
-          </h3>
-
-          <div className="flex flex-wrap gap-3">
-            <Button
-              onClick={shareToTwitter}
-              className="flex items-center gap-2"
-              color="blue"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" />
-              </svg>
-              Share on X
-            </Button>
-
-            <Button
-              onClick={downloadImage}
-              className="flex items-center gap-2 border border-zinc-300 dark:border-zinc-700 bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                />
-              </svg>
-              Download Deal Card
-            </Button>
-
-            {shareCount > 0 && (
-              <span className="text-zinc-400 text-sm self-center ml-2">
-                Shared {shareCount} time{shareCount > 1 ? "s" : ""}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Next Actions */}
-        <div className="mt-8 text-center">
-          <Button onClick={negotiateNewDeal} className="px-8 py-3 text-lg">
-            Negotiate Another Deal
-          </Button>
-          <p className="text-zinc-500 text-sm mt-4">
-            Ready for your next opportunity? Let&apos;s negotiate!
-          </p>
         </div>
       </div>
     </div>

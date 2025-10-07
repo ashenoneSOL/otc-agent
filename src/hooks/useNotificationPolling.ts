@@ -43,73 +43,61 @@ export function useNotificationPolling({
   const fetchNotifications = useCallback(async () => {
     if (!entityId || !enabled) return;
 
-    try {
-      setIsPolling(true);
-      setError(null);
+    setIsPolling(true);
+    setError(null);
 
-      const params = new URLSearchParams({
-        entityId,
-        ...(lastPollTimeRef.current && { since: lastPollTimeRef.current }),
+    const params = new URLSearchParams({
+      entityId,
+      ...(lastPollTimeRef.current && { since: lastPollTimeRef.current }),
+    });
+
+    const response = await fetch(`/api/notifications?${params}`);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch notifications: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.notifications && data.notifications.length > 0) {
+      setNotifications((prev) => {
+        // Merge new notifications, avoiding duplicates
+        const existingIds = new Set(prev.map((n) => n.id));
+        const newNotifications = data.notifications.filter(
+          (n: Notification) => !existingIds.has(n.id)
+        );
+        return [...prev, ...newNotifications];
       });
 
-      const response = await fetch(`/api/notifications?${params}`);
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch notifications: ${response.statusText}`,
-        );
+      // Play a notification sound for new notifications
+      if (data.notifications.some((n: Notification) => !n.read)) {
+        playNotificationSound();
       }
-
-      const data = await response.json();
-
-      if (data.notifications && data.notifications.length > 0) {
-        setNotifications((prev) => {
-          // Merge new notifications, avoiding duplicates
-          const existingIds = new Set(prev.map((n) => n.id));
-          const newNotifications = data.notifications.filter(
-            (n: Notification) => !existingIds.has(n.id),
-          );
-          return [...prev, ...newNotifications];
-        });
-
-        // Play a notification sound for new notifications
-        if (data.notifications.some((n: Notification) => !n.read)) {
-          playNotificationSound();
-        }
-      }
-
-      lastPollTimeRef.current = data.timestamp;
-    } catch (err) {
-      console.error("Error polling notifications:", err);
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setIsPolling(false);
     }
+
+    lastPollTimeRef.current = data.timestamp;
+    setIsPolling(false);
   }, [entityId, enabled]);
 
   const markAsRead = useCallback(
     async (notificationId: string) => {
       if (!entityId) return;
 
-      try {
-        const response = await fetch("/api/notifications", {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ entityId, notificationId }),
-        });
+      const response = await fetch("/api/notifications", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ entityId, notificationId }),
+      });
 
-        if (response.ok) {
-          setNotifications((prev) =>
-            prev.filter((n) => n.id !== notificationId),
-          );
-        }
-      } catch (err) {
-        console.error("Error marking notification as read:", err);
+      if (!response.ok) {
+        throw new Error("Failed to mark notification as read");
       }
+      
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
     },
-    [entityId],
+    [entityId]
   );
 
   const clearAll = useCallback(() => {
@@ -168,29 +156,24 @@ export function useNotificationPolling({
 
 // Helper function to play notification sound
 function playNotificationSound() {
-  try {
-    // Create a simple beep sound using Web Audio API
-    const audioContext = new (window.AudioContext ||
-      (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
+  // Create a simple beep sound using Web Audio API
+  const audioContext = new (window.AudioContext ||
+    (window as any).webkitAudioContext)();
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
 
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
 
-    oscillator.frequency.value = 800; // Frequency in Hz
-    oscillator.type = "sine";
+  oscillator.frequency.value = 800; // Frequency in Hz
+  oscillator.type = "sine";
 
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(
-      0.01,
-      audioContext.currentTime + 0.1,
-    );
+  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(
+    0.01,
+    audioContext.currentTime + 0.1
+  );
 
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.1);
-  } catch (err) {
-    // Fail silently if audio is not supported or blocked
-    console.debug("Could not play notification sound:", err);
-  }
+  oscillator.start(audioContext.currentTime);
+  oscillator.stop(audioContext.currentTime + 0.1);
 }

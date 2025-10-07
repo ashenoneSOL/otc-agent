@@ -23,667 +23,536 @@ function getChain() {
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    // Resolve OTC address (env first, then devnet file fallback)
-    const resolveOtcAddress = async (): Promise<Address | undefined> => {
-      const envAddr = process.env.NEXT_PUBLIC_OTC_ADDRESS as
-        | Address
-        | undefined;
-      if (envAddr) return envAddr;
-      try {
-        const deployed = path.join(
-          process.cwd(),
-          "contracts/ignition/deployments/chain-31337/deployed_addresses.json",
-        );
-        const raw = await fs.readFile(deployed, "utf8");
-        const json = JSON.parse(raw);
-        const addr =
-          (json?.["OTCModule#OTC"] as Address | undefined) ||
-          (json?.["OTCDeskModule#OTC"] as Address | undefined) ||
-          (json?.["ElizaOTCModule#ElizaOTC"] as Address | undefined) ||
-          (json?.["OTCModule#desk"] as Address | undefined);
-        return addr;
-      } catch {
-        return undefined;
-      }
+  // Resolve OTC address (env first, then devnet file fallback)
+  const resolveOtcAddress = async (): Promise<Address> => {
+    const envAddr = process.env.NEXT_PUBLIC_OTC_ADDRESS as Address | undefined;
+    if (envAddr) return envAddr;
+    
+    const deployed = path.join(
+      process.cwd(),
+      "contracts/ignition/deployments/chain-31337/deployed_addresses.json",
+    );
+    const raw = await fs.readFile(deployed, "utf8");
+    const json = JSON.parse(raw);
+    const addr =
+      (json["OTCModule#OTC"] as Address) ||
+      (json["OTCDeskModule#OTC"] as Address) ||
+      (json["ElizaOTCModule#ElizaOTC"] as Address) ||
+      (json["OTCModule#desk"] as Address);
+    if (!addr) throw new Error("No OTC address configured");
+    return addr;
+  };
+
+  const OTC_ADDRESS = await resolveOtcAddress();
+  const RAW_PK = process.env.APPROVER_PRIVATE_KEY as string | undefined;
+  const APPROVER_PRIVATE_KEY =
+    RAW_PK && /^0x[0-9a-fA-F]{64}$/.test(RAW_PK)
+      ? (RAW_PK as `0x${string}`)
+      : undefined;
+  if (RAW_PK && !APPROVER_PRIVATE_KEY) {
+    console.warn(
+      "[Approve API] Ignoring invalid APPROVER_PRIVATE_KEY format. Falling back to impersonation.",
+    );
+  }
+
+  // Parse body
+  const contentType = request.headers.get("content-type") || "";
+  let offerId: string | number | bigint;
+  let chainType: string | undefined;
+  let offerAddress: string | undefined;
+  
+  if (contentType.includes("application/json")) {
+    const body = await request.json();
+    offerId = body.offerId;
+    chainType = body.chain;
+    offerAddress = body.offerAddress;
+  } else if (contentType.includes("application/x-www-form-urlencoded")) {
+    const form = await request.formData();
+    const v = form.get("offerId");
+    if (!v) throw new Error("offerId required in form data");
+    offerId = String(v);
+  } else {
+    const { searchParams } = new URL(request.url);
+    const v = searchParams.get("offerId");
+    if (!v) throw new Error("offerId required in query params");
+    offerId = v;
+  }
+
+  console.log("[Approve API] Approving offer:", offerId, "chain:", chainType);
+
+  // Handle Solana approval
+  if (chainType === "solana") {
+    if (!offerAddress) throw new Error("offerAddress required for Solana");
+    console.log("[Approve API] Processing Solana approval for offer:", offerAddress);
+    
+    // Import Anchor and Solana libs dynamically
+    const anchor = await import("@coral-xyz/anchor");
+    const { Connection, PublicKey, Keypair } = await import("@solana/web3.js");
+    
+    const SOLANA_RPC = process.env.NEXT_PUBLIC_SOLANA_RPC || "http://127.0.0.1:8899";
+    const SOLANA_DESK = process.env.NEXT_PUBLIC_SOLANA_DESK;
+    
+    if (!SOLANA_DESK) throw new Error("SOLANA_DESK not configured");
+    
+    const connection = new Connection(SOLANA_RPC, "confirmed");
+    
+    // Load owner/approver keypair from id.json
+    const idlPath = path.join(process.cwd(), "solana/otc-program/target/idl/otc.json");
+    const keypairPath = path.join(process.cwd(), "solana/otc-program/id.json");
+    const idl = JSON.parse(await fs.readFile(idlPath, "utf8"));
+    const keypairData = JSON.parse(await fs.readFile(keypairPath, "utf8"));
+    const approverKeypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
+    
+    // Create provider with the approver keypair
+    const wallet = {
+      publicKey: approverKeypair.publicKey,
+      signTransaction: async (tx: any) => {
+        tx.partialSign(approverKeypair);
+        return tx;
+      },
+      signAllTransactions: async (txs: any[]) => {
+        txs.forEach(tx => tx.partialSign(approverKeypair));
+        return txs;
+      },
     };
+    
+    const provider = new anchor.AnchorProvider(
+      connection,
+      wallet as any,
+      { commitment: "confirmed" }
+    );
+    anchor.setProvider(provider);
+    
+    const program = new (anchor as any).Program(idl, provider);
+    
+    // Approve the offer
+    const desk = new PublicKey(SOLANA_DESK);
+    const offer = new PublicKey(offerAddress);
+    
+    const tx = await program.methods
+      .approveOffer(new (anchor as any).BN(offerId))
+      .accounts({
+        desk,
+        offer,
+        approver: approverKeypair.publicKey,
+      })
+      .signers([approverKeypair])
+      .rpc();
+    
+    console.log("[Approve API] ✅ Solana offer approved:", tx);
+    
+    return NextResponse.json({
+      success: true,
+      approved: true,
+      chain: "solana",
+      offerAddress,
+      approvalTx: tx,
+    });
+  }
 
-    const OTC_ADDRESS = await resolveOtcAddress();
-    const RAW_PK = process.env.APPROVER_PRIVATE_KEY as string | undefined;
-    const APPROVER_PRIVATE_KEY =
-      RAW_PK && /^0x[0-9a-fA-F]{64}$/.test(RAW_PK)
-        ? (RAW_PK as `0x${string}`)
-        : undefined;
-    if (RAW_PK && !APPROVER_PRIVATE_KEY) {
-      console.warn(
-        "[Approve API] Ignoring invalid APPROVER_PRIVATE_KEY format. Falling back to impersonation.",
-      );
-    }
+  const chain = getChain();
+  const publicClient = createPublicClient({ chain, transport: http() });
+  const abi = otcArtifact.abi as Abi;
 
-    // Robust body parsing (accept JSON, form, or query param fallback)
-    let offerId: string | number | bigint | undefined;
-    let chainType: string | undefined;
-    let offerAddress: string | undefined;
-    try {
-      const contentType = request.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const raw = await request.text();
-        if (raw && raw.trim().length > 0) {
-          const parsed = JSON.parse(raw);
-          offerId = parsed?.offerId;
-          chainType = parsed?.chain;
-          offerAddress = parsed?.offerAddress;
-        }
-      } else if (contentType.includes("application/x-www-form-urlencoded")) {
-        const form = await request.formData();
-        const v = form.get("offerId");
-        offerId = typeof v === "string" ? v : undefined;
-      }
-    } catch (e) {
-      console.warn("[Approve API] Failed to parse body as JSON/form:", e);
-    }
-    if (!offerId) {
-      const { searchParams } = new URL(request.url);
-      const v = searchParams.get("offerId");
-      offerId = v ?? offerId;
-    }
-
-    if (!offerId) {
-      return NextResponse.json({ error: "offerId required" }, { status: 400 });
-    }
-
-    console.log("[Approve API] Approving offer:", offerId, "chain:", chainType);
-
-    // Handle Solana approval
-    if (chainType === "solana" && offerAddress) {
-      console.log("[Approve API] Processing Solana approval for offer:", offerAddress);
-      
-      try {
-        // Import Anchor and Solana libs dynamically
-        const anchor = await import("@coral-xyz/anchor");
-        const { Connection, PublicKey, Keypair } = await import("@solana/web3.js");
-        
-        const SOLANA_RPC = process.env.NEXT_PUBLIC_SOLANA_RPC || "http://127.0.0.1:8899";
-        const SOLANA_DESK = process.env.NEXT_PUBLIC_SOLANA_DESK;
-        
-        if (!SOLANA_DESK) {
-          throw new Error("SOLANA_DESK not configured");
-        }
-        
-        const connection = new Connection(SOLANA_RPC, "confirmed");
-        
-        // Load owner/approver keypair from id.json
-        const idlPath = path.join(process.cwd(), "solana/otc-program/target/idl/otc.json");
-        const keypairPath = path.join(process.cwd(), "solana/otc-program/id.json");
-        const idl = JSON.parse(await fs.readFile(idlPath, "utf8"));
-        const keypairData = JSON.parse(await fs.readFile(keypairPath, "utf8"));
-        const approverKeypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
-        
-        // Create provider with the approver keypair
-        const wallet = {
-          publicKey: approverKeypair.publicKey,
-          signTransaction: async (tx: any) => {
-            tx.partialSign(approverKeypair);
-            return tx;
-          },
-          signAllTransactions: async (txs: any[]) => {
-            txs.forEach(tx => tx.partialSign(approverKeypair));
-            return txs;
-          },
-        };
-        
-        const provider = new anchor.AnchorProvider(
-          connection,
-          wallet as any,
-          { commitment: "confirmed" }
-        );
-        anchor.setProvider(provider);
-        
-        const programId = new PublicKey(idl.address);
-        const program = new (anchor as any).Program(idl, provider);
-        
-        // Approve the offer
-        const desk = new PublicKey(SOLANA_DESK);
-        const offer = new PublicKey(offerAddress);
-        
-        const tx = await program.methods
-          .approveOffer(new (anchor as any).BN(offerId))
-          .accounts({
-            desk,
-            offer,
-            approver: approverKeypair.publicKey,
-          })
-          .signers([approverKeypair])
-          .rpc();
-        
-        console.log("[Approve API] ✅ Solana offer approved:", tx);
-        
-        return NextResponse.json({
-          success: true,
-          approved: true,
-          chain: "solana",
-          offerAddress,
-          approvalTx: tx,
-        });
-      } catch (error: any) {
-        console.error("[Approve API] Solana approval failed:", error);
-        return NextResponse.json(
-          { error: `Solana approval failed: ${error.message}` },
-          { status: 500 }
-        );
-      }
-    }
-
-    const chain = getChain();
-    const publicClient = createPublicClient({ chain, transport: http() });
-    if (!OTC_ADDRESS) {
-      console.error("[Approve API] Missing OTC address");
-      return NextResponse.json(
-        { error: "OTC address not configured" },
-        { status: 500 },
-      );
-    }
-
-    // Resolve approver account: prefer PK; else use testWalletPrivateKey from deployment; else impersonate
-    let account: any;
-    let walletClient: any;
-    let approverAddr: Address | undefined;
-    if (APPROVER_PRIVATE_KEY) {
-      try {
-        account = privateKeyToAccount(APPROVER_PRIVATE_KEY);
-        walletClient = createWalletClient({
-          account,
-          chain,
-          transport: http(),
-        });
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (_e) {
-        console.warn(
-          "[Approve API] Invalid APPROVER_PRIVATE_KEY. Will try test wallet.",
-        );
-      }
-    }
-    if (!walletClient) {
-      try {
-        const deploymentInfoPath = path.join(
-          process.cwd(),
-          "contracts/deployments/eliza-otc-deployment.json",
-        );
-        const raw = await fs.readFile(deploymentInfoPath, "utf8");
-        const json = JSON.parse(raw);
-        const testPk = json?.testWalletPrivateKey as `0x${string}` | undefined;
-        if (testPk && /^0x[0-9a-fA-F]{64}$/.test(testPk)) {
-          account = privateKeyToAccount(testPk);
-          walletClient = createWalletClient({
-            account,
-            chain,
-            transport: http(),
-          });
-          approverAddr = account.address;
-          console.log(
-            "[Approve API] Using testWalletPrivateKey from deployment for approvals",
-            { address: approverAddr }
-          );
-        }
-      } catch (e) {
-        console.error("[Approve API] Failed to load testWalletPrivateKey:", e);
-      }
-    }
-    if (!walletClient) {
-      try {
-        const deploymentInfoPath = path.join(
-          process.cwd(),
-          "contracts/deployments/eliza-otc-deployment.json",
-        );
-        const raw = await fs.readFile(deploymentInfoPath, "utf8");
-        const json = JSON.parse(raw);
-        approverAddr = json?.accounts?.approver as Address | undefined;
-        if (!approverAddr) throw new Error("approver address not found");
-        // Impersonate approver on hardhat
-        await fetch("http://127.0.0.1:8545", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "hardhat_impersonateAccount",
-            params: [approverAddr],
-            id: 1,
-          }),
-        });
-        account = approverAddr; // use impersonated external account
-        walletClient = createWalletClient({ chain, transport: http() });
-        console.log("[Approve API] Impersonating approver account on Hardhat", {
-          address: approverAddr,
-        });
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (_e) {
-        console.error(
-          "[Approve API] Missing approver PK and cannot impersonate",
-        );
-        return NextResponse.json(
-          { error: "Approver account not configured" },
-          { status: 500 },
-        );
-      }
-    }
-    const abi = otcArtifact.abi as Abi;
-
-    // Ensure single approver mode (dev convenience)
-    try {
-      const currentRequired = (await publicClient.readContract({
-        address: OTC_ADDRESS,
-        abi,
-        functionName: "requiredApprovals",
-        args: [],
-      } as any)) as bigint;
-
+  // Resolve approver account: prefer PK; else use testWalletPrivateKey from deployment; else impersonate
+  let account: any;
+  let walletClient: any;
+  let approverAddr: Address;
+  
+  if (APPROVER_PRIVATE_KEY) {
+    account = privateKeyToAccount(APPROVER_PRIVATE_KEY);
+    walletClient = createWalletClient({
+      account,
+      chain,
+      transport: http(),
+    });
+    approverAddr = account.address;
+  } else {
+    const deploymentInfoPath = path.join(
+      process.cwd(),
+      "contracts/deployments/eliza-otc-deployment.json",
+    );
+    const raw = await fs.readFile(deploymentInfoPath, "utf8");
+    const json = JSON.parse(raw);
+    const testPk = json.testWalletPrivateKey as `0x${string}` | undefined;
+    
+    if (testPk && /^0x[0-9a-fA-F]{64}$/.test(testPk)) {
+      account = privateKeyToAccount(testPk);
+      walletClient = createWalletClient({
+        account,
+        chain,
+        transport: http(),
+      });
+      approverAddr = account.address;
       console.log(
-        "[Approve API] Current required approvals:",
-        Number(currentRequired),
+        "[Approve API] Using testWalletPrivateKey from deployment for approvals",
+        { address: approverAddr }
       );
-
-      if (Number(currentRequired) !== 1) {
-        console.log("[Approve API] Setting requiredApprovals to 1...");
-        const deploymentInfoPath = path.join(
-          process.cwd(),
-          "contracts/deployments/eliza-otc-deployment.json",
-        );
-        const raw = await fs.readFile(deploymentInfoPath, "utf8");
-        const json = JSON.parse(raw);
-        const ownerAddr = json?.accounts?.owner as Address | undefined;
-
-        if (ownerAddr) {
-          await fetch("http://127.0.0.1:8545", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              jsonrpc: "2.0",
-              method: "hardhat_impersonateAccount",
-              params: [ownerAddr],
-              id: 1,
-            }),
-          });
-
-          const { request: setReq } = await publicClient.simulateContract({
-            address: OTC_ADDRESS,
-            abi,
-            functionName: "setRequiredApprovals",
-            args: [1n],
-            account: ownerAddr,
-          });
-          await createWalletClient({ chain, transport: http() }).writeContract({
-            ...setReq,
-            account: ownerAddr,
-          });
-          console.log("[Approve API] ✅ Set requiredApprovals to 1");
-        }
-      } else {
-        console.log("[Approve API] ✅ Already in single-approver mode");
-      }
-    } catch (e) {
-      console.warn("[Approve API] Failed to check/set requiredApprovals:", e);
+    } else {
+      approverAddr = json.accounts.approver as Address;
+      if (!approverAddr) throw new Error("approver address not found");
+      
+      // Impersonate approver on hardhat
+      await fetch("http://127.0.0.1:8545", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "hardhat_impersonateAccount",
+          params: [approverAddr],
+          id: 1,
+        }),
+      });
+      account = approverAddr;
+      walletClient = createWalletClient({ chain, transport: http() });
+      console.log("[Approve API] Impersonating approver account on Hardhat", {
+        address: approverAddr,
+      });
     }
+  }
 
-    // Check if already approved
-    const offerRaw = (await publicClient.readContract({
-      address: OTC_ADDRESS,
-      abi,
-      functionName: "offers",
-      args: [BigInt(offerId)],
-    } as any)) as any;
+  // Ensure single approver mode (dev convenience)
+  const currentRequired = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi,
+    functionName: "requiredApprovals",
+    args: [],
+  } as any)) as bigint;
 
-    const offer = parseOfferStruct(offerRaw);
+  console.log(
+    "[Approve API] Current required approvals:",
+    Number(currentRequired),
+  );
 
-    console.log("[Approve API] Offer state:", {
-      approved: offer.approved,
-      cancelled: offer.cancelled,
-      beneficiary: offer.beneficiary,
+  if (Number(currentRequired) !== 1) {
+    console.log("[Approve API] Setting requiredApprovals to 1...");
+    const deploymentInfoPath = path.join(
+      process.cwd(),
+      "contracts/deployments/eliza-otc-deployment.json",
+    );
+    const raw = await fs.readFile(deploymentInfoPath, "utf8");
+    const json = JSON.parse(raw);
+    const ownerAddr = json.accounts.owner as Address;
+
+    await fetch("http://127.0.0.1:8545", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "hardhat_impersonateAccount",
+        params: [ownerAddr],
+        id: 1,
+      }),
     });
 
-    if (offer.approved) {
-      console.log("[Approve API] Offer already approved");
-      return NextResponse.json({
-        success: true,
-        txHash: "already-approved",
-        alreadyApproved: true,
-      });
+    const { request: setReq } = await publicClient.simulateContract({
+      address: OTC_ADDRESS,
+      abi,
+      functionName: "setRequiredApprovals",
+      args: [1n],
+      account: ownerAddr,
+    });
+    await createWalletClient({ chain, transport: http() }).writeContract({
+      ...setReq,
+      account: ownerAddr,
+    });
+    console.log("[Approve API] ✅ Set requiredApprovals to 1");
+  } else {
+    console.log("[Approve API] ✅ Already in single-approver mode");
+  }
+
+  // Check if already approved
+  const offerRaw = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi,
+    functionName: "offers",
+    args: [BigInt(offerId)],
+  } as any)) as any;
+
+  const offer = parseOfferStruct(offerRaw);
+
+  console.log("[Approve API] Offer state:", {
+    approved: offer.approved,
+    cancelled: offer.cancelled,
+    beneficiary: offer.beneficiary,
+  });
+
+  if (offer.approved) {
+    console.log("[Approve API] Offer already approved");
+    return NextResponse.json({
+      success: true,
+      txHash: "already-approved",
+      alreadyApproved: true,
+    });
+  }
+
+  // Approve immediately
+  const accountAddr = (account.address || account) as Address;
+  
+  console.log("[Approve API] Simulating approval...", {
+    offerId,
+    account: accountAddr,
+    otcAddress: OTC_ADDRESS,
+  });
+
+  const { request: approveRequest } = await publicClient.simulateContract({
+    address: OTC_ADDRESS,
+    abi,
+    functionName: "approveOffer",
+    args: [BigInt(offerId)],
+    account: accountAddr,
+  });
+
+  console.log("[Approve API] Sending approval tx...");
+  const txHash = await walletClient.writeContract(approveRequest);
+
+  console.log("[Approve API] Waiting for confirmation...", txHash);
+  const approvalReceipt = await publicClient.waitForTransactionReceipt({
+    hash: txHash,
+  });
+
+  console.log("[Approve API] Approval receipt:", {
+    status: approvalReceipt.status,
+    blockNumber: approvalReceipt.blockNumber,
+    gasUsed: approvalReceipt.gasUsed?.toString(),
+  });
+
+  console.log(
+    "[Approve API] ✅ Offer approved:",
+    offerId,
+    "tx:",
+    txHash,
+  );
+
+  // Update quote status if we can find it
+  const runtime = await agentRuntime.getRuntime();
+  const quoteService = runtime.getService<any>("QuoteService");
+
+  if (quoteService && offer.beneficiary) {
+    const activeQuotes = await quoteService.getActiveQuotes();
+    const matchingQuote = activeQuotes.find(
+      (q: any) =>
+        q.beneficiary.toLowerCase() === offer.beneficiary.toLowerCase(),
+    );
+
+    if (matchingQuote) {
+      await quoteService.updateQuoteStatus(
+        matchingQuote.quoteId,
+        "approved",
+        {
+          offerId: String(offerId),
+          transactionHash: txHash,
+          blockNumber: Number(approvalReceipt.blockNumber),
+          rejectionReason: "",
+          approvalNote: "Approved via API",
+        },
+      );
+      console.log(
+        "[Approve API] Updated quote status:",
+        matchingQuote.quoteId,
+      );
     }
+  }
 
-    // Approve immediately
-    let txHash: `0x${string}` | undefined;
-    let approvalReceipt: any;
-    try {
-      // Get the actual account address
-      const accountAddr = (account?.address || account) as Address;
+  // If still not approved (multi-approver deployments), escalate approvals
+  let approvedOfferRaw = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi,
+    functionName: "offers",
+    args: [BigInt(offerId)],
+  } as any)) as any;
+
+  let approvedOffer = parseOfferStruct(approvedOfferRaw);
+
+  if (!approvedOffer.approved) {
+    // Load known approver and agent from deployment file
+    const deploymentInfoPath = path.join(
+      process.cwd(),
+      "contracts/deployments/eliza-otc-deployment.json",
+    );
+    const raw = await fs.readFile(deploymentInfoPath, "utf8");
+    const json = JSON.parse(raw);
+    const approver = json.accounts.approver as Address;
+    const agentAddr = json.accounts.agent as Address;
+    const candidates = [approver, agentAddr];
+
+    for (const addr of candidates) {
+      console.log("[Approve API] Attempting secondary approval by", addr);
       
-      console.log("[Approve API] Simulating approval...", {
-        offerId,
-        account: accountAddr,
-        otcAddress: OTC_ADDRESS,
+      await fetch("http://127.0.0.1:8545", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "hardhat_impersonateAccount",
+          params: [addr],
+          id: 1,
+        }),
       });
-
-      const { request: approveRequest } = await publicClient.simulateContract({
+      
+      const { request: req2 } = await publicClient.simulateContract({
         address: OTC_ADDRESS,
         abi,
         functionName: "approveOffer",
         args: [BigInt(offerId)],
-        account: accountAddr,
+        account: addr,
       });
-
-      console.log("[Approve API] Sending approval tx...");
-      txHash = await walletClient.writeContract(approveRequest);
-
-      console.log("[Approve API] Waiting for confirmation...", txHash);
-      approvalReceipt = await publicClient.waitForTransactionReceipt({
-        hash: txHash,
-      });
-
-      console.log("[Approve API] Approval receipt:", {
-        status: approvalReceipt.status,
-        blockNumber: approvalReceipt.blockNumber,
-        gasUsed: approvalReceipt.gasUsed?.toString(),
-      });
-    } catch (e: any) {
-      const msg = String(e?.message || e);
-      console.error("[Approve API] Approval error:", msg);
-      if (msg.includes("already approved")) {
-        console.warn("[Approve API] Approver already approved. Continuing.");
-      } else {
-        throw e;
-      }
+      await createWalletClient({
+        chain,
+        transport: http(),
+      }).writeContract({ ...req2, account: addr });
+      
+      // Re-read state after each attempt
+      approvedOfferRaw = (await publicClient.readContract({
+        address: OTC_ADDRESS,
+        abi,
+        functionName: "offers",
+        args: [BigInt(offerId)],
+      } as any)) as any;
+      approvedOffer = parseOfferStruct(approvedOfferRaw);
+      if (approvedOffer.approved) break;
     }
+  }
 
-    console.log(
-      "[Approve API] ✅ Offer approved:",
-      offerId,
-      "tx:",
-      txHash || "already-approved",
-    );
+  // Final verification that offer was approved
+  console.log("[Approve API] Verifying final approval state...");
 
-    // Update quote status if we can find it
-    try {
-      const runtime = await agentRuntime.getRuntime();
-      const quoteService = runtime.getService<any>("QuoteService");
+  approvedOfferRaw = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi,
+    functionName: "offers",
+    args: [BigInt(offerId)],
+  } as any)) as any;
 
-      if (quoteService && offer.beneficiary) {
-        const activeQuotes = await quoteService.getActiveQuotes();
-        const matchingQuote = activeQuotes.find(
-          (q: any) =>
-            q.beneficiary?.toLowerCase() === offer.beneficiary.toLowerCase(),
-        );
+  approvedOffer = parseOfferStruct(approvedOfferRaw);
 
-        if (matchingQuote) {
-          await quoteService.updateQuoteStatus(
-            matchingQuote.quoteId,
-            "approved",
-            {
-              offerId: String(offerId),
-              transactionHash: txHash || "already-approved",
-              blockNumber: Number(approvalReceipt?.blockNumber ?? 0),
-              rejectionReason: "",
-              approvalNote: "Approved via API",
-            },
-          );
-          console.log(
-            "[Approve API] Updated quote status:",
-            matchingQuote.quoteId,
-          );
-        }
-      }
-    } catch (quoteErr) {
-      console.warn(
-        "[Approve API] Quote update failed (non-critical):",
-        quoteErr,
-      );
-    }
+  console.log("[Approve API] Final offer state:", {
+    offerId,
+    approved: approvedOffer.approved,
+    cancelled: approvedOffer.cancelled,
+    paid: approvedOffer.paid,
+    fulfilled: approvedOffer.fulfilled,
+  });
 
-    // If still not approved (multi-approver deployments), escalate approvals
-    let approvedOfferRaw = (await publicClient.readContract({
-      address: OTC_ADDRESS,
-      abi,
-      functionName: "offers",
-      args: [BigInt(offerId)],
-    } as any)) as any;
-
-    let approvedOffer = parseOfferStruct(approvedOfferRaw);
-
-    if (!approvedOffer.approved) {
-      try {
-        // Load known approver and agent from deployment file
-        const deploymentInfoPath = path.join(
-          process.cwd(),
-          "contracts/deployments/eliza-otc-deployment.json",
-        );
-        const raw = await fs.readFile(deploymentInfoPath, "utf8");
-        const json = JSON.parse(raw);
-        const approver = json?.accounts?.approver as Address | undefined;
-        const agentAddr = json?.accounts?.agent as Address | undefined;
-        const candidates = [approver, agentAddr].filter((x): x is Address =>
-          Boolean(x),
-        );
-
-        for (const addr of candidates) {
-          if (!addr) continue;
-          console.log("[Approve API] Attempting secondary approval by", addr);
-          try {
-            await fetch("http://127.0.0.1:8545", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                jsonrpc: "2.0",
-                method: "hardhat_impersonateAccount",
-                params: [addr],
-                id: 1,
-              }),
-            });
-            // simulate + write
-            const { request: req2 } = await publicClient.simulateContract({
-              address: OTC_ADDRESS,
-              abi,
-              functionName: "approveOffer",
-              args: [BigInt(offerId)],
-              account: addr,
-            });
-            await createWalletClient({
-              chain,
-              transport: http(),
-            }).writeContract({ ...req2, account: addr });
-          } catch (e: any) {
-            const msg = String(e?.message || e);
-            if (msg.includes("already approved")) {
-              console.warn("[Approve API] Secondary approver already approved");
-            } else {
-              console.warn(
-                "[Approve API] Secondary approval attempt failed:",
-                msg,
-              );
-            }
-          }
-          // Re-read state after each attempt
-          approvedOfferRaw = (await publicClient.readContract({
-            address: OTC_ADDRESS,
-            abi,
-            functionName: "offers",
-            args: [BigInt(offerId)],
-          } as any)) as any;
-          approvedOffer = parseOfferStruct(approvedOfferRaw);
-          if (approvedOffer.approved) break;
-        }
-      } catch (e) {
-        console.warn("[Approve API] Multi-approver escalation failed:", e);
-      }
-    }
-
-    // Final verification that offer was approved
-    console.log("[Approve API] Verifying final approval state...");
-
-    approvedOfferRaw = (await publicClient.readContract({
-      address: OTC_ADDRESS,
-      abi,
-      functionName: "offers",
-      args: [BigInt(offerId)],
-    } as any)) as any;
-
-    approvedOffer = parseOfferStruct(approvedOfferRaw);
-
-    console.log("[Approve API] Final offer state:", {
-      offerId,
-      approved: approvedOffer.approved,
-      cancelled: approvedOffer.cancelled,
-      paid: approvedOffer.paid,
-      fulfilled: approvedOffer.fulfilled,
-    });
-
-    if (approvedOffer.cancelled) {
-      return NextResponse.json(
-        { error: "Offer is cancelled" },
-        { status: 400 },
-      );
-    }
-
-    if (!approvedOffer.approved) {
-      console.error(
-        "[Approve API] ❌ Offer still not approved after all attempts",
-      );
-      return NextResponse.json(
-        {
-          error: "Offer not approved",
-          details: {
-            offerId: String(offerId),
-            approvalTx: txHash,
-            offerState: {
-              approved: approvedOffer.approved,
-              cancelled: approvedOffer.cancelled,
-            },
-          },
-        },
-        { status: 400 },
-      );
-    }
-
-    // Check if approver should also fulfill
-    const requireApproverToFulfill = (await publicClient.readContract({
-      address: OTC_ADDRESS,
-      abi,
-      functionName: "requireApproverToFulfill",
-      args: [],
-    } as any)) as boolean;
-
-    console.log("[Approve API] requireApproverToFulfill:", requireApproverToFulfill);
-
-    let fulfillTxHash: `0x${string}` | undefined;
-
-    // If approver-only fulfill is enabled, backend pays immediately after approval
-    if (requireApproverToFulfill && !approvedOffer.paid) {
-      console.log("[Approve API] Auto-fulfilling offer (approver-only mode)...");
-
-      try {
-        const accountAddr = (account?.address || account) as Address;
-        
-        // Calculate required payment
-        const currency = approvedOffer.currency;
-        let valueWei: bigint | undefined;
-        
-        if (currency === 0) {
-          // ETH payment required
-          const requiredEth = (await publicClient.readContract({
-            address: OTC_ADDRESS,
-            abi,
-            functionName: "requiredEthWei",
-            args: [BigInt(offerId)],
-          } as any)) as bigint;
-          
-          valueWei = requiredEth;
-          console.log("[Approve API] Required ETH:", requiredEth.toString());
-        } else {
-          // USDC payment - need to approve first
-          const usdcAddress = (await publicClient.readContract({
-            address: OTC_ADDRESS,
-            abi,
-            functionName: "usdc",
-            args: [],
-          } as any)) as Address;
-          
-          const requiredUsdc = (await publicClient.readContract({
-            address: OTC_ADDRESS,
-            abi,
-            functionName: "requiredUsdcAmount",
-            args: [BigInt(offerId)],
-          } as any)) as bigint;
-          
-          console.log("[Approve API] Required USDC:", requiredUsdc.toString());
-          
-          // Approve USDC
-          const erc20Abi = [
-            {
-              type: "function",
-              name: "approve",
-              stateMutability: "nonpayable",
-              inputs: [
-                { name: "spender", type: "address" },
-                { name: "amount", type: "uint256" },
-              ],
-              outputs: [{ name: "", type: "bool" }],
-            },
-          ] as Abi;
-          
-          const { request: approveUsdcReq } = await publicClient.simulateContract({
-            address: usdcAddress,
-            abi: erc20Abi,
-            functionName: "approve",
-            args: [OTC_ADDRESS, requiredUsdc],
-            account: accountAddr,
-          });
-          
-          await walletClient.writeContract(approveUsdcReq);
-          console.log("[Approve API] USDC approved");
-        }
-        
-        // Fulfill offer
-        const { request: fulfillReq } = await publicClient.simulateContract({
-          address: OTC_ADDRESS,
-          abi,
-          functionName: "fulfillOffer",
-          args: [BigInt(offerId)],
-          account: accountAddr,
-          value: valueWei,
-        });
-        
-        fulfillTxHash = await walletClient.writeContract(fulfillReq);
-        console.log("[Approve API] Fulfill tx sent:", fulfillTxHash);
-        
-        await publicClient.waitForTransactionReceipt({ hash: fulfillTxHash });
-        console.log("[Approve API] ✅ Offer fulfilled automatically");
-      } catch (fulfillError) {
-        console.error("[Approve API] Auto-fulfill failed:", fulfillError);
-        // Non-critical - return approval success anyway
-      }
-    } else {
-      console.log(
-        "[Approve API] ✅ Offer approved. User must now fulfill (pay).",
-      );
-    }
-
-    // Return success
-    return NextResponse.json({
-      success: true,
-      approved: true,
-      approvalTx: txHash,
-      fulfillTx: fulfillTxHash,
-      offerId: String(offerId),
-      autoFulfilled: Boolean(fulfillTxHash),
-      message: fulfillTxHash 
-        ? "Offer approved and fulfilled automatically"
-        : "Offer approved. Please complete payment to fulfill the offer.",
-    });
-  } catch (error) {
-    console.error("[Approve API] Error:", error);
+  if (approvedOffer.cancelled) {
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : String(error),
-        details: error instanceof Error ? error.stack : undefined,
-      },
-      { status: 500 },
+      { error: "Offer is cancelled" },
+      { status: 400 },
     );
   }
+
+  if (!approvedOffer.approved) {
+    throw new Error("Offer still not approved after all attempts");
+  }
+
+  // Check if approver should also fulfill
+  const requireApproverToFulfill = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi,
+    functionName: "requireApproverToFulfill",
+    args: [],
+  } as any)) as boolean;
+
+  console.log("[Approve API] requireApproverToFulfill:", requireApproverToFulfill);
+
+  let fulfillTxHash: `0x${string}` | undefined;
+
+  // If approver-only fulfill is enabled, backend pays immediately after approval
+  if (requireApproverToFulfill && !approvedOffer.paid) {
+    console.log("[Approve API] Auto-fulfilling offer (approver-only mode)...");
+
+    const accountAddr = (account.address || account) as Address;
+    
+    // Calculate required payment
+    const currency = approvedOffer.currency;
+    let valueWei: bigint | undefined;
+    
+    if (currency === 0) {
+      // ETH payment required
+      const requiredEth = (await publicClient.readContract({
+        address: OTC_ADDRESS,
+        abi,
+        functionName: "requiredEthWei",
+        args: [BigInt(offerId)],
+      } as any)) as bigint;
+      
+      valueWei = requiredEth;
+      console.log("[Approve API] Required ETH:", requiredEth.toString());
+    } else {
+      // USDC payment - need to approve first
+      const usdcAddress = (await publicClient.readContract({
+        address: OTC_ADDRESS,
+        abi,
+        functionName: "usdc",
+        args: [],
+      } as any)) as Address;
+      
+      const requiredUsdc = (await publicClient.readContract({
+        address: OTC_ADDRESS,
+        abi,
+        functionName: "requiredUsdcAmount",
+        args: [BigInt(offerId)],
+      } as any)) as bigint;
+      
+      console.log("[Approve API] Required USDC:", requiredUsdc.toString());
+      
+      // Approve USDC
+      const erc20Abi = [
+        {
+          type: "function",
+          name: "approve",
+          stateMutability: "nonpayable",
+          inputs: [
+            { name: "spender", type: "address" },
+            { name: "amount", type: "uint256" },
+          ],
+          outputs: [{ name: "", type: "bool" }],
+        },
+      ] as Abi;
+      
+      const { request: approveUsdcReq } = await publicClient.simulateContract({
+        address: usdcAddress,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [OTC_ADDRESS, requiredUsdc],
+        account: accountAddr,
+      });
+      
+      await walletClient.writeContract(approveUsdcReq);
+      console.log("[Approve API] USDC approved");
+    }
+    
+    // Fulfill offer
+    const { request: fulfillReq } = await publicClient.simulateContract({
+      address: OTC_ADDRESS,
+      abi,
+      functionName: "fulfillOffer",
+      args: [BigInt(offerId)],
+      account: accountAddr,
+      value: valueWei,
+    });
+    
+    fulfillTxHash = await walletClient.writeContract(fulfillReq);
+    console.log("[Approve API] Fulfill tx sent:", fulfillTxHash);
+    
+    await publicClient.waitForTransactionReceipt({ hash: fulfillTxHash });
+    console.log("[Approve API] ✅ Offer fulfilled automatically");
+  } else {
+    console.log(
+      "[Approve API] ✅ Offer approved. User must now fulfill (pay).",
+    );
+  }
+
+  // Return success
+  return NextResponse.json({
+    success: true,
+    approved: true,
+    approvalTx: txHash,
+    fulfillTx: fulfillTxHash,
+    offerId: String(offerId),
+    autoFulfilled: Boolean(fulfillTxHash),
+    message: fulfillTxHash 
+      ? "Offer approved and fulfilled automatically"
+      : "Offer approved. Please complete payment to fulfill the offer.",
+  });
 }
