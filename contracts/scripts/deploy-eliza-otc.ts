@@ -85,8 +85,8 @@ async function main() {
   );
   console.log("  ✓ Limits configured");
 
-  // Enforce approver-only fulfillment by default
-  await deal.setRequireApproverToFulfill(false); // Allow users to fulfill their own offers
+  // Enable approver-only fulfillment for better UX (backend handles payment after approval)
+  await deal.setRequireApproverToFulfill(true); // Only approver can fulfill - user just creates offer
   console.log("  ✓ Approver-only fulfillment enabled");
 
   // 6. Fund OTC Contract with ElizaOS tokens
@@ -175,8 +175,9 @@ async function main() {
     NEXT_PUBLIC_OTC_ADDRESS: otcAddress,
     NEXT_PUBLIC_ELIZAOS_USD_FEED: elizaUsdAddress,
     NEXT_PUBLIC_ETH_USD_FEED: ethUsdAddress,
-    // Note: Approver is a Hardhat signer, no private key available in test environment
     APPROVER_ADDRESS: approver.address,
+    // Use agent's private key (account #1) for approvals - has approval rights in contract
+    APPROVER_PRIVATE_KEY: "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
     TEST_WALLET_ADDRESS: testWallet.address,
     TEST_WALLET_PRIVATE_KEY: testWallet.privateKey
   };

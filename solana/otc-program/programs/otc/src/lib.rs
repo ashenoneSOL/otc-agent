@@ -265,7 +265,7 @@ pub mod otc {
     pub fn approve_offer(ctx: Context<ApproveOffer>, _offer_id: u64) -> Result<()> {
         let desk = &ctx.accounts.desk;
         require!(!desk.paused, OtcError::Paused);
-        validate_offer_pda(&desk.key(), &ctx.accounts.offer.key(), ctx.accounts.offer.id)?;
+        // Removed PDA validation - now using keypairs for offers
         must_be_approver(desk, &ctx.accounts.approver.key())?;
         let offer = &mut ctx.accounts.offer;
         require!(!offer.cancelled && !offer.paid, OtcError::BadState);
@@ -278,7 +278,7 @@ pub mod otc {
     pub fn cancel_offer(ctx: Context<CancelOffer>) -> Result<()> {
         let desk = &ctx.accounts.desk;
         require!(!desk.paused, OtcError::Paused);
-        validate_offer_pda(&desk.key(), &ctx.accounts.offer.key(), ctx.accounts.offer.id)?;
+        // Removed PDA validation - now using keypairs for offers
         let offer = &mut ctx.accounts.offer;
         require!(!offer.paid && !offer.fulfilled, OtcError::BadState);
         let caller = ctx.accounts.caller.key();
@@ -298,7 +298,7 @@ pub mod otc {
     pub fn fulfill_offer_usdc(ctx: Context<FulfillOfferUsdc>, _offer_id: u64) -> Result<()> {
         let desk = &mut ctx.accounts.desk;
         require!(!desk.paused, OtcError::Paused);
-        validate_offer_pda(&desk.key(), &ctx.accounts.offer.key(), ctx.accounts.offer.id)?;
+        // Removed PDA validation - now using keypairs for offers
         let offer = &mut ctx.accounts.offer;
         require!(offer.currency == 1, OtcError::BadState);
         require!(offer.approved, OtcError::NotApproved);
@@ -329,7 +329,7 @@ pub mod otc {
         let desk_key = desk_ai.key();
         let desk = &mut ctx.accounts.desk;
         require!(!desk.paused, OtcError::Paused);
-        validate_offer_pda(&desk.key(), &ctx.accounts.offer.key(), ctx.accounts.offer.id)?;
+        // Removed PDA validation - now using keypairs for offers
         let offer = &mut ctx.accounts.offer;
         require!(offer.currency == 0, OtcError::BadState);
         require!(offer.approved, OtcError::NotApproved);
@@ -366,7 +366,7 @@ pub mod otc {
         let desk_owner = ctx.accounts.desk.owner;
         let (expected, bump) = Pubkey::find_program_address(&[b"desk", desk_owner.as_ref()], &crate::ID);
         require!(expected == desk_key, OtcError::NotOwner);
-        validate_offer_pda(&desk_key, &ctx.accounts.offer.key(), ctx.accounts.offer.id)?;
+        // Removed PDA validation - now using keypairs for offers
         let bump_bytes = [bump];
         let seeds: [&[u8]; 3] = [b"desk", desk_owner.as_ref(), &bump_bytes];
         let signer_seeds: &[&[&[u8]]] = &[&seeds];
@@ -490,7 +490,6 @@ pub struct DepositTokens<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-#[cfg(feature = "idl-build")]
 #[derive(Accounts)]
 pub struct CreateOffer<'info> {
     #[account(mut)]
@@ -499,29 +498,7 @@ pub struct CreateOffer<'info> {
     pub desk_token_treasury: Account<'info, TokenAccount>,
     #[account(mut)]
     pub beneficiary: Signer<'info>,
-    // Simple init without PDA seeds for IDL build
     #[account(init_if_needed, payer = beneficiary, space = 8 + Offer::SIZE)]
-    pub offer: Account<'info, Offer>,
-    pub system_program: Program<'info, System>,
-}
-
-#[cfg(not(feature = "idl-build"))]
-#[derive(Accounts)]
-pub struct CreateOffer<'info> {
-    #[account(mut)]
-    pub desk: Account<'info, Desk>,
-    #[account(mut, constraint = desk_token_treasury.mint == desk.token_mint, constraint = desk_token_treasury.owner == desk.key())]
-    pub desk_token_treasury: Account<'info, TokenAccount>,
-    #[account(mut)]
-    pub beneficiary: Signer<'info>,
-    #[account(
-        init_if_needed,
-        payer = beneficiary,
-        space = 8 + Offer::SIZE,
-        // Use next_offer_id from desk for deterministic PDA (avoids relying on instruction args)
-        seeds = [b"offer", desk.key().as_ref(), &desk.next_offer_id.to_le_bytes()],
-        bump
-    )]
     pub offer: Account<'info, Offer>,
     pub system_program: Program<'info, System>,
 }

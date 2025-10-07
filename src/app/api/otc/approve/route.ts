@@ -62,6 +62,8 @@ export async function POST(request: NextRequest) {
 
     // Robust body parsing (accept JSON, form, or query param fallback)
     let offerId: string | number | bigint | undefined;
+    let chainType: string | undefined;
+    let offerAddress: string | undefined;
     try {
       const contentType = request.headers.get("content-type") || "";
       if (contentType.includes("application/json")) {
@@ -69,6 +71,8 @@ export async function POST(request: NextRequest) {
         if (raw && raw.trim().length > 0) {
           const parsed = JSON.parse(raw);
           offerId = parsed?.offerId;
+          chainType = parsed?.chain;
+          offerAddress = parsed?.offerAddress;
         }
       } else if (contentType.includes("application/x-www-form-urlencoded")) {
         const form = await request.formData();
@@ -88,7 +92,87 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "offerId required" }, { status: 400 });
     }
 
-    console.log("[Approve API] Approving offer:", offerId);
+    console.log("[Approve API] Approving offer:", offerId, "chain:", chainType);
+
+    // Handle Solana approval
+    if (chainType === "solana" && offerAddress) {
+      console.log("[Approve API] Processing Solana approval for offer:", offerAddress);
+      
+      try {
+        // Import Anchor and Solana libs dynamically
+        const anchor = await import("@coral-xyz/anchor");
+        const { Connection, PublicKey, Keypair } = await import("@solana/web3.js");
+        
+        const SOLANA_RPC = process.env.NEXT_PUBLIC_SOLANA_RPC || "http://127.0.0.1:8899";
+        const SOLANA_DESK = process.env.NEXT_PUBLIC_SOLANA_DESK;
+        
+        if (!SOLANA_DESK) {
+          throw new Error("SOLANA_DESK not configured");
+        }
+        
+        const connection = new Connection(SOLANA_RPC, "confirmed");
+        
+        // Load owner/approver keypair from id.json
+        const idlPath = path.join(process.cwd(), "solana/otc-program/target/idl/otc.json");
+        const keypairPath = path.join(process.cwd(), "solana/otc-program/id.json");
+        const idl = JSON.parse(await fs.readFile(idlPath, "utf8"));
+        const keypairData = JSON.parse(await fs.readFile(keypairPath, "utf8"));
+        const approverKeypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
+        
+        // Create provider with the approver keypair
+        const wallet = {
+          publicKey: approverKeypair.publicKey,
+          signTransaction: async (tx: any) => {
+            tx.partialSign(approverKeypair);
+            return tx;
+          },
+          signAllTransactions: async (txs: any[]) => {
+            txs.forEach(tx => tx.partialSign(approverKeypair));
+            return txs;
+          },
+        };
+        
+        const provider = new anchor.AnchorProvider(
+          connection,
+          wallet as any,
+          { commitment: "confirmed" }
+        );
+        anchor.setProvider(provider);
+        
+        const programId = new PublicKey(idl.address);
+        const program = new (anchor as any).Program(idl, provider);
+        
+        // Approve the offer
+        const desk = new PublicKey(SOLANA_DESK);
+        const offer = new PublicKey(offerAddress);
+        
+        const tx = await program.methods
+          .approveOffer(new (anchor as any).BN(offerId))
+          .accounts({
+            desk,
+            offer,
+            approver: approverKeypair.publicKey,
+          })
+          .signers([approverKeypair])
+          .rpc();
+        
+        console.log("[Approve API] ✅ Solana offer approved:", tx);
+        
+        return NextResponse.json({
+          success: true,
+          approved: true,
+          chain: "solana",
+          offerAddress,
+          approvalTx: tx,
+        });
+      } catch (error: any) {
+        console.error("[Approve API] Solana approval failed:", error);
+        return NextResponse.json(
+          { error: `Solana approval failed: ${error.message}` },
+          { status: 500 }
+        );
+      }
+    }
 
     const chain = getChain();
     const publicClient = createPublicClient({ chain, transport: http() });
@@ -477,17 +561,120 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(
-      "[Approve API] ✅ Offer approved successfully. User must now fulfill (pay).",
-    );
+    // Check if approver should also fulfill
+    const requireApproverToFulfill = (await publicClient.readContract({
+      address: OTC_ADDRESS,
+      abi,
+      functionName: "requireApproverToFulfill",
+      args: [],
+    } as any)) as boolean;
 
-    // Return success - frontend will handle user payment
+    console.log("[Approve API] requireApproverToFulfill:", requireApproverToFulfill);
+
+    let fulfillTxHash: `0x${string}` | undefined;
+
+    // If approver-only fulfill is enabled, backend pays immediately after approval
+    if (requireApproverToFulfill && !approvedOffer.paid) {
+      console.log("[Approve API] Auto-fulfilling offer (approver-only mode)...");
+
+      try {
+        const accountAddr = (account?.address || account) as Address;
+        
+        // Calculate required payment
+        const currency = approvedOffer.currency;
+        let valueWei: bigint | undefined;
+        
+        if (currency === 0) {
+          // ETH payment required
+          const requiredEth = (await publicClient.readContract({
+            address: OTC_ADDRESS,
+            abi,
+            functionName: "requiredEthWei",
+            args: [BigInt(offerId)],
+          } as any)) as bigint;
+          
+          valueWei = requiredEth;
+          console.log("[Approve API] Required ETH:", requiredEth.toString());
+        } else {
+          // USDC payment - need to approve first
+          const usdcAddress = (await publicClient.readContract({
+            address: OTC_ADDRESS,
+            abi,
+            functionName: "usdc",
+            args: [],
+          } as any)) as Address;
+          
+          const requiredUsdc = (await publicClient.readContract({
+            address: OTC_ADDRESS,
+            abi,
+            functionName: "requiredUsdcAmount",
+            args: [BigInt(offerId)],
+          } as any)) as bigint;
+          
+          console.log("[Approve API] Required USDC:", requiredUsdc.toString());
+          
+          // Approve USDC
+          const erc20Abi = [
+            {
+              type: "function",
+              name: "approve",
+              stateMutability: "nonpayable",
+              inputs: [
+                { name: "spender", type: "address" },
+                { name: "amount", type: "uint256" },
+              ],
+              outputs: [{ name: "", type: "bool" }],
+            },
+          ] as Abi;
+          
+          const { request: approveUsdcReq } = await publicClient.simulateContract({
+            address: usdcAddress,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [OTC_ADDRESS, requiredUsdc],
+            account: accountAddr,
+          });
+          
+          await walletClient.writeContract(approveUsdcReq);
+          console.log("[Approve API] USDC approved");
+        }
+        
+        // Fulfill offer
+        const { request: fulfillReq } = await publicClient.simulateContract({
+          address: OTC_ADDRESS,
+          abi,
+          functionName: "fulfillOffer",
+          args: [BigInt(offerId)],
+          account: accountAddr,
+          value: valueWei,
+        });
+        
+        fulfillTxHash = await walletClient.writeContract(fulfillReq);
+        console.log("[Approve API] Fulfill tx sent:", fulfillTxHash);
+        
+        await publicClient.waitForTransactionReceipt({ hash: fulfillTxHash });
+        console.log("[Approve API] ✅ Offer fulfilled automatically");
+      } catch (fulfillError) {
+        console.error("[Approve API] Auto-fulfill failed:", fulfillError);
+        // Non-critical - return approval success anyway
+      }
+    } else {
+      console.log(
+        "[Approve API] ✅ Offer approved. User must now fulfill (pay).",
+      );
+    }
+
+    // Return success
     return NextResponse.json({
       success: true,
       approved: true,
       approvalTx: txHash,
+      fulfillTx: fulfillTxHash,
       offerId: String(offerId),
-      message: "Offer approved. Please complete payment to fulfill the offer.",
+      autoFulfilled: Boolean(fulfillTxHash),
+      message: fulfillTxHash 
+        ? "Offer approved and fulfilled automatically"
+        : "Offer approved. Please complete payment to fulfill the offer.",
     });
   } catch (error) {
     console.error("[Approve API] Error:", error);

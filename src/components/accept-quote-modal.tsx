@@ -68,10 +68,20 @@ export function AcceptQuoteModal({
   const rpcUrl =
     (process.env.NEXT_PUBLIC_RPC_URL as string | undefined) ||
     "http://127.0.0.1:8545";
-  const chain = chainId === hardhat.id ? hardhat : base;
+
+  // CRITICAL: publicClient chain must match where contract is deployed, NOT wallet chain
+  // If RPC is localhost, we're reading from Hardhat regardless of wallet network
+  const isLocalRpc = useMemo(
+    () => /localhost|127\.0\.0\.1/.test(rpcUrl),
+    [rpcUrl]
+  );
+
+  // Always use hardhat chain for localhost RPC
+  const readChain = isLocalRpc ? hardhat : base;
+
   const publicClient = useMemo(
-    () => createPublicClient({ chain, transport: http(rpcUrl) }),
-    [chain, rpcUrl],
+    () => createPublicClient({ chain: readChain, transport: http(rpcUrl) }),
+    [readChain, rpcUrl]
   );
 
   // Local UI state
@@ -80,17 +90,18 @@ export function AcceptQuoteModal({
       ONE_MILLION,
       Math.max(
         MIN_TOKENS,
-        initialQuote?.tokenAmount ? Number(initialQuote.tokenAmount) : 1000,
-      ),
-    ),
+        initialQuote?.tokenAmount ? Number(initialQuote.tokenAmount) : 1000
+      )
+    )
   );
   const [currency, setCurrency] = useState<"ETH" | "USDC" | "SOL">(
-    activeFamily === "solana" ? "SOL" : "ETH",
+    activeFamily === "solana" ? "SOL" : "ETH"
   );
   const [step, setStep] = useState<StepState>("amount");
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requireApprover, setRequireApprover] = useState(false);
+  const [contractValid, setContractValid] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_lastSignedMessage, setLastSignedMessage] = useState<
     string | undefined
@@ -107,9 +118,15 @@ export function AcceptQuoteModal({
     (process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID as string | undefined) ||
     "8X2wDShtcJ5mFrcsJPjK8tQCD16zBqzsUGwhSCM4ggko";
   const SOLANA_DESK = process.env.NEXT_PUBLIC_SOLANA_DESK as string | undefined;
-  const SOLANA_DESK_OWNER = process.env.NEXT_PUBLIC_SOLANA_DESK_OWNER as string | undefined;
-  const SOLANA_TOKEN_MINT = process.env.NEXT_PUBLIC_SOLANA_TOKEN_MINT as string | undefined;
-  const SOLANA_USDC_MINT = process.env.NEXT_PUBLIC_SOLANA_USDC_MINT as string | undefined;
+  const SOLANA_DESK_OWNER = process.env.NEXT_PUBLIC_SOLANA_DESK_OWNER as
+    | string
+    | undefined;
+  const SOLANA_TOKEN_MINT = process.env.NEXT_PUBLIC_SOLANA_TOKEN_MINT as
+    | string
+    | undefined;
+  const SOLANA_USDC_MINT = process.env.NEXT_PUBLIC_SOLANA_USDC_MINT as
+    | string
+    | undefined;
 
   // Wallet balances for display and MAX calculation
   const ethBalance = useBalance({ address });
@@ -126,41 +143,68 @@ export function AcceptQuoteModal({
           ONE_MILLION,
           Math.max(
             MIN_TOKENS,
-            initialQuote?.tokenAmount ? Number(initialQuote.tokenAmount) : 1000,
-          ),
-        ),
+            initialQuote?.tokenAmount ? Number(initialQuote.tokenAmount) : 1000
+          )
+        )
       );
     }
   }, [isOpen, initialQuote, activeFamily]);
 
   // Prefer EVM when both are connected and modal opens
   useEffect(() => {
-    try {
-      const isOpenNow = isOpen;
-      if (!isOpenNow) return;
-      // If both connected, prefer EVM
-      if (activeFamily === "solana") {
-        // Keep currency coherent with active family
-        setCurrency("SOL");
-      }
-    } catch {}
+    const isOpenNow = isOpen;
+    if (!isOpenNow) return;
+    // If both connected, prefer EVM
+    if (activeFamily === "solana") {
+      // Keep currency coherent with active family
+      setCurrency("SOL");
+    }
   }, [isOpen, activeFamily]);
 
-  // Read approver-only mode flag
+  // Validate contract exists and read config (EVM only)
   useEffect(() => {
     (async () => {
-      try {
-        if (!isOpen || !otcAddress) return;
-        const flag = (await publicClient.readContract({
-          address: otcAddress as `0x${string}`,
-          abi,
-          functionName: "requireApproverToFulfill",
-          args: [],
-        } as any)) as boolean;
-        setRequireApprover(Boolean(flag));
-      } catch {}
+      // Skip validation for Solana
+      if (activeFamily === "solana") {
+        setContractValid(true);
+        setRequireApprover(false);
+        return;
+      }
+
+      if (!isOpen || !otcAddress) {
+        setContractValid(false);
+        return;
+      }
+
+      // Check if contract has code at this address
+      const code = await publicClient.getBytecode({
+        address: otcAddress as `0x${string}`,
+      });
+
+      if (!code || code === "0x") {
+        console.error(
+          `[AcceptQuote] No contract at ${otcAddress} on ${readChain.name}. ` +
+            `Ensure Hardhat node is running and contracts are deployed.`
+        );
+        setContractValid(false);
+        setError(
+          "Contract not found. Ensure Hardhat node is running and contracts are deployed."
+        );
+        return;
+      }
+
+      setContractValid(true);
+
+      // Read contract state
+      const flag = (await publicClient.readContract({
+        address: otcAddress as `0x${string}`,
+        abi,
+        functionName: "requireApproverToFulfill",
+        args: [],
+      } as any)) as boolean;
+      setRequireApprover(Boolean(flag));
     })();
-  }, [isOpen, otcAddress, publicClient, abi]);
+  }, [isOpen, otcAddress, publicClient, abi, activeFamily, readChain]);
 
   const discountBps = useMemo(() => {
     const fromQuote = initialQuote?.discountBps;
@@ -177,7 +221,7 @@ export function AcceptQuoteModal({
     if (typeof initialQuote?.lockupMonths === "number")
       return Math.max(1, initialQuote.lockupMonths * 30);
     return Number(
-      defaultUnlockDelaySeconds ? defaultUnlockDelaySeconds / 86400n : 180n,
+      defaultUnlockDelaySeconds ? defaultUnlockDelaySeconds / 86400n : 180n
     );
   }, [
     initialQuote?.lockupDays,
@@ -186,14 +230,10 @@ export function AcceptQuoteModal({
   ]);
 
   const contractMaxTokens = useMemo(() => {
-    try {
-      const v = maxTokenPerOrder
-        ? Number(maxTokenPerOrder / 10n ** 18n)
-        : ONE_MILLION;
-      return Math.max(MIN_TOKENS, Math.min(ONE_MILLION, v));
-    } catch {
-      return ONE_MILLION;
-    }
+    const v = maxTokenPerOrder
+      ? Number(maxTokenPerOrder / 10n ** 18n)
+      : ONE_MILLION;
+    return Math.max(MIN_TOKENS, Math.min(ONE_MILLION, v));
   }, [maxTokenPerOrder]);
 
   const clampAmount = (value: number) =>
@@ -231,7 +271,7 @@ export function AcceptQuoteModal({
   }
 
   async function fulfillWithRetry(
-    offerId: bigint,
+    offerId: bigint
   ): Promise<`0x${string}` | undefined> {
     // Check if already fulfilled
     const offer = await readOffer(offerId);
@@ -247,7 +287,7 @@ export function AcceptQuoteModal({
     const isEth = currency === "ETH";
     const requiredAmount = await getRequiredPayment(
       offerId,
-      isEth ? "ETH" : "USDC",
+      isEth ? "ETH" : "USDC"
     );
 
     if (!requiredAmount) {
@@ -255,335 +295,200 @@ export function AcceptQuoteModal({
     }
 
     console.log(
-      `[AcceptQuote] Required payment: ${requiredAmount} ${currency}`,
+      `[AcceptQuote] Required payment: ${requiredAmount} ${currency}`
     );
 
-    try {
-      let txHash: `0x${string}` | undefined;
+    let txHash: `0x${string}` | undefined;
 
-      if (isEth) {
-        // Pay with ETH (direct from user wallet via MetaMask)
-        console.log("[AcceptQuote] Fulfilling with ETH...");
-        txHash = (await fulfillOffer(offerId, requiredAmount)) as `0x${string}`;
-      } else {
-        // Pay with USDC (need to approve first)
-        console.log("[AcceptQuote] Approving USDC allowance...");
-        await approveUsdc(requiredAmount);
+    if (isEth) {
+      // Pay with ETH (direct from user wallet via MetaMask)
+      console.log("[AcceptQuote] Fulfilling with ETH...");
+      txHash = (await fulfillOffer(offerId, requiredAmount)) as `0x${string}`;
+    } else {
+      // Pay with USDC (need to approve first)
+      console.log("[AcceptQuote] Approving USDC allowance...");
+      await approveUsdc(requiredAmount);
 
-        console.log("[AcceptQuote] Fulfilling with USDC...");
-        txHash = (await fulfillOffer(offerId)) as `0x${string}`;
-      }
+      console.log("[AcceptQuote] Fulfilling with USDC...");
+      txHash = (await fulfillOffer(offerId)) as `0x${string}`;
+    }
 
-      // Wait for transaction to be mined
-      if (txHash) {
-        console.log(
-          "[AcceptQuote] Waiting for transaction to be mined:",
-          txHash,
-        );
-        await publicClient.waitForTransactionReceipt({ hash: txHash });
-        console.log("[AcceptQuote] Transaction mined");
-      } else {
-        // Fallback: wait and check
-        await wait(3000);
-      }
+    // Wait for transaction to be mined
+    if (txHash) {
+      console.log("[AcceptQuote] Waiting for transaction to be mined:", txHash);
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      console.log("[AcceptQuote] Transaction mined");
+    } else {
+      // Fallback: wait and check
+      await wait(3000);
+    }
 
-      // Verify fulfillment
-      const finalOffer = await readOffer(offerId);
-      // Offer tuple: [beneficiary, tokenAmount, discountBps, createdAt, unlockTime, priceUsdPerToken, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]
-      const isPaid = finalOffer[9]; // paid flag is at index 9
-      const isFulfilled = finalOffer[10]; // fulfilled flag is at index 10
+    // Verify fulfillment
+    const finalOffer = await readOffer(offerId);
+    const isPaidFinal = finalOffer[9];
+    const isFulfilledFinal = finalOffer[10];
 
-      if (!(isPaid || isFulfilled)) {
-        throw new Error(
-          "Payment transaction completed but offer state not updated. Please refresh and try again.",
-        );
-      }
-
-      console.log("[AcceptQuote] ✅ Offer fulfilled successfully");
-      return txHash;
-    } catch (error: any) {
-      console.error("[AcceptQuote] Fulfillment error:", error);
+    if (!(isPaidFinal || isFulfilledFinal)) {
       throw new Error(
-        `Payment failed: ${error.message || "Unknown error"}. Please ensure you have sufficient balance.`,
+        "Payment transaction completed but offer state not updated. Please refresh and try again."
       );
     }
+
+    console.log("[AcceptQuote] ✅ Offer fulfilled successfully");
+    return txHash;
   }
 
   const handleConfirm = async () => {
     if (!unifiedConnected) return;
+
+    // Block if contract isn't valid (EVM only)
+    if (!isSolanaActive && !contractValid) {
+      setError(
+        "Contract not available. Please ensure Hardhat node is running and contracts are deployed."
+      );
+      console.error("[AcceptQuote] Blocked transaction - contract not valid:", {
+        otcAddress,
+        contractValid,
+      });
+      return;
+    }
+
     setError(null);
     setIsProcessing(true);
     setStep("creating");
 
     /**
      * TRANSACTION FLOW (Optimized for Security)
-     * 
+     *
      * OLD FLOW (3 separate steps with risk):
      * 1. User creates offer → 2. Approver approves → 3. User pays
      * Problem: Offer can be approved but never paid (wasted approval, stuck state)
-     * 
+     *
      * NEW FLOW (2 user transactions, approval happens between):
      * 1. User creates offer
      * 2. User pre-authorizes payment (USDC: approve allowance; ETH: verify funds)
      * 3. Backend approves offer (approver wallet)
      * 4. User payment executes IMMEDIATELY (minimized window)
-     * 
+     *
      * Benefits:
      * - User commits to payment BEFORE approval happens
      * - Payment executes immediately after approval (atomic-like)
      * - Reduces risk of approved-but-unpaid offers
      * - Clear error messages if payment fails after approval
-     * 
+     *
      * Contract constraint: fulfillOffer() requires o.approved == true
      * So we cannot pay before approval, but we CAN prepare payment first.
      */
 
-    try {
-      // Solana path
-      if (isSolanaActive) {
-        // Basic config checks
-        if (!SOLANA_DESK || !SOLANA_TOKEN_MINT || !SOLANA_USDC_MINT) {
-          throw new Error(
-            "Solana OTC configuration is incomplete. Please check your environment variables.",
-          );
-        }
-
-        const connection = new Connection(SOLANA_RPC, "confirmed");
-        // @ts-ignore - wallet adapter injects window.solana
-        const wallet = (globalThis as any).solana;
-        if (!wallet?.publicKey) {
-          throw new Error("Connect a Solana wallet to continue.");
-        }
-
-        const provider = new anchor.AnchorProvider(
-          connection,
-          // Anchor expects an object with signTransaction / signAllTransactions
-          wallet,
-          { commitment: "confirmed" },
+    // Solana path
+    if (isSolanaActive) {
+      // Basic config checks
+      if (!SOLANA_DESK || !SOLANA_TOKEN_MINT || !SOLANA_USDC_MINT) {
+        throw new Error(
+          "Solana OTC configuration is incomplete. Please check your environment variables."
         );
-        const programId = new SolPubkey(SOLANA_PROGRAM_ID);
-        const idl = await fetchSolanaIdl();
-        const program = new (anchor as any).Program(
-          idl as Idl,
-          programId,
-          provider,
-        ) as any;
-
-        // Use desk address from environment
-        if (!SOLANA_DESK) {
-          throw new Error("SOLANA_DESK address not configured in environment.");
-        }
-        const desk = new SolPubkey(SOLANA_DESK);
-        const tokenMintPk = new SolPubkey(SOLANA_TOKEN_MINT);
-        const usdcMintPk = SOLANA_USDC_MINT
-          ? new SolPubkey(SOLANA_USDC_MINT)
-          : undefined;
-        const deskTokenTreasury = await getAssociatedTokenAddress(
-          tokenMintPk,
-          desk,
-          true,
-        );
-        const deskUsdcTreasury = usdcMintPk
-          ? await getAssociatedTokenAddress(usdcMintPk, desk, true)
-          : undefined;
-
-        // Read nextOfferId from desk account
-        const deskAccount: any = await (program.account as any).desk.fetch(
-          desk,
-        );
-        const nextOfferId = new anchor.BN(deskAccount.nextOfferId.toString());
-        
-        // Generate offer keypair (IDL expects signer)
-        const offerKeypair = Keypair.generate();
-        console.log("Generated offer keypair:", offerKeypair.publicKey.toString());
-
-        // Create offer on Solana
-        const tokenAmountWei = new anchor.BN(
-          (BigInt(tokenAmount) * 10n ** 18n).toString(),
-        );
-        const lockupSeconds = new anchor.BN(lockupDays * 24 * 60 * 60);
-        const paymentCurrencySol = currency === "USDC" ? 1 : 0; // 0 SOL, 1 USDC
-
-        await program.methods
-          .createOffer(
-            tokenAmountWei,
-            discountBps,
-            paymentCurrencySol,
-            lockupSeconds,
-          )
-          .accountsStrict({
-            desk,
-            deskTokenTreasury,
-            beneficiary: wallet.publicKey,
-            offer: offerKeypair.publicKey,
-            systemProgram: SolSystemProgram.programId,
-          })
-          .signers([offerKeypair])
-          .rpc();
-
-        setStep("await_approval");
-        // Poll for approval
-        const start = Date.now();
-        while (Date.now() - start < 90_000) {
-          const off: any = await (program.account as any).offer.fetch(offerKeypair.publicKey);
-          if (off.approved) break;
-          await new Promise((r) => setTimeout(r, 2000));
-        }
-
-        setStep("paying");
-        if (paymentCurrencySol === 0) {
-          // Pay in SOL
-          await program.methods
-            .fulfillOfferSol(nextOfferId)
-            .accounts({
-              desk,
-              offer: offerKeypair.publicKey,
-              deskTokenTreasury,
-              payer: wallet.publicKey,
-              systemProgram: SolSystemProgram.programId,
-            })
-            .signers([])
-            .rpc();
-        } else {
-          // Pay in USDC on Solana
-          if (!usdcMintPk || !deskUsdcTreasury) {
-            throw new Error("USDC mint/treasury not configured for Solana.");
-          }
-          const payerUsdcAta = await getAssociatedTokenAddress(
-            usdcMintPk,
-            wallet.publicKey,
-            false,
-          );
-          await program.methods
-            .fulfillOfferUsdc(nextOfferId)
-            .accounts({
-              desk,
-              offer: offerKeypair.publicKey,
-              deskTokenTreasury,
-              deskUsdcTreasury,
-              payerUsdcAta,
-              payer: wallet.publicKey,
-              tokenProgram: new SolPubkey(
-                // spl-token program id
-                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-              ),
-              systemProgram: SolSystemProgram.programId,
-            })
-            .signers([])
-            .rpc();
-        }
-
-        setStep("complete");
-        setIsProcessing(false);
-        onComplete?.({ offerId: BigInt(nextOfferId.toString()) });
-        return;
       }
 
-      // Update quote with user's selected amount and currency before creating offer
-      // Price will be determined by Chainlink oracle on-chain, so we don't calculate it here
-      try {
-        if (initialQuote?.quoteId) {
-          console.log("[AcceptQuote] Updating quote with user selections:", {
-            quoteId: initialQuote.quoteId,
-            tokenAmount,
-            paymentCurrency: currency,
-            note: "Price will be determined by Chainlink oracle on-chain",
-          });
-
-          await fetch("/api/quote/latest", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              quoteId: initialQuote.quoteId,
-              beneficiary: address,
-              tokenAmount: String(tokenAmount),
-              paymentCurrency: currency,
-              totalUsd: 0, // Will be calculated on-chain
-              discountUsd: 0, // Will be calculated on-chain
-              discountedUsd: 0, // Will be calculated on-chain
-              paymentAmount: "0", // Will be calculated on-chain
-            }),
-          });
-
-          console.log("[AcceptQuote] ✅ Quote updated with user selections");
-        }
-      } catch (e) {
-        console.error("[AcceptQuote] Failed to update quote:", e);
+      const connection = new Connection(SOLANA_RPC, "confirmed");
+      // @ts-ignore - wallet adapter injects window.solana
+      const wallet = (globalThis as any).solana;
+      if (!wallet?.publicKey) {
+        throw new Error("Connect a Solana wallet to continue.");
       }
 
-      // Sign the terms for auditability
-      const msg = `I agree to purchase ${tokenAmount} ElizaOS at ${(
-        discountBps / 100
-      ).toFixed(
-        2,
-      )}% discount with ${lockupDays} days lockup, paying in ${currency}. Wallet: ${address}`;
-      try {
-        const sig = await signMessageAsync({
-          account: address as `0x${string}`,
-          message: msg,
-        });
-        setLastSignedMessage(msg);
-        setLastSignature(sig);
-      } catch {
-        // user may reject; continue without signature but record intent
+      const provider = new anchor.AnchorProvider(
+        connection,
+        // Anchor expects an object with signTransaction / signAllTransactions
+        wallet,
+        { commitment: "confirmed" }
+      );
+      console.log("Fetching IDL");
+      const idl = await fetchSolanaIdl();
+      console.log("Fetched IDL");
+      const program = new anchor.Program(idl, provider);
+      console.log("Program created");
+
+      // Use desk address from environment
+      if (!SOLANA_DESK) {
+        throw new Error("SOLANA_DESK address not configured in environment.");
       }
+      const desk = new SolPubkey(SOLANA_DESK);
+      const tokenMintPk = new SolPubkey(SOLANA_TOKEN_MINT);
+      const usdcMintPk = new SolPubkey(SOLANA_USDC_MINT);
 
-      // Determine new offer id ahead of time
-      const nextId = await readNextOfferId();
-      const newOfferId = nextId; // offerId will equal current nextOfferId
+      console.log("Token mint PK:", tokenMintPk.toString());
+      console.log("USDC mint PK:", usdcMintPk.toString());
+      console.log("Desk:", desk.toString());
 
-      // Step 1: Create offer (User transaction #1)
-      console.log(`[AcceptQuote] Step 1/2: Creating offer ${newOfferId}...`);
-      const tokenAmountWei = BigInt(tokenAmount) * 10n ** 18n;
-      const lockupSeconds = BigInt(lockupDays * 24 * 60 * 60);
-      const paymentCurrency = currency === "ETH" ? 0 : 1;
-      await createOffer({
-        tokenAmountWei,
-        discountBps,
-        paymentCurrency,
-        lockupSeconds,
-      });
-      console.log(`[AcceptQuote] ✅ Offer created: ${newOfferId}`);
+      const deskTokenTreasury = await getAssociatedTokenAddress(
+        tokenMintPk,
+        desk,
+        true
+      );
+      const deskUsdcTreasury = await getAssociatedTokenAddress(
+        usdcMintPk,
+        desk,
+        true
+      );
 
-      // Step 2: Pre-authorize payment BEFORE requesting approval
-      // This ensures user commits to paying before approver commits to approving
-      setStep("paying");
+      console.log("Desk token treasury:", deskTokenTreasury.toString());
+      console.log("Desk USDC treasury:", deskUsdcTreasury.toString());
+
+      // Read nextOfferId from desk account
+      const deskAccount: any = await (program.account as any).desk.fetch(desk);
+      const nextOfferId = new anchor.BN(deskAccount.nextOfferId.toString());
+
+      console.log("Next offer ID:", nextOfferId.toString());
+
+      // Generate offer keypair (IDL expects signer)
+      const offerKeypair = Keypair.generate();
       console.log(
-        `[AcceptQuote] Step 2/2: Preparing payment (will execute after approval)...`,
+        "Generated offer keypair:",
+        offerKeypair.publicKey.toString()
       );
 
-      // Pre-check: Calculate required payment and verify user has funds
-      const isEth = currency === "ETH";
-      const requiredAmount = await getRequiredPayment(
-        newOfferId,
-        isEth ? "ETH" : "USDC",
+      // Create offer on Solana
+      const tokenAmountWei = new anchor.BN(
+        (BigInt(tokenAmount) * 10n ** 9n).toString()
       );
+      const lockupSeconds = new anchor.BN(lockupDays * 24 * 60 * 60);
+      const paymentCurrencySol = currency === "USDC" ? 1 : 0; // 0 SOL, 1 USDC
 
-      if (!requiredAmount) {
-        throw new Error("Could not determine required payment amount");
-      }
+      console.log("Token amount wei:", tokenAmountWei.toString());
+      console.log("Lockup seconds:", lockupSeconds.toString());
+      console.log("Payment currency:", paymentCurrencySol);
 
-      console.log(
-        `[AcceptQuote] Required payment: ${requiredAmount} ${currency}`,
-      );
+      await program.methods
+        .createOffer(
+          tokenAmountWei,
+          discountBps,
+          paymentCurrencySol,
+          lockupSeconds
+        )
+        .accountsStrict({
+          desk,
+          deskTokenTreasury,
+          beneficiary: wallet.publicKey,
+          offer: offerKeypair.publicKey,
+          systemProgram: SolSystemProgram.programId,
+        })
+        .signers([offerKeypair])
+        .rpc();
 
-      // For USDC, pre-approve the allowance now (User transaction #2a if USDC)
-      if (!isEth) {
-        console.log("[AcceptQuote] Pre-approving USDC allowance...");
-        await approveUsdc(requiredAmount);
-        console.log("[AcceptQuote] ✅ USDC allowance approved");
-      }
+      console.log("Offer created");
 
-      // Now request approval from backend - with user already committed to pay
       setStep("await_approval");
-      console.log(
-        `[AcceptQuote] Requesting approval (user payment ready to execute)...`,
-      );
       
+      // Request backend approval (same as EVM flow)
+      console.log("Requesting approval from backend...");
       const approveRes = await fetch("/api/otc/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offerId: newOfferId.toString() }),
+        body: JSON.stringify({ 
+          offerId: nextOfferId.toString(),
+          chain: "solana",
+          offerAddress: offerKeypair.publicKey.toString()
+        }),
       });
 
       if (!approveRes.ok) {
@@ -591,66 +496,197 @@ export function AcceptQuoteModal({
         throw new Error(`Approval failed: ${errorText}`);
       }
 
-      const approveData = await approveRes.json();
-      console.log(
-        `[AcceptQuote] ✅ Offer approved:`,
-        approveData.approvalTx || approveData.txHash,
-      );
-
-      // Immediately execute payment now that approval is done (User transaction #2 or #3)
-      // This minimizes the window between approval and payment, reducing risk
-      console.log(
-        `[AcceptQuote] Executing payment immediately after approval...`,
-      );
-
-      let paymentTxHash: `0x${string}` | undefined;
-      try {
-        paymentTxHash = await fulfillWithRetry(newOfferId);
-        console.log(`[AcceptQuote] ✅ Payment executed: ${paymentTxHash}`);
-      } catch (paymentError: any) {
-        // Critical: Approval happened but payment failed
-        // The offer is now approved but not paid - this is the scenario we want to minimize
-        console.error(`[AcceptQuote] ❌ CRITICAL: Payment failed after approval:`, paymentError);
-        throw new Error(
-          `Deal approved but payment failed: ${paymentError.message || "Unknown error"}. ` +
-          `Offer ID ${newOfferId} is approved. You can retry payment from My Deals page.`
+      console.log("Approval requested, polling for confirmation...");
+      
+      // Poll for approval
+      const start = Date.now();
+      while (Date.now() - start < 90_000) {
+        const off: any = await (program.account as any).offer.fetch(
+          offerKeypair.publicKey
         );
+        if (off.approved) break;
+        await new Promise((r) => setTimeout(r, 2000));
       }
 
-      // Notify backend of completion with user-selected amount for persistence
-      try {
-        if (initialQuote?.quoteId) {
-          const response = await fetch("/api/deal-completion", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "complete",
-              quoteId: initialQuote.quoteId,
-              tokenAmount: String(tokenAmount),
-              paymentCurrency: currency,
-              offerId: String(newOfferId),
-              transactionHash: paymentTxHash || "",
-            }),
-          });
+      console.log("Offer approved");
 
-          if (response.ok) {
-            // Redirect to deal completion page for sharing
-            setTimeout(() => {
-              router.push(`/deal/${initialQuote.quoteId}`);
-            }, 1500);
-          }
+      setStep("paying");
+      if (paymentCurrencySol === 0) {
+        console.log("Paying in SOL on Solana");
+        // Pay in SOL
+        await program.methods
+          .fulfillOfferSol(nextOfferId)
+          .accounts({
+            desk,
+            offer: offerKeypair.publicKey,
+            deskTokenTreasury,
+            payer: wallet.publicKey,
+            systemProgram: SolSystemProgram.programId,
+          })
+          .signers([])
+          .rpc();
+      } else {
+        console.log("Paying in USDC on Solana");
+        // Pay in USDC on Solana
+        if (!usdcMintPk || !deskUsdcTreasury) {
+          throw new Error("USDC mint/treasury not configured for Solana.");
         }
-      } catch {}
+        const payerUsdcAta = await getAssociatedTokenAddress(
+          usdcMintPk,
+          wallet.publicKey,
+          false
+        );
+        await program.methods
+          .fulfillOfferUsdc(nextOfferId)
+          .accounts({
+            desk,
+            offer: offerKeypair.publicKey,
+            deskTokenTreasury,
+            deskUsdcTreasury,
+            payerUsdcAta,
+            payer: wallet.publicKey,
+            tokenProgram: new SolPubkey(
+              // spl-token program id
+              "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            ),
+            systemProgram: SolSystemProgram.programId,
+          })
+          .signers([])
+          .rpc();
+      }
+
+      console.log("Offer paid");
 
       setStep("complete");
       setIsProcessing(false);
-
-      onComplete?.({ offerId: newOfferId });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-      setIsProcessing(false);
-      setStep("amount");
+      onComplete?.({ offerId: BigInt(nextOfferId.toString()) });
+      return;
     }
+
+    // Update quote with user's selected amount and currency before creating offer
+    // Price will be determined by Chainlink oracle on-chain, so we don't calculate it here
+    if (initialQuote?.quoteId) {
+      console.log("[AcceptQuote] Updating quote with user selections:", {
+        quoteId: initialQuote.quoteId,
+        tokenAmount,
+        paymentCurrency: currency,
+        note: "Price will be determined by Chainlink oracle on-chain",
+      });
+
+      await fetch("/api/quote/latest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quoteId: initialQuote.quoteId,
+          beneficiary: address,
+          tokenAmount: String(tokenAmount),
+          paymentCurrency: currency,
+          totalUsd: 0, // Will be calculated on-chain
+          discountUsd: 0, // Will be calculated on-chain
+          discountedUsd: 0, // Will be calculated on-chain
+          paymentAmount: "0", // Will be calculated on-chain
+        }),
+      });
+
+      console.log("[AcceptQuote] ✅ Quote updated with user selections");
+    }
+
+    // Determine new offer id ahead of time
+    const nextId = await readNextOfferId();
+    const newOfferId = nextId; // offerId will equal current nextOfferId
+
+    // Step 1: Create offer (User transaction - ONLY transaction user signs)
+    console.log(`[AcceptQuote] Creating offer ${newOfferId}...`);
+    const tokenAmountWei = BigInt(tokenAmount) * 10n ** 18n;
+    const lockupSeconds = BigInt(lockupDays * 24 * 60 * 60);
+    const paymentCurrency = currency === "ETH" ? 0 : 1;
+    await createOffer({
+      tokenAmountWei,
+      discountBps,
+      paymentCurrency,
+      lockupSeconds,
+    });
+    console.log(`[AcceptQuote] ✅ Offer created: ${newOfferId}`);
+
+    // Step 2: Request backend approval (and auto-fulfillment if enabled)
+    setStep("await_approval");
+    console.log(
+      `[AcceptQuote] Requesting approval and payment from backend...`
+    );
+
+    const approveRes = await fetch("/api/otc/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ offerId: newOfferId.toString() }),
+    });
+
+    if (!approveRes.ok) {
+      const errorText = await approveRes.text();
+      throw new Error(`Approval failed: ${errorText}`);
+    }
+
+    const approveData = await approveRes.json();
+    console.log(
+      `[AcceptQuote] ✅ Offer approved:`,
+      approveData.approvalTx || approveData.txHash
+    );
+
+    let paymentTxHash: `0x${string}` | undefined;
+
+    // Check if backend auto-fulfilled (when requireApproverToFulfill is true)
+    if (approveData.autoFulfilled && approveData.fulfillTx) {
+      console.log(
+        `[AcceptQuote] ✅ Backend auto-fulfilled:`,
+        approveData.fulfillTx
+      );
+      paymentTxHash = approveData.fulfillTx as `0x${string}`;
+    } else {
+      // User must fulfill manually (when requireApproverToFulfill is false)
+      console.log(
+        `[AcceptQuote] Executing payment immediately after approval...`
+      );
+      paymentTxHash = await fulfillWithRetry(newOfferId);
+      console.log(`[AcceptQuote] ✅ Payment executed: ${paymentTxHash}`);
+    }
+
+    setStep("complete");
+    setIsProcessing(false);
+
+    // Notify backend of completion with user-selected amount for persistence
+    if (initialQuote?.quoteId) {
+      console.log("[AcceptQuote] Saving deal completion:", {
+        quoteId: initialQuote.quoteId,
+        offerId: String(newOfferId),
+        tokenAmount: String(tokenAmount),
+        currency,
+        txHash: paymentTxHash,
+      });
+
+      const response = await fetch("/api/deal-completion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "complete",
+          quoteId: initialQuote.quoteId,
+          tokenAmount: String(tokenAmount),
+          paymentCurrency: currency,
+          offerId: String(newOfferId),
+          transactionHash: paymentTxHash || "",
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("[AcceptQuote] Deal completion saved:", data);
+        
+        // Redirect to deal completion page for sharing
+        router.push(`/deal/${initialQuote.quoteId}`);
+      } else {
+        console.error("[AcceptQuote] Failed to save deal completion:", await response.text());
+      }
+    }
+
+    onComplete?.({ offerId: newOfferId, txHash: paymentTxHash });
   };
 
   // Price will be determined by Chainlink oracle on-chain
@@ -684,23 +720,19 @@ export function AcceptQuoteModal({
   ]);
 
   const handleMaxClick = () => {
-    try {
-      let maxByFunds = ONE_MILLION;
-      if (currency === "USDC") {
-        const usdc = Number(usdcBalance.data?.formatted || 0);
-        if (estPerTokenUsd > 0) maxByFunds = Math.floor(usdc / estPerTokenUsd);
-      } else {
-        const eth = Number(ethBalance.data?.formatted || 0);
-        const ethUsd = initialQuote?.ethPrice || 0;
-        if (ethUsd > 0 && estPerTokenUsd > 0) {
-          const usd = eth * ethUsd;
-          maxByFunds = Math.floor(usd / estPerTokenUsd);
-        }
+    let maxByFunds = ONE_MILLION;
+    if (currency === "USDC") {
+      const usdc = Number(usdcBalance.data?.formatted || 0);
+      if (estPerTokenUsd > 0) maxByFunds = Math.floor(usdc / estPerTokenUsd);
+    } else {
+      const eth = Number(ethBalance.data?.formatted || 0);
+      const ethUsd = initialQuote?.ethPrice || 0;
+      if (ethUsd > 0 && estPerTokenUsd > 0) {
+        const usd = eth * ethUsd;
+        maxByFunds = Math.floor(usd / estPerTokenUsd);
       }
-      setTokenAmount(clampAmount(maxByFunds));
-    } catch {
-      setTokenAmount(ONE_MILLION);
     }
+    setTokenAmount(clampAmount(maxByFunds));
   };
 
   // Validation: enforce token amount limits (USD check will happen on-chain)
@@ -828,18 +860,12 @@ export function AcceptQuoteModal({
               <div className="text-zinc-500">Maturity date</div>
               <div className="text-lg font-semibold">
                 {new Date(
-                  Date.now() + lockupDays * 24 * 60 * 60 * 1000,
+                  Date.now() + lockupDays * 24 * 60 * 60 * 1000
                 ).toLocaleDateString(undefined, {
                   month: "2-digit",
                   day: "2-digit",
                   year: "2-digit",
                 })}
-              </div>
-            </div>
-            <div>
-              <div className="text-zinc-500">Price per Token</div>
-              <div className="text-lg font-semibold text-zinc-400">
-                On-chain
               </div>
             </div>
           </div>
@@ -935,27 +961,10 @@ export function AcceptQuoteModal({
           <div className="px-5 pb-6">
             <div className="text-center py-6">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-              <h3 className="font-semibold mb-2">
-                Step 1/2: Creating Offer
-              </h3>
+              <h3 className="font-semibold mb-2">Creating Offer</h3>
               <p className="text-sm text-zinc-400">
-                Confirm the transaction in your wallet to create your offer on-chain.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {step === "paying" && (
-          <div className="px-5 pb-6">
-            <div className="text-center py-6">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-              <h3 className="font-semibold mb-2">
-                Step 2/2: Authorizing Payment
-              </h3>
-              <p className="text-sm text-zinc-400">
-                {currency === "USDC" 
-                  ? "Approve USDC spending in your wallet. Payment will execute after approval."
-                  : "Preparing payment. Will execute immediately after approval."}
+                Confirm the transaction in your wallet to create your offer
+                on-chain.
               </p>
             </div>
           </div>
@@ -965,9 +974,10 @@ export function AcceptQuoteModal({
           <div className="px-5 pb-6">
             <div className="text-center py-6">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
-              <h3 className="font-semibold mb-2">Finalizing Deal</h3>
+              <h3 className="font-semibold mb-2">Processing Deal</h3>
               <p className="text-sm text-zinc-400">
-                Payment authorized. Waiting for approval, then payment will execute automatically.
+                Our desk is reviewing and completing your purchase. Payment will
+                be processed automatically.
               </p>
               <p className="text-xs text-zinc-500 mt-2">
                 This usually takes a few seconds...
@@ -994,9 +1004,9 @@ export function AcceptQuoteModal({
                   />
                 </svg>
               </div>
-              <h3 className="font-semibold mb-2">All Set!</h3>
+              <h3 className="font-semibold mb-2">Deal Complete!</h3>
               <p className="text-sm text-zinc-400">
-                Your offer has been paid. You’ll receive the claimable tokens at
+                Your purchase is complete. You'll receive your tokens at
                 maturity.
               </p>
             </div>
