@@ -249,10 +249,9 @@ const messageReceivedHandler = async ({
 
   // Set up timeout monitoring
   const timeoutDuration = 60 * 60 * 1000; // 1 hour
-  let timeoutId: NodeJS.Timeout | undefined;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(async () => {
+    setTimeout(async () => {
       await runtime.emitEvent(EventType.RUN_TIMEOUT, {
         runtime,
         runId,
@@ -417,7 +416,22 @@ const messageReceivedHandler = async ({
         };
 
         await runtime.setCache(`quote:${quoteId}`, quoteData);
-        console.log("[MessageHandler] Quote saved to cache:", quoteId);
+        
+        // Add to indexes
+        const allQuotes = (await runtime.getCache<string[]>("all_quotes")) ?? [];
+        if (!allQuotes.includes(quoteId)) {
+          allQuotes.push(quoteId);
+          await runtime.setCache("all_quotes", allQuotes);
+        }
+        
+        const quoteEntityId = walletToEntityId(entityId);
+        const entityQuoteIds = (await runtime.getCache<string[]>(`entity_quotes:${quoteEntityId}`)) ?? [];
+        if (!entityQuoteIds.includes(quoteId)) {
+          entityQuoteIds.push(quoteId);
+          await runtime.setCache(`entity_quotes:${quoteEntityId}`, entityQuoteIds);
+        }
+        
+        console.log("[MessageHandler] Quote saved to cache and indexed:", quoteId);
       }
     }
 

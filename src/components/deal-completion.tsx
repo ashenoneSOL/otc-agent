@@ -2,7 +2,6 @@
 
 import { Button } from "@/components/button";
 import { createDealShareImage } from "@/utils/share-card";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 interface DealCompletionProps {
@@ -19,13 +18,16 @@ interface DealCompletionProps {
     paymentAmount: string;
     paymentCurrency: string;
     transactionHash?: string;
+    offerId?: string;
+    status?: string;
+    chain?: "evm" | "solana";
   };
 }
 
 export function DealCompletion({ quote }: DealCompletionProps) {
-  const router = useRouter();
   const [shareCount, setShareCount] = useState(0);
   const [shareImageUrl, setShareImageUrl] = useState<string | null>(null);
+  const [posted, setPosted] = useState(false);
 
   // Calculate discount-derived metrics
   const discountPercent = quote.discountBps / 100;
@@ -39,12 +41,15 @@ export function DealCompletion({ quote }: DealCompletionProps) {
   maturityDate.setMonth(maturityDate.getMonth() + quote.lockupMonths);
 
   useEffect(() => {
-    // Record deal completion in database
-    recordDealCompletion();
+    // Record deal completion in database, only once per mount
+    if (!posted) {
+      setPosted(true);
+      recordDealCompletion();
+    }
     // Generate shareable image
     generateShareImage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [posted]);
 
   const recordDealCompletion = async () => {
     const response = await fetch("/api/deal-completion", {
@@ -140,10 +145,6 @@ export function DealCompletion({ quote }: DealCompletionProps) {
     a.click();
   };
 
-  const negotiateNewDeal = () => {
-    router.push("/");
-  };
-
   return (
     <div
       data-testid="deal-completion"
@@ -187,6 +188,7 @@ export function DealCompletion({ quote }: DealCompletionProps) {
         {shareImageUrl && (
           <div className="p-6 mb-6">
             <div className="mb-4 rounded-lg overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={shareImageUrl}
                 alt="Share card preview"
@@ -334,7 +336,7 @@ export function DealCompletion({ quote }: DealCompletionProps) {
               <div className="text-right">
                 <p className="text-zinc-400 text-sm">Payment Method</p>
                 <p className="text-xl font-semibold text-white">
-                  {quote.paymentAmount} {quote.paymentCurrency}
+                  {quote.paymentAmount} {quote.chain === "solana" ? "SOL" : quote.paymentCurrency}
                 </p>
               </div>
             </div>

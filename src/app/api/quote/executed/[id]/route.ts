@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { QuoteDB } from "@/services/database";
 import { agentRuntime } from "@/lib/agent-runtime";
+import { QuoteDB } from "@/services/database";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
@@ -14,13 +14,7 @@ export async function GET(
     return NextResponse.json({ error: "Quote ID required" }, { status: 400 });
   }
 
-  let quote;
-  try {
-    quote = await QuoteDB.getQuoteByQuoteId(quoteId);
-  } catch (error: any) {
-    console.error("[Quote Executed API] Quote not found:", quoteId, error.message);
-    return NextResponse.json({ error: "Quote not found" }, { status: 400 });
-  }
+  const quote = await QuoteDB.getQuoteByQuoteId(quoteId);
 
   // Allow active, approved, and executed quotes to be viewed
   // active = quote created, approved = offer created/approved on-chain, executed = paid/fulfilled
@@ -33,6 +27,8 @@ export async function GET(
     quoteId: quote.quoteId,
     entityId: quote.entityId,
     beneficiary: quote.beneficiary,
+    status: quote.status,
+    offerId: quote.offerId,
     tokenAmount: quote.tokenAmount,
     lockupMonths: quote.lockupMonths,
     discountBps: quote.discountBps,
@@ -42,6 +38,9 @@ export async function GET(
     paymentAmount: quote.paymentAmount,
     paymentCurrency: quote.paymentCurrency,
     transactionHash: quote.transactionHash,
+    blockNumber: quote.blockNumber,
+    // Optional chain hint for UI display ("evm" | "solana")
+    chain: (quote as any).chain,
   };
 
   return NextResponse.json({ success: true, quote: formattedQuote });

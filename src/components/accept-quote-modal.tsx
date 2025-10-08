@@ -21,7 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Abi } from "viem";
 import { createPublicClient, http } from "viem";
 import { base, hardhat } from "viem/chains";
-import { useAccount, useBalance, useChainId, useSignMessage } from "wagmi";
+import { useAccount, useBalance } from "wagmi";
 
 interface AcceptQuoteModalProps {
   isOpen: boolean;
@@ -261,6 +261,7 @@ export function AcceptQuoteModal({
     return new Promise((r) => setTimeout(r, ms));
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function fulfillWithRetry(
     offerId: bigint
   ): Promise<`0x${string}` | undefined> {
@@ -540,11 +541,15 @@ export function AcceptQuoteModal({
 
       const solanaWallet = wallet.publicKey.toString().toLowerCase();
 
+      // CRITICAL: Capture tokenAmount NOW before any async operations
+      const finalTokenAmount = tokenAmount;
+      
       console.log("[Solana] Saving deal completion:", {
         quoteId: initialQuote.quoteId,
         wallet: solanaWallet,
         offerId: nextOfferId.toString(),
-        tokenAmount,
+        tokenAmount: finalTokenAmount,
+        tokenAmountType: typeof finalTokenAmount,
         currency,
       });
 
@@ -554,7 +559,7 @@ export function AcceptQuoteModal({
         body: JSON.stringify({
           action: "complete",
           quoteId: initialQuote.quoteId,
-          tokenAmount: String(tokenAmount),
+          tokenAmount: String(finalTokenAmount),
           paymentCurrency: currency,
           offerId: nextOfferId.toString(),
           transactionHash: "",
@@ -569,9 +574,22 @@ export function AcceptQuoteModal({
         console.error("[Solana] Deal save failed:", errorText);
         throw new Error(`Failed to save deal: ${errorText}`);
       }
-
+      
       const saveResult = await response.json();
       console.log("✅ Deal completion saved:", saveResult);
+      
+      // VERIFY the save succeeded
+      if (!saveResult.success) {
+        throw new Error("Deal save returned success=false");
+      }
+      if (!saveResult.quote) {
+        throw new Error("Deal save didn't return quote data");
+      }
+      if (saveResult.quote.status !== "executed") {
+        throw new Error(`Deal saved but status is ${saveResult.quote.status}, not executed`);
+      }
+      
+      console.log("✅ VERIFIED deal is in database as executed");
 
       setStep("complete");
       setIsProcessing(false);
@@ -719,6 +737,7 @@ export function AcceptQuoteModal({
         paymentCurrency: currency,
         offerId: String(newOfferId),
         transactionHash: paymentTxHash,
+        chain: "evm",
       }),
     });
 

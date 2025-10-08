@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
   const now = Math.floor(Date.now() / 1000);
   const maturedOffers: bigint[] = [];
 
-  for (let i = 1n; i < nextOfferId; i++) {
+  for (let i = BigInt(1); i < nextOfferId; i++) {
     const offer = (await publicClient.readContract({
       address: OTC_ADDRESS,
       abi,

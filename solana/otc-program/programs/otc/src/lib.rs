@@ -660,11 +660,6 @@ impl Offer { pub const SIZE: usize = 32+8+32+8+2+8+8+8+8+1+1+1+1+32+8+1; }
 fn available_inventory(desk: &Desk, treasury_amount: u64) -> u64 { if treasury_amount < desk.token_reserved { 0 } else { treasury_amount - desk.token_reserved } }
 fn only_owner(desk: &Desk, who: &Pubkey) -> Result<()> { require!(*who == desk.owner, OtcError::NotOwner); Ok(()) }
 fn must_be_approver(desk: &Desk, who: &Pubkey) -> Result<()> { require!((*who == desk.agent) || desk.approvers.contains(who), OtcError::NotApprover); Ok(()) }
-fn validate_offer_pda(desk_key: &Pubkey, offer_key: &Pubkey, offer_id: u64) -> Result<()> {
-    let (expected, _) = Pubkey::find_program_address(&[b"offer", desk_key.as_ref(), &offer_id.to_le_bytes()], &crate::ID);
-    require!(expected == *offer_key, OtcError::BadState);
-    Ok(())
-}
 fn pow10(exp: u32) -> u128 { 10u128.pow(exp) }
 fn mul_div_u128(a: u128, b: u128, d: u128) -> Result<u128> { a.checked_mul(b).and_then(|x| x.checked_div(d)).ok_or(OtcError::Overflow.into()) }
 fn mul_div_ceil_u128(a: u128, b: u128, d: u128) -> Result<u128> { let prod = a.checked_mul(b).ok_or(OtcError::Overflow)?; let q = prod / d; let r = prod % d; Ok(if r == 0 { q } else { q + 1 }) }

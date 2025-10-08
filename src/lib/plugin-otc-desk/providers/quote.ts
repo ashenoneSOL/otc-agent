@@ -30,12 +30,16 @@ export const quoteProvider: Provider = {
 
     console.log('[QuoteProvider] get() called for wallet:', walletAddress);
 
-    // Use runtime cache directly
-    const entityId = walletToEntityId(walletAddress);
-    const quoteId = `OTC-${entityId.substring(0, 12).toUpperCase()}`;
-    const currentQuote = await runtime.getCache<QuoteMemory>(`quote:${quoteId}`);
+    // Use QuoteService for consistent quote lookup
+    const quoteService = runtime.getService<QuoteService>("QuoteService");
+    if (!quoteService) {
+      return {
+        text: `No active elizaOS quote. Offer them a deal on elizaOS tokens with a discount and lockup.`,
+      };
+    }
     
-    console.log('[QuoteProvider] Cache result:', currentQuote ? currentQuote.quoteId : 'null');
+    const currentQuote = await quoteService.getQuoteByWallet(walletAddress);
+    console.log('[QuoteProvider] QuoteService result:', currentQuote ? currentQuote.quoteId : 'null');
 
     if (!currentQuote) {
       return {
@@ -89,15 +93,13 @@ export async function getUserQuote(walletAddress: string): Promise<QuoteMemory |
   const { agentRuntime } = await import("../../agent-runtime");
   const runtime = await agentRuntime.getRuntime();
   
-  // Use runtime cache directly instead of service
-  const entityId = walletToEntityId(walletAddress);
-  const quoteId = `OTC-${entityId.substring(0, 12).toUpperCase()}`;
-  const quote = await runtime.getCache<QuoteMemory>(`quote:${quoteId}`);
-  
-  if (!quote || quote.status !== "active") {
+  // Use QuoteService to get quote (it has the correct ID generation logic)
+  const quoteService = runtime.getService<any>("QuoteService");
+  if (!quoteService) {
     return undefined;
   }
   
+  const quote = await quoteService.getQuoteByWallet(walletAddress);
   return quote;
 }
 
@@ -128,15 +130,30 @@ export async function setUserQuote(
 
   const runtime = await agentRuntime.getRuntime();
   
-  // Use runtime cache directly instead of QuoteService
-  const quoteId = `OTC-${entityId.substring(0, 12).toUpperCase()}`;
+  // Generate consistent quote ID using the same method as QuoteService
+  const crypto = await import("crypto");
+  const dayTimestamp = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+  const hash = crypto.createHash('sha256')
+    .update(`${entityId}-${dayTimestamp}`)
+    .digest('hex')
+    .substring(0, 12)
+    .toUpperCase();
+  const quoteId = `OTC-${hash}`;
+  
   const lockupDays = quote.lockupMonths * 30;
   const now = Date.now();
   
-  // Generate signature
-  const secret = process.env.WORKER_AUTH_TOKEN || "default-secret";
-  const payload = `${quoteId}:${entityId}:${normalized}:${quote.tokenAmount}:${quote.discountBps}:${quote.lockupMonths}`;
-  const crypto = await import("crypto");
+  // Generate signature using same method as QuoteService
+  const secret = process.env.WORKER_AUTH_TOKEN || "dev-secret-DO-NOT-USE-IN-PRODUCTION";
+  const signatureData = {
+    quoteId,
+    entityId,
+    beneficiary: normalized,
+    tokenAmount: quote.tokenAmount,
+    discountBps: quote.discountBps,
+    lockupMonths: quote.lockupMonths,
+  };
+  const payload = JSON.stringify(signatureData);
   const signature = crypto.createHmac("sha256", secret).update(payload).digest("hex");
   
   const quoteData: QuoteMemory = {
@@ -169,7 +186,20 @@ export async function setUserQuote(
   
   await runtime.setCache(`quote:${quoteId}`, quoteData);
   
-  console.log('[setUserQuote] ✅ New quote created:', quoteId);
+  // Add to indexes
+  const allQuotes = (await runtime.getCache<string[]>("all_quotes")) ?? [];
+  if (!allQuotes.includes(quoteId)) {
+    allQuotes.push(quoteId);
+    await runtime.setCache("all_quotes", allQuotes);
+  }
+  
+  const entityQuoteIds = (await runtime.getCache<string[]>(`entity_quotes:${entityId}`)) ?? [];
+  if (!entityQuoteIds.includes(quoteId)) {
+    entityQuoteIds.push(quoteId);
+    await runtime.setCache(`entity_quotes:${entityId}`, entityQuoteIds);
+  }
+  
+  console.log('[setUserQuote] ✅ New quote created and indexed:', quoteId);
   return quoteData;
 }
 

@@ -626,12 +626,14 @@ function ChatHeader({
   onAcceptOffer,
   isOfferGlowing,
   onClearChat,
+  isLoadingHistory,
 }: {
   messages: ChatMessage[];
   apiQuote: any;
   onAcceptOffer: () => void;
   isOfferGlowing: boolean;
   onClearChat: () => void;
+  isLoadingHistory: boolean;
 }) {
   // Use the quote passed from parent (extracted from messages)
   const currentQuote = apiQuote;
@@ -728,29 +730,35 @@ function ChatHeader({
                   >
                     Accept Offer
                   </Button>
-                  <Button
-                    onClick={onClearChat}
-                    className="!h-9 !px-3 !text-sm bg-red-500 dark:bg-red-500 rounded-lg"
-                  >
-                    Reset
-                  </Button>
+                  {!isLoadingHistory && (
+                    <Button
+                      onClick={onClearChat}
+                      className="!h-9 !px-3 !text-sm bg-red-500 dark:bg-red-500 rounded-lg"
+                    >
+                      Reset
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
           ) : (
-            <Button
-              onClick={onClearChat}
-              className="!h-9 !px-3 !text-sm bg-red-500 dark:bg-red-500 rounded-lg sm:hidden"
-            >
-              Reset
-            </Button>
+            !isLoadingHistory && (
+              <Button
+                onClick={onClearChat}
+                className="!h-9 !px-3 !text-sm bg-red-500 dark:bg-red-500 rounded-lg sm:hidden"
+              >
+                Reset
+              </Button>
+            )
           )}
-        <Button
-          onClick={onClearChat}
-          className="!h-8 !px-3 !text-xs bg-red-500 dark:bg-red-500 rounded-lg hidden sm:block"
-        >
-          Reset
-        </Button>
+        {!isLoadingHistory && (
+          <Button
+            onClick={onClearChat}
+            className="!h-8 !px-3 !text-xs bg-red-500 dark:bg-red-500 rounded-lg hidden sm:block"
+          >
+            Reset
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -877,6 +885,7 @@ function ChatBody({
             onAcceptOffer={onAcceptOffer}
             isOfferGlowing={isOfferGlowing}
             onClearChat={onClearChat}
+            isLoadingHistory={isLoadingHistory}
           />
 
           {/* Chat Messages - only scrollable area */}

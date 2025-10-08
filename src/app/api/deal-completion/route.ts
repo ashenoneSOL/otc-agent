@@ -1,3 +1,4 @@
+import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
 import { agentRuntime } from "@/lib/agent-runtime";
 import { walletToEntityId } from "@/lib/entityId";
 import QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
@@ -7,8 +8,7 @@ import {
 } from "@/services/database";
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, type Address } from "viem";
-import { hardhat, baseSepolia } from "viem/chains";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { baseSepolia, hardhat } from "viem/chains";
 
 function getChain() {
   const network = process.env.NEXT_PUBLIC_NETWORK || "hardhat";
@@ -31,6 +31,14 @@ export async function POST(request: NextRequest) {
 
   if (action === "complete") {
     const tokenAmountStr = String(body.tokenAmount);
+    console.log("[DealCompletion] Received request:", {
+      tokenAmount: body.tokenAmount,
+      tokenAmountStr,
+      paymentCurrency: body.paymentCurrency,
+      chain: body.chain,
+      offerId: body.offerId,
+    });
+    
     // Map SOL to ETH internally since database schema uses ETH/USDC
     const paymentCurrency: PaymentCurrency =
       (body.paymentCurrency === "ETH" || body.paymentCurrency === "SOL") ? "ETH" : "USDC";
@@ -57,7 +65,6 @@ export async function POST(request: NextRequest) {
         });
         
         // Update both beneficiary and entityId to match
-        const newEntityId = walletToEntityId(normalizedBeneficiary);
         await quoteService.setQuoteBeneficiary(quoteId, normalizedBeneficiary);
         
         // Re-fetch to get updated quote
@@ -204,6 +211,25 @@ export async function POST(request: NextRequest) {
       actualPaymentAmount = quote.paymentAmount || "0";
     }
 
+    // VALIDATE before saving
+    if (!tokenAmountStr || tokenAmountStr === "0") {
+      throw new Error(`CRITICAL: tokenAmount is ${tokenAmountStr} - must be > 0`);
+    }
+    if (totalUsd === 0 && chainType === "solana") {
+      throw new Error("CRITICAL: Solana deal has $0 value");
+    }
+    
+    console.log("[DealCompletion] Calling updateQuoteExecution with:", {
+      quoteId,
+      tokenAmount: tokenAmountStr,
+      totalUsd,
+      discountUsd,
+      discountedUsd,
+      paymentCurrency,
+      paymentAmount: actualPaymentAmount,
+      offerId,
+    });
+    
     const updated = await quoteService.updateQuoteExecution(quoteId, {
       tokenAmount: tokenAmountStr,
       totalUsd,
@@ -215,14 +241,30 @@ export async function POST(request: NextRequest) {
       transactionHash,
       blockNumber,
     });
-
-    console.log("[Deal Completion] Deal completed", {
+    
+    // VERIFY status changed
+    if (updated.status !== "executed") {
+      throw new Error(`CRITICAL: Status is ${updated.status}, expected executed`);
+    }
+    
+    // Store chain type for proper currency display
+    (updated as any).chain = chainType === "solana" ? "solana" : "evm";
+    await agentRuntime.runtime.setCache(`quote:${quoteId}`, updated);
+    
+    // VERIFY quote is in entity's list
+    const entityQuotes = await agentRuntime.runtime.getCache<string[]>(`entity_quotes:${updated.entityId}`) || [];
+    if (!entityQuotes.includes(quoteId)) {
+      throw new Error(`CRITICAL: Quote ${quoteId} not in entity ${updated.entityId} list`);
+    }
+    
+    console.log("[Deal Completion] ✅ VERIFIED and completed:", {
       entityId: quote.entityId,
       quoteId,
-      tokenAmount: tokenAmountStr,
+      tokenAmount: updated.tokenAmount,
+      status: updated.status,
+      inEntityList: true,
       discountBps: quote.discountBps,
       finalPrice: discountedUsd,
-      transactionHash,
     });
 
     return NextResponse.json({ success: true, quote: updated });
@@ -249,7 +291,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  try {
     await agentRuntime.getRuntime();
 
     const { searchParams } = new URL(request.url);
@@ -260,8 +301,10 @@ export async function GET(request: NextRequest) {
     }
 
     const entityId = walletToEntityId(wallet);
+    const normalizedWallet = wallet.toLowerCase();
     console.log("[Deal Completion GET] Querying deals:", {
       wallet,
+      normalizedWallet,
       entityId,
     });
     
@@ -276,8 +319,25 @@ export async function GET(request: NextRequest) {
       });
     }
     
+    // Get quotes by entityId
     const quotes = await quoteService.getUserQuoteHistory(entityId, 100);
-    console.log("[Deal Completion GET] Got quotes:", quotes.length);
+    console.log("[Deal Completion GET] Got quotes by entityId:", quotes.length);
+    
+    // ALSO search by beneficiary address (for quotes indexed under wrong entityId)
+    const allQuoteIds = (await agentRuntime.runtime.getCache<string[]>("all_quotes")) ?? [];
+    const quotesSet = new Set(quotes.map(q => q.quoteId));
+    
+    for (const quoteId of allQuoteIds) {
+      if (quotesSet.has(quoteId)) continue; // Already have it
+      
+      const quote = await agentRuntime.runtime.getCache<any>(`quote:${quoteId}`);
+      if (quote && quote.beneficiary === normalizedWallet) {
+        console.log("[Deal Completion GET] Found quote by beneficiary:", quoteId);
+        quotes.push(quote);
+      }
+    }
+    
+    console.log("[Deal Completion GET] Total quotes found:", quotes.length);
     
     // Show active, approved, and executed deals
     // active = quote created, approved = offer created/approved on-chain, executed = paid/fulfilled
@@ -290,11 +350,4 @@ export async function GET(request: NextRequest) {
       success: true,
       deals,
     });
-  } catch (error: any) {
-    console.error("[Deal Completion GET] Error:", error);
-    return NextResponse.json({
-      success: true,
-      deals: [],
-    });
-  }
 }

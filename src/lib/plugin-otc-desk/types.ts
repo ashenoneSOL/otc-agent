@@ -2,6 +2,7 @@
 
 export type QuoteStatus = "active" | "expired" | "executed" | "rejected" | "approved";
 export type PaymentCurrency = "ETH" | "USDC";
+export type ChainType = "evm" | "solana";
 
 export interface QuoteMemory {
   id: string;
@@ -29,6 +30,8 @@ export interface QuoteMemory {
   blockNumber: number;
   rejectionReason: string;
   approvalNote: string;
+  // Optional chain context to distinguish EVM vs Solana flows
+  chain?: ChainType;
 }
 
 export interface UserSessionMemory {

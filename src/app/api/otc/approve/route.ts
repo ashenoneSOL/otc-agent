@@ -376,7 +376,7 @@ export async function POST(request: NextRequest) {
     txHash,
   );
 
-  // Update quote status if we can find it
+  // Update quote status and financial data if we can find it
   const runtime = await agentRuntime.getRuntime();
   const quoteService = runtime.getService<any>("QuoteService");
 
@@ -388,6 +388,46 @@ export async function POST(request: NextRequest) {
     );
 
     if (matchingQuote) {
+      // Calculate financial values from on-chain offer data
+      const tokenAmountWei = BigInt(offer.tokenAmount);
+      const priceUsd8 = BigInt(offer.priceUsdPerToken);
+      const discountBpsNum = Number(offer.discountBps);
+      
+      // totalUsd = (tokenAmount * priceUsdPerToken) / 1e18 (result in 8 decimals)
+      const totalUsd8 = (tokenAmountWei * priceUsd8) / BigInt(1e18);
+      const totalUsd = Number(totalUsd8) / 1e8;
+      
+      // discountUsd = totalUsd * discountBps / 10000
+      const discountUsd8 = (totalUsd8 * BigInt(discountBpsNum)) / 10000n;
+      const discountUsd = Number(discountUsd8) / 1e8;
+      
+      // discountedUsd = totalUsd - discountUsd
+      const discountedUsd8 = totalUsd8 - discountUsd8;
+      const discountedUsd = Number(discountedUsd8) / 1e8;
+      
+      // Determine payment currency and amount based on offer currency
+      const paymentCurrency: "ETH" | "USDC" = offer.currency === 0 ? "ETH" : "USDC";
+      let paymentAmount = "0";
+      
+      if (offer.currency === 0) {
+        // Calculate required ETH
+        const ethPrice = Number(offer.ethUsdPrice) / 1e8;
+        paymentAmount = (discountedUsd / ethPrice).toFixed(6);
+      } else {
+        // USDC
+        paymentAmount = discountedUsd.toFixed(2);
+      }
+      
+      console.log("[Approve API] Calculated financial data:", {
+        tokenAmount: offer.tokenAmount.toString(),
+        totalUsd,
+        discountUsd,
+        discountedUsd,
+        paymentAmount,
+        paymentCurrency,
+      });
+      
+      // Update quote status
       await quoteService.updateQuoteStatus(
         matchingQuote.quoteId,
         "approved",
@@ -399,8 +439,21 @@ export async function POST(request: NextRequest) {
           approvalNote: "Approved via API",
         },
       );
+      
+      // Update quote with financial data from contract
+      const updatedQuote = await quoteService.getQuoteByQuoteId(matchingQuote.quoteId);
+      updatedQuote.tokenAmount = offer.tokenAmount.toString();
+      updatedQuote.totalUsd = totalUsd;
+      updatedQuote.discountUsd = discountUsd;
+      updatedQuote.discountedUsd = discountedUsd;
+      updatedQuote.paymentAmount = paymentAmount;
+      updatedQuote.paymentCurrency = paymentCurrency;
+      updatedQuote.discountBps = discountBpsNum;
+      
+      await runtime.setCache(`quote:${matchingQuote.quoteId}`, updatedQuote);
+      
       console.log(
-        "[Approve API] Updated quote status:",
+        "[Approve API] Updated quote with financial data:",
         matchingQuote.quoteId,
       );
     }

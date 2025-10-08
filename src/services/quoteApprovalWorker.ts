@@ -167,6 +167,58 @@ export class QuoteApprovalWorker {
     const quoteService = runtime.getService<any>("QuoteService");
     
     if (quoteService) {
+      // Read offer data from contract to get financial values
+      const offerRaw = (await this.publicClient.readContract({
+        address: this.OTC_ADDRESS,
+        abi: this.abi,
+        functionName: "offers",
+        args: [offerId],
+      } as any)) as any;
+      
+      // Parse offer struct (array format)
+      const offer = {
+        beneficiary: offerRaw[0],
+        tokenAmount: offerRaw[1],
+        discountBps: offerRaw[2],
+        priceUsdPerToken: offerRaw[5],
+        ethUsdPrice: offerRaw[6],
+        currency: offerRaw[7],
+      };
+      
+      // Calculate financial values from on-chain data
+      const tokenAmountWei = BigInt(offer.tokenAmount);
+      const priceUsd8 = BigInt(offer.priceUsdPerToken);
+      const discountBpsNum = Number(offer.discountBps);
+      
+      const totalUsd8 = (tokenAmountWei * priceUsd8) / BigInt(1e18);
+      const totalUsd = Number(totalUsd8) / 1e8;
+      
+      const discountUsd8 = (totalUsd8 * BigInt(discountBpsNum)) / 10000n;
+      const discountUsd = Number(discountUsd8) / 1e8;
+      
+      const discountedUsd8 = totalUsd8 - discountUsd8;
+      const discountedUsd = Number(discountedUsd8) / 1e8;
+      
+      const paymentCurrency: "ETH" | "USDC" = offer.currency === 0 ? "ETH" : "USDC";
+      let paymentAmount = "0";
+      
+      if (offer.currency === 0) {
+        const ethPrice = Number(offer.ethUsdPrice) / 1e8;
+        paymentAmount = (discountedUsd / ethPrice).toFixed(6);
+      } else {
+        paymentAmount = discountedUsd.toFixed(2);
+      }
+      
+      console.log(`[Worker] Calculated financial data for ${quote.quoteId}:`, {
+        tokenAmount: offer.tokenAmount.toString(),
+        totalUsd,
+        discountUsd,
+        discountedUsd,
+        paymentAmount,
+        paymentCurrency,
+      });
+      
+      // Update quote status
       await quoteService.updateQuoteStatus(quote.quoteId, "approved", {
         offerId: offerIdStr,
         transactionHash: hash,
@@ -174,6 +226,20 @@ export class QuoteApprovalWorker {
         rejectionReason: "",
         approvalNote: "Auto-approved by worker",
       });
+      
+      // Update quote with financial data from contract
+      const updatedQuote = await quoteService.getQuoteByQuoteId(quote.quoteId);
+      updatedQuote.tokenAmount = offer.tokenAmount.toString();
+      updatedQuote.totalUsd = totalUsd;
+      updatedQuote.discountUsd = discountUsd;
+      updatedQuote.discountedUsd = discountedUsd;
+      updatedQuote.paymentAmount = paymentAmount;
+      updatedQuote.paymentCurrency = paymentCurrency;
+      updatedQuote.discountBps = discountBpsNum;
+      
+      await runtime.setCache(`quote:${quote.quoteId}`, updatedQuote);
+      
+      console.log(`[Worker] Updated quote ${quote.quoteId} with financial data`);
     }
 
     this.notifyApproval(quote.entityId, quote.quoteId, offerIdStr, hash);

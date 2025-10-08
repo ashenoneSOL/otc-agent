@@ -1,10 +1,7 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { useAccount } from "wagmi";
-import { useWallet } from "@solana/wallet-adapter-react";
-
 import { Button } from "@/components/button";
+import { useMultiWallet } from "@/components/multiwallet";
 import {
   Table,
   TableBody,
@@ -14,15 +11,12 @@ import {
   TableRow,
 } from "@/components/table";
 import { useOTC } from "@/hooks/contracts/useOTC";
-import { useMultiWallet } from "@/components/multiwallet";
-import { createDealShareImage } from "@/utils/share-card";
 import {
-  ensureXAuth,
-  getXCreds,
-  shareOnX,
-  setPendingShare,
-  resumeFreshAuth,
+  resumeFreshAuth
 } from "@/utils/x-share";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useEffect, useMemo, useState } from "react";
+import { useAccount } from "wagmi";
 
 function formatDate(tsSeconds: bigint): string {
   const d = new Date(Number(tsSeconds) * 1000);
@@ -78,6 +72,7 @@ export function MyDealsContent() {
   const [sortAsc, setSortAsc] = useState(true);
   const [refunding, setRefunding] = useState<bigint | null>(null);
   const [solanaDeals, setSolanaDeals] = useState<any[]>([]);
+  const [evmDeals, setEvmDeals] = useState<any[]>([]);
 
   // Fetch Solana deals from database
   useEffect(() => {
@@ -112,11 +107,22 @@ export function MyDealsContent() {
           if (data.success && data.deals) {
             console.log(
               "[MyDeals] Loaded EVM deals from DB:",
-              data.deals.length
+              data.deals.length,
+              data.deals
             );
+            setEvmDeals(data.deals);
+          } else {
+            setEvmDeals([]);
           }
         })
-        .catch((err) => console.error(err));
+        .catch((err) => {
+          console.error("[MyDeals] Failed to load EVM deals:", err);
+          setEvmDeals([]);
+        });
+    } else {
+      // Clear deals when wallet disconnects
+      setSolanaDeals([]);
+      setEvmDeals([]);
     }
   }, [activeFamily, solWallet.publicKey, address]);
 
@@ -173,8 +179,75 @@ export function MyDealsContent() {
     const offers = myOffers ?? [];
     console.log("[MyDeals] Total offers from contract:", offers.length);
     console.log("[MyDeals] Raw offers data:", offers);
+    console.log("[MyDeals] Database deals:", evmDeals.length, evmDeals);
 
-    const filtered = offers.filter((o) => {
+    // Strategy: Prioritize database deals (they have quoteId!), supplement with contract data
+    const result: any[] = [];
+    const processedOfferIds = new Set<string>();
+
+    // 1. Process database deals first (they have quoteId which is what we need!)
+    for (const deal of evmDeals) {
+      // Only show executed or approved deals (in-progress)
+      if (deal.status !== "executed" && deal.status !== "approved") {
+        console.log(`[MyDeals] Skipping deal ${deal.quoteId} with status: ${deal.status}`);
+        continue;
+      }
+
+      // Find matching contract offer for full data
+      const contractOffer = deal.offerId 
+        ? offers.find((o) => o.id.toString() === deal.offerId)
+        : undefined;
+
+      if (contractOffer) {
+        // We have both database and contract data - use contract structure with quoteId
+        console.log(`[MyDeals] Matched DB deal ${deal.quoteId} to contract offer ${deal.offerId}`);
+        
+        result.push({
+          ...contractOffer,
+          quoteId: deal.quoteId, // ✅ Add quoteId from database
+        });
+        
+        if (deal.offerId) {
+          processedOfferIds.add(deal.offerId);
+        }
+      } else {
+        // Database deal without matching contract offer (possibly old data or Solana)
+        // Transform to match offer structure
+        console.log(`[MyDeals] Using DB-only deal ${deal.quoteId} (no contract match)`);
+        
+        const createdTs = deal.createdAt ? new Date(deal.createdAt).getTime() / 1000 : Date.now() / 1000;
+        const lockupDays = deal.lockupMonths ? deal.lockupMonths * 30 : 150;
+        const tokenAmountRaw = deal.tokenAmount || "0";
+        const tokenAmountBigInt = BigInt(tokenAmountRaw);
+        
+        result.push({
+          id: BigInt(deal.offerId || "0"),
+          beneficiary: deal.beneficiary || address || "",
+          tokenAmount: tokenAmountBigInt,
+          discountBps: BigInt(deal.discountBps || 1000),
+          createdAt: BigInt(Math.floor(createdTs)),
+          unlockTime: BigInt(Math.floor(createdTs + lockupDays * 86400)),
+          priceUsdPerToken: BigInt(100_000_000), // $1.00
+          ethUsdPrice: BigInt(10_000_000_000), // $100
+          currency: deal.paymentCurrency === "ETH" ? 0 : 1,
+          approved: true,
+          paid: true,
+          fulfilled: false,
+          cancelled: false,
+          payer: address || "",
+          amountPaid: BigInt(0),
+          quoteId: deal.quoteId, // ✅ quoteId from database
+        });
+      }
+    }
+
+    // 2. Add contract offers that aren't in the database yet
+    const filteredContractOnly = offers.filter((o) => {
+      const offerId = o.id.toString();
+      if (processedOfferIds.has(offerId)) {
+        return false; // Already processed from database
+      }
+
       // In-progress means paid, not fulfilled, not cancelled
       const isPaid = Boolean(o?.paid);
       const isFulfilled = Boolean(o?.fulfilled);
@@ -182,28 +255,31 @@ export function MyDealsContent() {
       const hasValidId = o?.id !== undefined && o?.id !== null;
       const hasTokenAmount = o?.tokenAmount && o.tokenAmount > 0n;
 
-      console.log(`[MyDeals] Offer ${o?.id}:`, {
-        id: o?.id?.toString(),
+      console.log(`[MyDeals] Contract-only offer ${offerId}:`, {
         isPaid,
         isFulfilled,
         isCancelled,
         hasValidId,
         hasTokenAmount,
-        beneficiary: o?.beneficiary,
-        tokenAmount: o?.tokenAmount?.toString(),
-        discountBps: o?.discountBps?.toString(),
-        approved: o?.approved,
       });
 
-      // Filter: must have valid data and be in paid-but-not-fulfilled state
-      return (
-        hasValidId && hasTokenAmount && isPaid && !isFulfilled && !isCancelled
-      );
+      return hasValidId && hasTokenAmount && isPaid && !isFulfilled && !isCancelled;
     });
 
-    console.log("[MyDeals] Filtered in-progress offers:", filtered.length);
-    return filtered;
-  }, [myOffers, activeFamily, solanaDeals, solWallet.publicKey]);
+    // Add contract-only offers (these won't have quoteId, will use fallback)
+    result.push(...filteredContractOnly.map(o => ({
+      ...o,
+      quoteId: undefined, // No quoteId - will use API fallback
+    })));
+
+    console.log("[MyDeals] Final combined deals:", {
+      fromDatabase: result.filter(r => r.quoteId).length,
+      fromContractOnly: result.filter(r => !r.quoteId).length,
+      total: result.length,
+    });
+
+    return result;
+  }, [myOffers, activeFamily, solanaDeals, evmDeals, solWallet.publicKey, address]);
 
   const sorted = useMemo(() => {
     const list = [...inProgress];
@@ -322,13 +398,15 @@ export function MyDealsContent() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {sorted.map((o) => {
+                    {sorted.map((o, index) => {
                       const now = Math.floor(Date.now() / 1000);
                       const matured = Number(o.unlockTime) <= now;
                       const discountPct = Number(o.discountBps ?? 0n) / 100;
                       const lockup = getLockupLabel(o.createdAt, o.unlockTime);
+                      // Use quoteId if available (Solana), otherwise offerId
+                      const uniqueKey = (o as any).quoteId || o.id.toString() || `deal-${index}`;
                       return (
-                        <TableRow key={o.id.toString()}>
+                        <TableRow key={uniqueKey}>
                           <TableCell>
                             {formatTokenAmount(o.tokenAmount)}
                           </TableCell>
@@ -358,12 +436,30 @@ export function MyDealsContent() {
                             <div className="flex gap-2 justify-end">
                               <Button
                                 color="zinc"
-                                onClick={() => {
-                                  // For Solana, use quoteId directly; for EVM, lookup by offerId
-                                  const dealLink = (o as any).quoteId 
-                                    ? `/deal/${(o as any).quoteId}`
-                                    : `/api/quote/by-offer/${o.id}`;
-                                  window.location.href = dealLink;
+                                onClick={async () => {
+                                  // If we have a quoteId, use it directly
+                                  if (o.quoteId) {
+                                    window.location.href = `/deal/${o.quoteId}`;
+                                    return;
+                                  }
+                                  
+                                  // Fallback: lookup quoteId by offerId (for old data without proper linking)
+                                  console.log("[MyDeals] No quoteId, looking up by offerId:", o.id?.toString());
+                                  
+                                    const response = await fetch(`/api/quote/by-offer/${o.id}`);
+                                    if (response.redirected) {
+                                      window.location.href = response.url;
+                                    } else if (response.ok) {
+                                      // Handle JSON response with quoteId
+                                      const data = await response.json();
+                                      if (data.quoteId) {
+                                        window.location.href = `/deal/${data.quoteId}`;
+                                      } else {
+                                        throw new Error("No quoteId in response");
+                                      }
+                                    } else {
+                                      throw new Error(`Failed to lookup quote: ${response.status}`);
+                                    }
                                 }}
                                 className="!px-4 !py-2"
                               >
@@ -419,50 +515,6 @@ export function MyDealsContent() {
                                     : "Refund"}
                                 </Button>
                               )}
-                              <Button
-                                color="zinc"
-                                onClick={async () => {
-                                  const discountPct =
-                                    Number(o.discountBps ?? 0n) / 100;
-                                  const months = Math.max(
-                                    1,
-                                    Math.round(
-                                      (Number(o.unlockTime) -
-                                        Number(o.createdAt)) /
-                                        (30 * 24 * 60 * 60)
-                                    )
-                                  );
-                                  const tokenAmount =
-                                    Number(o.tokenAmount) / 1e18;
-                                  const shareText = `I just completed an OTC deal for ${tokenAmount.toLocaleString()} elizaOS at ${discountPct.toFixed(0)}% with ${months}-month lockup. #elizaOS #OTC`;
-                                  const { dataUrl } =
-                                    await createDealShareImage({
-                                      tokenAmount,
-                                      discountBps: Number(o.discountBps ?? 0n),
-                                      lockupMonths: months,
-                                      paymentCurrency:
-                                        Number(o.currency ?? 0) === 0
-                                          ? "ETH"
-                                          : "USDC",
-                                    });
-                                  const creds = getXCreds();
-                                  if (
-                                    !creds?.oauth1Token ||
-                                    !creds?.oauth1TokenSecret
-                                  ) {
-                                    setPendingShare({
-                                      text: shareText,
-                                      dataUrl,
-                                    });
-                                    ensureXAuth({ text: shareText, dataUrl });
-                                  } else {
-                                    await shareOnX(shareText, dataUrl, creds);
-                                  }
-                                }}
-                                className="!px-4 !py-2"
-                              >
-                                Share
-                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>

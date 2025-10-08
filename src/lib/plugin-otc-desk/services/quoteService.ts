@@ -6,37 +6,7 @@ import { Service } from "@elizaos/core";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { walletToEntityId } from "../../entityId";
-
-export type QuoteStatus = "active" | "expired" | "executed" | "rejected" | "approved";
-export type PaymentCurrency = "ETH" | "USDC";
-
-export interface QuoteMemory {
-  id: string;
-  quoteId: string;
-  entityId: string;
-  beneficiary: string;
-  tokenAmount: string;
-  discountBps: number;
-  apr: number;
-  lockupMonths: number;
-  lockupDays: number;
-  paymentCurrency: PaymentCurrency;
-  totalUsd: number;
-  discountUsd: number;
-  discountedUsd: number;
-  paymentAmount: string;
-  status: QuoteStatus;
-  signature: string;
-  createdAt: number;
-  executedAt: number;
-  rejectedAt: number;
-  approvedAt: number;
-  offerId: string;
-  transactionHash: string;
-  blockNumber: number;
-  rejectionReason: string;
-  approvalNote: string;
-}
+import type { QuoteMemory, PaymentCurrency, QuoteStatus } from "../types";
 
 const QUOTE_KEY = (quoteId: string) => `quote:${quoteId}`;
 const ENTITY_QUOTES_KEY = (entityId: string) => `entity_quotes:${entityId}`;
@@ -208,7 +178,7 @@ export class QuoteService extends Service {
     console.log("[QuoteService] getUserQuoteHistory:", { entityId, limit });
     
     const entityQuoteIds = (await this.runtime.getCache<string[]>(ENTITY_QUOTES_KEY(entityId))) ?? [];
-    console.log("[QuoteService] Found quote IDs:", entityQuoteIds.length, entityQuoteIds);
+    console.log("[QuoteService] Found quote IDs from index:", entityQuoteIds.length, entityQuoteIds);
 
     const quotes: QuoteMemory[] = [];
     for (const quoteId of entityQuoteIds) {
@@ -216,6 +186,26 @@ export class QuoteService extends Service {
       if (quote) {
         console.log("[QuoteService] Quote:", quote.quoteId, "status:", quote.status);
         quotes.push(quote);
+      }
+    }
+
+    // ALSO search all quotes by beneficiary (for quotes indexed under wrong entityId)
+    const allQuoteIds = (await this.runtime.getCache<string[]>(ALL_QUOTES_KEY)) ?? [];
+    console.log("[QuoteService] Searching all quotes for matching beneficiary:", allQuoteIds.length);
+    
+    // Get wallet address from entityId (reverse lookup not perfect, but check beneficiary)
+    for (const quoteId of allQuoteIds) {
+      if (entityQuoteIds.includes(quoteId)) continue; // Already processed
+      
+      const quote = await this.runtime.getCache<QuoteMemory>(QUOTE_KEY(quoteId));
+      if (quote && quote.entityId === entityId) {
+        // Found a quote with matching entityId but not in the index
+        console.log("[QuoteService] Found unindexed quote:", quote.quoteId);
+        quotes.push(quote);
+        
+        // Fix the index
+        entityQuoteIds.push(quoteId);
+        await this.runtime.setCache(ENTITY_QUOTES_KEY(entityId), entityQuoteIds);
       }
     }
 

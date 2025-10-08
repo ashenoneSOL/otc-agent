@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
-import { exec } from "child_process";
 
 async function readAddressFromFile(root: string): Promise<string> {
   const raw = await fs.readFile(
