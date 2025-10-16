@@ -163,14 +163,14 @@ export function DealCompletion({ quote }: DealCompletionProps) {
   return (
     <div
       data-testid="deal-completion"
-      className="bg-gradient-to-b from-zinc-900 to-black py-8 px-4"
+      className="bg-gradient-to-b from-zinc-900 to-black py-4 sm:py-8 px-3 sm:px-4"
     >
       <div className="max-w-4xl w-full mx-auto">
         {/* Success Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-green-500/20 rounded-full mb-4">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-green-500/20 rounded-full mb-3 sm:mb-4">
             <svg
-              className="w-10 h-10 text-green-500"
+              className="w-8 h-8 sm:w-10 sm:h-10 text-green-500"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -183,10 +183,10 @@ export function DealCompletion({ quote }: DealCompletionProps) {
               />
             </svg>
           </div>
-          <h1 className="text-4xl font-bold text-white mb-2">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 px-2">
             Deal Executed Successfully!
           </h1>
-          <p className="text-zinc-400">
+          <p className="text-sm sm:text-base text-zinc-400 px-2">
             You will receive your tokens after the lockup period
           </p>
           {quote.transactionHash && (
@@ -194,7 +194,7 @@ export function DealCompletion({ quote }: DealCompletionProps) {
               href={`https://basescan.org/tx/${quote.transactionHash}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block"
+              className="text-blue-400 hover:text-blue-300 text-xs sm:text-sm mt-2 inline-block break-all px-2"
             >
               View Transaction →
             </a>
@@ -203,8 +203,8 @@ export function DealCompletion({ quote }: DealCompletionProps) {
 
         {/* Share Card Preview */}
         {shareImageUrl && (
-          <div className="p-6 mb-6">
-            <div className="mb-4 rounded-lg overflow-hidden">
+          <div className="p-3 sm:p-6 mb-4 sm:mb-6">
+            <div className="mb-3 sm:mb-4 rounded-lg overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={shareImageUrl}
@@ -212,10 +212,10 @@ export function DealCompletion({ quote }: DealCompletionProps) {
                 className="w-full h-auto"
               />
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
               <Button
                 onClick={shareToTwitter}
-                className="ml-auto flex items-center gap-2 !px-4 !py-2"
+                className="sm:ml-auto flex items-center justify-center gap-2 !px-4 !py-2.5 sm:!py-2 w-full sm:w-auto"
                 color="blue"
               >
                 <svg
@@ -230,7 +230,7 @@ export function DealCompletion({ quote }: DealCompletionProps) {
 
               <Button
                 onClick={downloadImage}
-                className="flex items-center gap-2 border border-zinc-300 dark:border-zinc-700 bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 !px-4 !py-2"
+                className="flex items-center justify-center gap-2 border border-zinc-300 dark:border-zinc-700 bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 !px-4 !py-2.5 sm:!py-2 w-full sm:w-auto"
               >
                 <svg
                   className="w-5 h-5"
@@ -252,23 +252,23 @@ export function DealCompletion({ quote }: DealCompletionProps) {
         )}
 
         {/* P&L Card Preview */}
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6 mb-6">
-          <h2 className="text-xl font-bold text-white mb-4">
+        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4 sm:p-6 mb-4 sm:mb-6">
+          <h2 className="text-lg sm:text-xl font-bold text-white mb-3 sm:mb-4">
             Your P&L Summary
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* Left Column - Financial Summary */}
-            <div className="space-y-4">
-              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                <h3 className="text-green-400 font-semibold mb-2">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 sm:p-4">
+                <h3 className="text-sm sm:text-base text-green-400 font-semibold mb-1 sm:mb-2">
                   Instant Savings
                 </h3>
-                <p className="text-3xl font-bold text-white">
+                <p className="text-2xl sm:text-3xl font-bold text-white">
                   $
                   {quote.discountUsd > 0 ? quote.discountUsd.toFixed(2) : "N/A"}
                 </p>
-                <p className="text-sm text-zinc-400 mt-1">
+                <p className="text-xs sm:text-sm text-zinc-400 mt-1">
                   {(quote.discountBps / 100).toFixed(2)}% below market price
                 </p>
               </div>

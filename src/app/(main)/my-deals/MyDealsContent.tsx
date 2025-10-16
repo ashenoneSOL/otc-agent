@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/button";
 import { useMultiWallet } from "@/components/multiwallet";
@@ -74,7 +74,7 @@ export function MyDealsContent() {
   const [evmDeals, setEvmDeals] = useState<any[]>([]);
   const [myListings, setMyListings] = useState<any[]>([]);
 
-  useEffect(() => {
+  const refreshListings = useCallback(async () => {
     const walletAddr =
       activeFamily === "solana"
         ? solanaPublicKey?.toLowerCase()
@@ -87,26 +87,27 @@ export function MyDealsContent() {
       return;
     }
 
-    fetch(`/api/deal-completion?wallet=${walletAddr}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.deals) {
-          if (activeFamily === "solana") {
-            setSolanaDeals(data.deals);
-          } else {
-            setEvmDeals(data.deals);
-          }
-        }
-      });
+    const [dealsRes, consignmentsRes] = await Promise.all([
+      fetch(`/api/deal-completion?wallet=${walletAddr}`).then((res) => res.json()),
+      fetch(`/api/consignments?consigner=${walletAddr}`).then((res) => res.json()),
+    ]);
 
-    fetch(`/api/consignments?consigner=${walletAddr}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setMyListings(data.consignments || []);
-        }
-      });
+    if (dealsRes.success && dealsRes.deals) {
+      if (activeFamily === "solana") {
+        setSolanaDeals(dealsRes.deals);
+      } else {
+        setEvmDeals(dealsRes.deals);
+      }
+    }
+
+    if (consignmentsRes.success) {
+      setMyListings(consignmentsRes.consignments || []);
+    }
   }, [activeFamily, solanaPublicKey, evmAddress]);
+
+  useEffect(() => {
+    refreshListings();
+  }, [refreshListings]);
 
   const inProgress = useMemo(() => {
     if (activeFamily === "solana") {
@@ -340,18 +341,18 @@ export function MyDealsContent() {
 
   return (
     <>
-      <main className="flex-1 px-4 sm:px-6 py-6">
-        <div className="max-w-5xl mx-auto space-y-6">
+      <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 sm:py-6">
+        <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-semibold">My Deals</h1>
+            <h1 className="text-xl sm:text-2xl font-semibold">My Deals</h1>
           </div>
 
-          <div className="flex gap-4 border-b border-zinc-200 dark:border-zinc-800">
+          <div className="flex gap-3 sm:gap-4 border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto">
             <button
               onClick={() => setActiveTab("purchases")}
-              className={`px-4 py-2 font-medium transition-colors ${
+              className={`px-3 sm:px-4 py-2 font-medium transition-colors whitespace-nowrap text-sm sm:text-base ${
                 activeTab === "purchases"
-                  ? "text-emerald-600 border-b-2 border-emerald-600"
+                  ? "text-orange-600 border-b-2 border-orange-600"
                   : "text-zinc-600 dark:text-zinc-400"
               }`}
             >
@@ -359,9 +360,9 @@ export function MyDealsContent() {
             </button>
             <button
               onClick={() => setActiveTab("listings")}
-              className={`px-4 py-2 font-medium transition-colors ${
+              className={`px-3 sm:px-4 py-2 font-medium transition-colors whitespace-nowrap text-sm sm:text-base ${
                 activeTab === "listings"
-                  ? "text-emerald-600 border-b-2 border-emerald-600"
+                  ? "text-orange-600 border-b-2 border-orange-600"
                   : "text-zinc-600 dark:text-zinc-400"
               }`}
             >
@@ -370,7 +371,7 @@ export function MyDealsContent() {
           </div>
 
           {activeTab === "listings" ? (
-            <MyListingsTab listings={myListings} />
+            <MyListingsTab listings={myListings} onRefresh={refreshListings} />
           ) : isLoading ? (
             <div className="text-zinc-600 dark:text-zinc-400">
               Loading deals…
@@ -383,58 +384,59 @@ export function MyDealsContent() {
             <>
               <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                 <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800">
-                  <div className="p-6">
-                    <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                  <div className="p-4 sm:p-6">
+                    <div className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
                       Total Value
                     </div>
-                    <div className="mt-2 text-3xl font-semibold flex items-baseline gap-2">
+                    <div className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-semibold flex items-baseline gap-2">
                       <span>{formatUsd(stats.totalUsd)}</span>
-                      <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+                      <span className="text-xs sm:text-sm font-medium text-zinc-500 dark:text-zinc-400">
                         USD
                       </span>
                     </div>
                   </div>
-                  <div className="p-6">
-                    <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                  <div className="p-4 sm:p-6">
+                    <div className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
                       Total Deals
                     </div>
-                    <div className="mt-2 text-3xl font-semibold">
+                    <div className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-semibold">
                       {stats.totalDeals}
                     </div>
                   </div>
-                  <div className="p-6">
-                    <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                  <div className="p-4 sm:p-6">
+                    <div className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
                       Average Discount
                     </div>
-                    <div className="mt-2 text-3xl font-semibold">
+                    <div className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-semibold">
                       {stats.avgDiscountPct.toFixed(1)}%
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden px-4 sm:px-6">
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableHeader>Amount (elizaOS)</TableHeader>
-                      <TableHeader>
-                        <button
-                          className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-white"
-                          onClick={() => setSortAsc((v) => !v)}
-                        >
-                          <span>Maturity Date</span>
-                          <span className="text-xs">
-                            {sortAsc ? "\u2193" : "\u2191"}
-                          </span>
-                        </button>
-                      </TableHeader>
-                      <TableHeader>Discount</TableHeader>
-                      <TableHeader>Lockup Duration</TableHeader>
-                      <TableHeader>Status</TableHeader>
-                      <TableHeader className="text-right">Action</TableHeader>
-                    </TableRow>
-                  </TableHead>
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-x-auto">
+                <div className="min-w-[800px]">
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableHeader className="whitespace-nowrap">Amount (elizaOS)</TableHeader>
+                        <TableHeader>
+                          <button
+                            className="inline-flex items-center gap-1 hover:text-zinc-900 dark:hover:text-white whitespace-nowrap"
+                            onClick={() => setSortAsc((v) => !v)}
+                          >
+                            <span>Maturity Date</span>
+                            <span className="text-xs">
+                              {sortAsc ? "\u2193" : "\u2191"}
+                            </span>
+                          </button>
+                        </TableHeader>
+                        <TableHeader className="whitespace-nowrap">Discount</TableHeader>
+                        <TableHeader className="whitespace-nowrap">Lockup Duration</TableHeader>
+                        <TableHeader className="whitespace-nowrap">Status</TableHeader>
+                        <TableHeader className="text-right whitespace-nowrap">Action</TableHeader>
+                      </TableRow>
+                    </TableHead>
                   <TableBody>
                     {sorted.map((o, index) => {
                       const now = Math.floor(Date.now() / 1000);
@@ -453,7 +455,7 @@ export function MyDealsContent() {
                           </TableCell>
                           <TableCell>{formatDate(o.unlockTime)}</TableCell>
                           <TableCell>
-                            <span className="inline-flex items-center rounded-full bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 text-xs font-medium">
+                            <span className="inline-flex items-center rounded-full bg-orange-600/15 text-orange-700 dark:text-orange-400 px-2 py-0.5 text-xs font-medium">
                               {discountPct.toFixed(0)}%
                             </span>
                           </TableCell>
@@ -464,7 +466,7 @@ export function MyDealsContent() {
                           </TableCell>
                           <TableCell>
                             {matured ? (
-                              <span className="inline-flex items-center rounded-full bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 text-xs font-medium">
+                              <span className="inline-flex items-center rounded-full bg-orange-600/15 text-orange-700 dark:text-orange-400 px-2 py-0.5 text-xs font-medium">
                                 Ready to Claim
                               </span>
                             ) : (
@@ -509,21 +511,22 @@ export function MyDealsContent() {
                                     );
                                   }
                                 }}
-                                className="!px-4 !py-2"
+                                className="!px-3 !py-1.5 !text-sm whitespace-nowrap"
                               >
                                 View Deal
                               </Button>
                               {matured && (
                                 <Button
                                   color={
-                                    (matured ? "emerald" : "zinc") as
-                                      | "emerald"
+                                    (matured ? "orange" : "zinc") as
+                                      | "orange"
                                       | "zinc"
                                   }
                                   disabled={!matured || isClaiming}
                                   onClick={async () => {
                                     await claim(o.id);
                                   }}
+                                  className="!px-3 !py-1.5 !text-sm whitespace-nowrap"
                                 >
                                   {isClaiming ? "Withdrawing…" : "Withdraw"}
                                 </Button>
@@ -557,6 +560,7 @@ export function MyDealsContent() {
                                     }
                                   }}
                                   title="Request emergency refund (90+ days)"
+                                  className="!px-3 !py-1.5 !text-sm whitespace-nowrap"
                                 >
                                   {refunding === o.id
                                     ? "Refunding..."
@@ -570,6 +574,7 @@ export function MyDealsContent() {
                     })}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             </>
           )}

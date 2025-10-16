@@ -87,27 +87,27 @@ export default function ConsignPage() {
 
   return (
     <>
-      <main className="flex-1 px-4 sm:px-6 py-8">
+      <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
         <div className="max-w-3xl mx-auto">
-          <h1 className="text-3xl font-bold mb-2">List Your Tokens for OTC</h1>
-          <p className="text-zinc-600 dark:text-zinc-400 mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">List Your Tokens for OTC</h1>
+          <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 mb-6 sm:mb-8">
             Create a consignment to offer your tokens at discounted rates
           </p>
 
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between mb-6 sm:mb-8 overflow-x-auto pb-2">
             {steps.map((s) => (
               <div
                 key={s.number}
-                className={`flex items-center ${
+                className={`flex items-center flex-shrink-0 ${
                   s.number < steps.length ? "flex-1" : ""
                 }`}
               >
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold flex-shrink-0 ${
                     step === s.number
-                      ? "bg-emerald-600 text-white"
+                      ? "bg-zinc-800 text-white"
                       : step > s.number
-                        ? "bg-emerald-600/20 text-emerald-600"
+                        ? "bg-zinc-800/20 text-zinc-800"
                         : "bg-zinc-200 dark:bg-zinc-800 text-zinc-600"
                   }`}
                 >
@@ -115,9 +115,9 @@ export default function ConsignPage() {
                 </div>
                 {s.number < steps.length && (
                   <div
-                    className={`flex-1 h-1 mx-2 ${
+                    className={`flex-1 h-0.5 sm:h-1 mx-1 sm:mx-2 ${
                       step > s.number
-                        ? "bg-emerald-600"
+                        ? "bg-orange-600"
                         : "bg-zinc-200 dark:bg-zinc-800"
                     }`}
                   />
@@ -126,8 +126,8 @@ export default function ConsignPage() {
             ))}
           </div>
 
-          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-8">
-            <h2 className="text-xl font-semibold mb-6">
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 sm:p-6 md:p-8">
+            <h2 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6">
               {steps[step - 1].title}
             </h2>
             <CurrentStepComponent

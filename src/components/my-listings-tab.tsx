@@ -6,9 +6,10 @@ import type { OTCConsignment } from "@/services/database";
 
 interface MyListingsTabProps {
   listings: OTCConsignment[];
+  onRefresh?: () => void;
 }
 
-export function MyListingsTab({ listings }: MyListingsTabProps) {
+export function MyListingsTab({ listings, onRefresh }: MyListingsTabProps) {
   if (listings.length === 0) {
     return (
       <div className="text-center py-12">
@@ -16,7 +17,7 @@ export function MyListingsTab({ listings }: MyListingsTabProps) {
         <p className="text-zinc-600 dark:text-zinc-400 mb-6">
           Create a listing to start selling your tokens via OTC
         </p>
-        <Button onClick={() => (window.location.href = "/consign")}>
+        <Button className="!py-2 !px-4" onClick={() => (window.location.href = "/consign")}>
           Create Listing
         </Button>
       </div>
@@ -34,7 +35,7 @@ export function MyListingsTab({ listings }: MyListingsTabProps) {
 
       <div className="space-y-4">
         {listings.map((consignment) => (
-          <ConsignmentRow key={consignment.id} consignment={consignment} />
+          <ConsignmentRow key={consignment.id} consignment={consignment} onUpdate={onRefresh} />
         ))}
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Image from "next/image";
 import type {
   OTCConsignment,
@@ -10,14 +10,20 @@ import { Button } from "./button";
 
 interface ConsignmentRowProps {
   consignment: OTCConsignment;
+  onUpdate?: () => void;
 }
 
-export function ConsignmentRow({ consignment }: ConsignmentRowProps) {
+export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
   const [token, setToken] = useState<Token | null>(null);
   const [dealCount, setDealCount] = useState<number>(0);
+  const fetchedTokenId = useRef<string | null>(null);
 
   useEffect(() => {
+    // Only fetch if tokenId changed
+    if (fetchedTokenId.current === consignment.tokenId) return;
+    
     async function loadData() {
+      fetchedTokenId.current = consignment.tokenId;
       const tokenRes = await fetch(`/api/tokens/${consignment.tokenId}`);
       const tokenData = await tokenRes.json();
       if (tokenData.success) setToken(tokenData.token);
@@ -32,7 +38,7 @@ export function ConsignmentRow({ consignment }: ConsignmentRowProps) {
       }
     }
     loadData();
-  }, [consignment]);
+  }, [consignment.tokenId, consignment.totalAmount, consignment.remainingAmount, consignment.isFractionalized, consignment.minDealAmount, consignment.maxDealAmount]);
 
   if (!token) return null;
 
@@ -55,7 +61,11 @@ export function ConsignmentRow({ consignment }: ConsignmentRowProps) {
         status: consignment.status === "active" ? "paused" : "active",
       }),
     });
-    window.location.reload();
+    
+    // Refresh parent component state instead of full page reload
+    if (onUpdate) {
+      onUpdate();
+    }
   };
 
   const handleWithdraw = async () => {
@@ -64,7 +74,11 @@ export function ConsignmentRow({ consignment }: ConsignmentRowProps) {
     await fetch(`/api/consignments/${consignment.id}`, {
       method: "DELETE",
     });
-    window.location.reload();
+    
+    // Refresh parent component state instead of full page reload
+    if (onUpdate) {
+      onUpdate();
+    }
   };
 
   return (
@@ -85,7 +99,7 @@ export function ConsignmentRow({ consignment }: ConsignmentRowProps) {
             <p className="text-sm text-zinc-500">{token.name}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           {consignment.isNegotiable ? (
             <span className="inline-flex items-center rounded-full bg-blue-600/15 text-blue-700 dark:text-blue-400 px-3 py-1 text-xs font-medium">
               Negotiable
@@ -98,12 +112,20 @@ export function ConsignmentRow({ consignment }: ConsignmentRowProps) {
           <span
             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
               consignment.status === "active"
-                ? "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400"
+                ? "bg-orange-600/15 text-orange-700 dark:text-orange-400"
                 : "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300"
             }`}
           >
             {consignment.status}
           </span>
+          <Button
+            color="red"
+            onClick={handleWithdraw}
+            disabled={consignment.status === "withdrawn"}
+            className="!py-2 !px-4 !text-xs bg-zinc-900 text-white"
+          >
+            Withdraw
+          </Button>
         </div>
       </div>
 
@@ -134,28 +156,11 @@ export function ConsignmentRow({ consignment }: ConsignmentRowProps) {
         </div>
       </div>
 
-      <div className="bg-zinc-100 dark:bg-zinc-900 rounded-full h-2 mb-4">
+      <div className="bg-zinc-100 dark:bg-zinc-900 rounded-full h-2">
         <div
-          className="bg-emerald-600 rounded-full h-2"
+          className="bg-orange-600 rounded-full h-2"
           style={{ width: `${100 - percentRemaining}%` }}
         />
-      </div>
-
-      <div className="flex gap-2">
-        <Button
-          color="zinc"
-          onClick={handlePause}
-          disabled={consignment.status === "withdrawn"}
-        >
-          {consignment.status === "active" ? "Pause" : "Resume"}
-        </Button>
-        <Button
-          color="red"
-          onClick={handleWithdraw}
-          disabled={consignment.status === "withdrawn"}
-        >
-          Withdraw
-        </Button>
       </div>
     </div>
   );

@@ -12,9 +12,16 @@ export async function GET(
 
   if (!marketData || Date.now() - marketData.lastUpdated > 300000) {
     const token = await TokenDB.getToken(tokenId);
-    const service = new MarketDataService();
-    await service.refreshTokenData(tokenId, token.contractAddress, token.chain);
-    marketData = await MarketDataDB.getMarketData(tokenId);
+    
+    const isLocalTestnet = token.contractAddress.startsWith("0x5FbDB") || 
+                           token.contractAddress.startsWith("0x5fbdb") ||
+                           token.chain === "ethereum" && token.contractAddress.length === 42;
+    
+    if (!isLocalTestnet) {
+      const service = new MarketDataService();
+      await service.refreshTokenData(tokenId, token.contractAddress, token.chain);
+      marketData = await MarketDataDB.getMarketData(tokenId);
+    }
   }
 
   return NextResponse.json({

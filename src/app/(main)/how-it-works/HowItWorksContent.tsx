@@ -4,19 +4,18 @@ import Card from "@/components/Card";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMultiWallet } from "@/components/multiwallet";
-import { useState, useCallback } from "react";
-import { Dialog, DialogBody, DialogTitle } from "@/components/dialog";
-import { BaseLogo, SolanaLogo } from "@/components/icons/index";
+import { useCallback, useRef } from "react";
+import { NetworkConnectButton } from "@/components/network-connect";
 
 export default function HowItWorksContent() {
   const router = useRouter();
-  const { isConnected, setActiveFamily, login } = useMultiWallet();
-  const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const { isConnected } = useMultiWallet();
+  const connectButtonRef = useRef<HTMLButtonElement>(null);
 
   const handleConnectWallet = useCallback(() => {
     if (!isConnected) {
-      // Not connected, show network selection modal
-      setShowNetworkModal(true);
+      // Trigger the NetworkConnectButton click
+      connectButtonRef.current?.click();
     }
     // If connected, do nothing
   }, [isConnected]);
@@ -28,20 +27,6 @@ export default function HowItWorksContent() {
   const handleViewDeals = useCallback(() => {
     router.push("/my-deals");
   }, [router]);
-
-  const onChooseEvm = useCallback(() => {
-    setActiveFamily("evm");
-    setShowNetworkModal(false);
-    // Privy handles EVM wallet connection
-    login();
-  }, [login, setActiveFamily]);
-
-  const onChooseSolana = useCallback(() => {
-    setActiveFamily("solana");
-    setShowNetworkModal(false);
-    // Privy handles Solana wallet connection
-    login();
-  }, [setActiveFamily, login]);
 
   return (
     <div className="relative flex flex-col px-4 sm:px-6 py-10 h-screen">
@@ -128,44 +113,12 @@ export default function HowItWorksContent() {
         }}
       />
 
-      {/* Network selection modal */}
-      <Dialog open={showNetworkModal} onClose={setShowNetworkModal} size="lg">
-        <div className="p-6">
-          <DialogTitle className="text-center mb-2">
-            Choose a network
-          </DialogTitle>
-          <DialogBody className="pt-4">
-            <div className="bg-zinc-900/50 backdrop-blur-sm rounded-2xl p-6 border border-zinc-800/50 shadow-xl">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={onChooseEvm}
-                  className="group rounded-xl p-8 sm:p-10 text-center transition-all duration-200 cursor-pointer text-white bg-[#0052ff] border-2 border-[#0047e5] hover:border-[#0052ff] hover:brightness-110 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#0052ff] focus:ring-offset-2 focus:ring-offset-zinc-900"
-                >
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
-                      <BaseLogo className="w-10 h-10 sm:w-12 sm:h-12" />
-                    </div>
-                    <div className="text-2xl sm:text-3xl font-bold">Base</div>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={onChooseSolana}
-                  className="group rounded-xl p-8 sm:p-10 text-center transition-all duration-200 cursor-pointer text-white bg-gradient-to-br from-[#9945FF] via-[#8752F3] to-[#14F195] border-2 border-[#9945FF]/50 hover:border-[#14F195]/50 hover:brightness-110 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#9945FF] focus:ring-offset-2 focus:ring-offset-zinc-900"
-                >
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
-                      <SolanaLogo className="w-10 h-10 sm:w-12 sm:h-12" />
-                    </div>
-                    <div className="text-2xl sm:text-3xl font-bold">Solana</div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          </DialogBody>
-        </div>
-      </Dialog>
+      {/* Hidden NetworkConnectButton for unified wallet connection flow */}
+      <div className="hidden">
+        <NetworkConnectButton>
+          <button ref={connectButtonRef} />
+        </NetworkConnectButton>
+      </div>
     </div>
   );
 }

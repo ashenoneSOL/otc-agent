@@ -2,6 +2,7 @@
 
 import { useMultiWallet } from "@/components/multiwallet";
 import { BaseLogo } from "@/components/icons/index";
+import { toast } from "sonner";
 
 /**
  * Network Selection Menu
@@ -11,20 +12,36 @@ export function NetworkMenu() {
   const {
     activeFamily,
     setActiveFamily,
-    evmConnected,
-    solanaConnected,
+    isPhantomInstalled,
     login,
+    connectSolanaWallet,
+    disconnect,
   } = useMultiWallet();
 
-  const handleNetworkSwitch = (family: "evm" | "solana") => {
+  const handleNetworkSwitch = async (family: "evm" | "solana") => {
+    // Don't switch if already on this network
+    if (family === activeFamily) return;
+    
+    // Disconnect current wallet before switching
+    await disconnect();
+    
+    // Set new active family
     setActiveFamily(family);
     
-    // If switching to a network where user isn't connected, trigger Privy login
-    if (family === "evm" && !evmConnected) {
-      login();
-    } else if (family === "solana" && !solanaConnected) {
-      login();
-    }
+    // Wait a moment for disconnect to complete, then connect to new network
+    setTimeout(() => {
+      if (family === "solana") {
+        if (!isPhantomInstalled) {
+          toast.info("Solana Wallet Needed", {
+            description: "Install Phantom or Solflare to use Solana.",
+            duration: 6000,
+          });
+        }
+        connectSolanaWallet();
+      } else {
+        login(); // Privy for Base
+      }
+    }, 300);
   };
 
   return (
@@ -42,7 +59,7 @@ export function NetworkMenu() {
       >
         <BaseLogo className="w-3.5 h-3.5" />
         <span>Base</span>
-        {evmConnected && activeFamily === "evm" && (
+        {activeFamily === "evm" && (
           <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
         )}
       </button>
@@ -62,7 +79,7 @@ export function NetworkMenu() {
           <path d="M20.45,9.37l-7.72,7.72a1.5,1.5,0,0,1-2.12,0L3.55,10a1.5,1.5,0,0,1,0-2.12L10.61.83a1.5,1.5,0,0,1,2.12,0l7.72,7.72A1.5,1.5,0,0,1,20.45,9.37Z" />
         </svg>
         <span>Solana</span>
-        {solanaConnected && activeFamily === "solana" && (
+        {activeFamily === "solana" && (
           <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
         )}
       </button>

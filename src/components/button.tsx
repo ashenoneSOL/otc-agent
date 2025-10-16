@@ -6,8 +6,6 @@ export const styles = {
   base: [
     // Base
     "relative isolate inline-flex items-center justify-center gap-x-2 rounded-md border text-base/6 font-semibold",
-    // Sizing
-    "px-[calc(calc(var(--spacing)*3.5)-1px)] py-[calc(calc(var(--spacing)*2.5)-1px)] sm:px-[calc(calc(var(--spacing)*3)-1px)] sm:py-[calc(calc(var(--spacing)*1.5)-1px)] sm:text-sm/6",
     // Focus
     "focus:outline-none",
     // Disabled
@@ -118,8 +116,8 @@ export const styles = {
       "text-white [--btn-hover-overlay:var(--color-white)]/10 [--btn-bg:var(--color-green-600)] [--btn-border:var(--color-green-700)]/90",
       "[--btn-icon:var(--color-white)]/60 data-active:[--btn-icon:var(--color-white)]/80 data-hover:[--btn-icon:var(--color-white)]/80",
     ],
-    emerald: [
-      "text-white [--btn-hover-overlay:var(--color-white)]/10 [--btn-bg:var(--color-emerald-600)] [--btn-border:var(--color-emerald-700)]/90",
+    orange: [
+      "text-white [--btn-hover-overlay:var(--color-white)]/10 [--btn-bg:var(--color-orange-600)] [--btn-border:var(--color-orange-700)]/90",
       "[--btn-icon:var(--color-white)]/60 data-active:[--btn-icon:var(--color-white)]/80 data-hover:[--btn-icon:var(--color-white)]/80",
     ],
     teal: [
@@ -180,13 +178,13 @@ export function Button({
   ...props
 }: ButtonProps) {
   const classes = clsx(
-    className,
     styles.base,
     outline
-      ? styles.outline
-      : plain
-        ? styles.plain
-        : clsx(styles.solid, styles.colors[color ?? "dark/zinc"]),
+    ? styles.outline
+    : plain
+    ? styles.plain
+    : clsx(styles.solid, styles.colors[color ?? "dark/zinc"]),
+    className,
   );
 
   return "href" in props ? (

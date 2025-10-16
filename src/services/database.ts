@@ -219,6 +219,12 @@ export class TokenDB {
   ): Promise<Token> {
     const runtime = await agentRuntime.getRuntime();
     const tokenId = `token-${data.chain}-${data.contractAddress.toLowerCase()}`;
+    
+    const existing = await runtime.getCache<Token>(`token:${tokenId}`);
+    if (existing) {
+      return existing;
+    }
+    
     const token: Token = {
       ...data,
       id: tokenId,
@@ -227,8 +233,10 @@ export class TokenDB {
     };
     await runtime.setCache(`token:${tokenId}`, token);
     const allTokens = (await runtime.getCache<string[]>("all_tokens")) ?? [];
-    allTokens.push(tokenId);
-    await runtime.setCache("all_tokens", allTokens);
+    if (!allTokens.includes(tokenId)) {
+      allTokens.push(tokenId);
+      await runtime.setCache("all_tokens", allTokens);
+    }
     return token;
   }
 

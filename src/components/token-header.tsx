@@ -11,7 +11,7 @@ interface TokenHeaderProps {
 export function TokenHeader({ token, marketData }: TokenHeaderProps) {
   const priceChange = marketData?.priceChange24h || 0;
   const priceChangeColor =
-    priceChange >= 0 ? "text-emerald-600" : "text-red-600";
+    priceChange >= 0 ? "text-orange-600" : "text-red-600";
 
   const formatMarketCap = (mc: number) => {
     if (mc >= 1e9) return `$${(mc / 1e9).toFixed(2)}B`;
@@ -20,71 +20,66 @@ export function TokenHeader({ token, marketData }: TokenHeaderProps) {
     return `$${mc.toFixed(2)}`;
   };
 
+  const formatAddress = (address: string) => {
+    if (!address) return "";
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
   return (
-    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-6">
-      <div className="flex items-start justify-between">
-        <div className="flex gap-4">
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">
+      <div className="flex items-center justify-between gap-3">
+        {/* Left: Token info */}
+        <div className="flex gap-2 items-center min-w-0">
           {token.logoUrl && (
             <Image
               src={token.logoUrl}
               alt={token.symbol}
-              width={64}
-              height={64}
-              className="w-16 h-16 rounded-full"
+              width={32}
+              height={32}
+              className="w-8 h-8 rounded-full flex-shrink-0"
             />
           )}
-          <div>
-            <h1 className="text-3xl font-bold">{token.name}</h1>
-            <p className="text-zinc-500 text-lg">${token.symbol}</p>
-            {token.description && (
-              <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-2 max-w-2xl">
-                {token.description}
-              </p>
-            )}
+          <div className="min-w-0">
+            <h1 className="text-base font-bold truncate">{token.name}</h1>
+            <div className="flex items-center gap-2 text-xs text-zinc-500">
+              <span>${token.symbol}</span>
+              {token.contractAddress && (
+                <>
+                  <span>•</span>
+                  <span className="font-mono">{formatAddress(token.contractAddress)}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="text-right">
-          <div className="text-3xl font-bold">
-            ${marketData?.priceUsd.toFixed(4) || "—"}
-          </div>
+        {/* Right: Price and stats */}
+        <div className="flex items-center gap-4 flex-shrink-0">
           {marketData && (
-            <div className={`text-sm ${priceChangeColor}`}>
-              {priceChange >= 0 ? "+" : ""}
-              {priceChange.toFixed(2)}% (24h)
-            </div>
+            <>
+              <div className="hidden sm:flex items-center gap-3 text-xs">
+                <div>
+                  <div className="text-zinc-600 dark:text-zinc-400">MCap</div>
+                  <div className="font-semibold">{formatMarketCap(marketData.marketCap)}</div>
+                </div>
+                <div>
+                  <div className="text-zinc-600 dark:text-zinc-400">Vol 24h</div>
+                  <div className="font-semibold">{formatMarketCap(marketData.volume24h)}</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-bold">
+                  ${marketData?.priceUsd.toFixed(4) || "—"}
+                </div>
+                <div className={`text-xs ${priceChangeColor}`}>
+                  {priceChange >= 0 ? "+" : ""}
+                  {priceChange.toFixed(2)}% (24h)
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
-
-      {marketData && (
-        <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-800">
-          <div>
-            <div className="text-sm text-zinc-600 dark:text-zinc-400">
-              Market Cap
-            </div>
-            <div className="text-lg font-semibold mt-1">
-              {formatMarketCap(marketData.marketCap)}
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-zinc-600 dark:text-zinc-400">
-              24h Volume
-            </div>
-            <div className="text-lg font-semibold mt-1">
-              {formatMarketCap(marketData.volume24h)}
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-zinc-600 dark:text-zinc-400">
-              Chain
-            </div>
-            <div className="text-lg font-semibold mt-1 uppercase">
-              {token.chain}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

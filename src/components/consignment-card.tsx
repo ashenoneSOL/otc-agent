@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type {
@@ -13,12 +13,20 @@ interface ConsignmentCardProps {
   consignment: OTCConsignment;
 }
 
+const PRICE_REFRESH_INTERVAL = 30000; // 30 seconds
+
 export function ConsignmentCard({ consignment }: ConsignmentCardProps) {
   const router = useRouter();
   const [token, setToken] = useState<Token | null>(null);
   const [marketData, setMarketData] = useState<TokenMarketData | null>(null);
+  const fetchedTokenId = useRef<string | null>(null);
 
   useEffect(() => {
+    // Only fetch once for this tokenId
+    if (fetchedTokenId.current === consignment.tokenId) return;
+    
+    fetchedTokenId.current = consignment.tokenId;
+    
     async function loadTokenData() {
       const response = await fetch(`/api/tokens/${consignment.tokenId}`);
       const data = await response.json();
@@ -27,8 +35,23 @@ export function ConsignmentCard({ consignment }: ConsignmentCardProps) {
         setMarketData(data.marketData);
       }
     }
+
+    async function refreshMarketData() {
+      if (!token) return;
+      
+      const response = await fetch(`/api/market-data/${consignment.tokenId}`);
+      const data = await response.json();
+      
+      if (data.success && data.marketData) {
+        setMarketData(data.marketData);
+      }
+    }
+    
     loadTokenData();
-  }, [consignment.tokenId]);
+
+    const interval = setInterval(refreshMarketData, PRICE_REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [consignment.tokenId, token]);
 
   if (!token) return null;
 
@@ -41,34 +64,34 @@ export function ConsignmentCard({ consignment }: ConsignmentCardProps) {
 
   const priceChange = marketData?.priceChange24h || 0;
   const priceChangeColor =
-    priceChange >= 0 ? "text-emerald-600" : "text-red-600";
+    priceChange >= 0 ? "text-orange-600" : "text-red-600";
 
   return (
     <div
-      className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 hover:shadow-lg transition-shadow cursor-pointer"
+      className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 sm:p-6 hover:shadow-lg transition-shadow cursor-pointer"
       onClick={() => router.push(`/token/${consignment.tokenId}`)}
     >
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
+      <div className="flex items-start justify-between mb-4 gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           {token.logoUrl && (
             <Image
               src={token.logoUrl}
               alt={token.symbol}
-              width={48}
-              height={48}
-              className="w-12 h-12 rounded-full"
+              width={40}
+              height={40}
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex-shrink-0"
             />
           )}
-          <div>
-            <h3 className="text-lg font-semibold">{token.symbol}</h3>
-            <p className="text-sm text-zinc-500">{token.name}</p>
+          <div className="min-w-0">
+            <h3 className="text-base sm:text-lg font-semibold truncate">{token.symbol}</h3>
+            <p className="text-xs sm:text-sm text-zinc-500 truncate">{token.name}</p>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-sm font-medium">
+        <div className="text-right flex-shrink-0">
+          <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
             ${marketData?.priceUsd.toFixed(4)}
           </div>
-          <div className={`text-xs ${priceChangeColor}`}>
+          <div className={`text-xs ${priceChangeColor} whitespace-nowrap`}>
             {priceChange >= 0 ? "+" : ""}
             {priceChange.toFixed(2)}%
           </div>
@@ -76,25 +99,25 @@ export function ConsignmentCard({ consignment }: ConsignmentCardProps) {
       </div>
 
       <div className="space-y-2 text-sm">
-        <div className="flex justify-between">
-          <span className="text-zinc-600 dark:text-zinc-400">Available:</span>
-          <span className="font-medium">
+        <div className="flex justify-between gap-2">
+          <span className="text-zinc-600 dark:text-zinc-400 text-xs sm:text-sm">Available:</span>
+          <span className="font-medium text-xs sm:text-sm text-right">
             {formatAmount(consignment.remainingAmount)} {token.symbol}
           </span>
         </div>
 
-        <div className="flex justify-between">
-          <span className="text-zinc-600 dark:text-zinc-400">Discount:</span>
-          <span className="font-medium">
+        <div className="flex justify-between gap-2">
+          <span className="text-zinc-600 dark:text-zinc-400 text-xs sm:text-sm">Discount:</span>
+          <span className="font-medium text-xs sm:text-sm text-right">
             {consignment.isNegotiable
               ? `${consignment.minDiscountBps / 100}% - ${consignment.maxDiscountBps / 100}%`
               : `${consignment.fixedDiscountBps / 100}%`}
           </span>
         </div>
 
-        <div className="flex justify-between">
-          <span className="text-zinc-600 dark:text-zinc-400">Lockup:</span>
-          <span className="font-medium">
+        <div className="flex justify-between gap-2">
+          <span className="text-zinc-600 dark:text-zinc-400 text-xs sm:text-sm">Lockup:</span>
+          <span className="font-medium text-xs sm:text-sm text-right">
             {consignment.isNegotiable
               ? `${consignment.minLockupDays}d - ${consignment.maxLockupDays}d`
               : `${consignment.fixedLockupDays}d`}
@@ -102,17 +125,17 @@ export function ConsignmentCard({ consignment }: ConsignmentCardProps) {
         </div>
       </div>
 
-      <div className="flex gap-2 mt-4">
-        <span className="inline-flex items-center rounded-full bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 px-2 py-1 text-xs font-medium">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-3 sm:mt-4">
+        <span className="inline-flex items-center rounded-full bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 px-2 py-0.5 sm:py-1 text-xs font-medium">
           {consignment.chain.toUpperCase()}
         </span>
         {consignment.isNegotiable && (
-          <span className="inline-flex items-center rounded-full bg-blue-600/15 text-blue-700 dark:text-blue-400 px-2 py-1 text-xs font-medium">
+          <span className="inline-flex items-center rounded-full bg-blue-600/15 text-blue-700 dark:text-blue-400 px-2 py-0.5 sm:py-1 text-xs font-medium">
             Negotiable
           </span>
         )}
         {consignment.isFractionalized && (
-          <span className="inline-flex items-center rounded-full bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 px-2 py-1 text-xs font-medium">
+          <span className="inline-flex items-center rounded-full bg-orange-600/15 text-orange-700 dark:text-orange-400 px-2 py-0.5 sm:py-1 text-xs font-medium">
             Fractionalized
           </span>
         )}

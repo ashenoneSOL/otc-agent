@@ -29,16 +29,15 @@ export function AmountStep({
           className="w-full px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
         />
         <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
-          Enter the total number of tokens you want to make available for OTC
-          deals
+          Enter the total number of tokens you want to make available for OTC deals
         </p>
       </div>
 
       <div className="flex gap-4">
-        <Button onClick={onBack} color="zinc" className="flex-1">
+        <Button onClick={onBack} color="zinc" className="flex-1 !py-2">
           Back
         </Button>
-        <Button onClick={onNext} disabled={!formData.amount} className="flex-1">
+        <Button onClick={onNext} disabled={!formData.amount} className="flex-1 !py-2">
           Next
         </Button>
       </div>

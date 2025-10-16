@@ -8,11 +8,20 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useChainId } from "wagmi";
+import { useChainId, useDisconnect } from "wagmi";
 import { base, hardhat, mainnet } from "wagmi/chains";
-import { usePrivy, useWallets, useSolanaWallets } from "@privy-io/react-auth";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { PhantomWalletName } from "@solana/wallet-adapter-wallets";
 
 type ChainFamily = "evm" | "solana" | "social" | "none";
+
+type SolanaWalletAdapter = {
+  publicKey: { toBase58: () => string } | null;
+  signTransaction: (tx: any) => Promise<any>;
+  signAllTransactions: (txs: any[]) => Promise<any[]>;
+};
 
 type MultiWalletContextValue = {
   activeFamily: ChainFamily;
@@ -27,9 +36,10 @@ type MultiWalletContextValue = {
   evmConnected: boolean;
   evmAddress?: string;
 
-  // Solana (via Privy)
+  // Solana (via wallet-adapter)
   solanaConnected: boolean;
   solanaPublicKey?: string;
+  solanaWallet: SolanaWalletAdapter | null;
 
   // Privy auth
   privyAuthenticated: boolean;
@@ -39,11 +49,18 @@ type MultiWalletContextValue = {
 
   // Helpers
   paymentPairLabel: string; // e.g. "USDC/ETH" or "USDC/SOL"
+  isPhantomInstalled: boolean;
   
   // Privy methods
   login: () => void;
   logout: () => Promise<void>;
   connectWallet: () => void;
+  
+  // Solana wallet-adapter methods
+  connectSolanaWallet: () => void;
+  
+  // Unified disconnect
+  disconnect: () => Promise<void>;
 };
 
 const MultiWalletContext = createContext<MultiWalletContextValue | undefined>(
@@ -64,14 +81,55 @@ export function MultiWalletProvider({
     connectWallet,
   } = usePrivy();
 
-  // Get all connected wallets from Privy
-  const { wallets } = useWallets(); // EVM wallets
-  const { wallets: solanaWallets } = useSolanaWallets(); // Solana wallets
+  // Get EVM wallets from Privy and wagmi
+  const { wallets } = useWallets();
+  const { disconnect: disconnectWagmi } = useDisconnect();
+  
+  // Get Solana wallet from wallet-adapter
+  const {
+    publicKey: solanaPublicKeyObj,
+    connected: solanaWalletConnected,
+    signTransaction,
+    signAllTransactions,
+    disconnect: disconnectSolanaWallet,
+    select,
+    connect,
+    wallet,
+    wallets: availableWallets,
+  } = useWallet();
+  const { setVisible: setSolanaModalVisible } = useWalletModal();
+  
+  // Create wallet adapter object for Anchor
+  const solanaWalletAdapter: SolanaWalletAdapter | null = solanaWalletConnected && solanaPublicKeyObj && signTransaction && signAllTransactions
+    ? {
+        publicKey: solanaPublicKeyObj,
+        signTransaction,
+        signAllTransactions,
+      }
+    : null;
   
   const chainId = useChainId();
 
   const [activeFamily, setActiveFamilyState] = useState<ChainFamily>("none");
   const [isFarcasterContext, setIsFarcasterContext] = useState(false);
+  const [isPhantomInstalled, setIsPhantomInstalled] = useState(false);
+
+  // Detect if Phantom wallet is installed
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    // Check for Phantom Solana wallet
+    const checkPhantom = () => {
+      const isInstalled = !!(window as any).phantom?.solana?.isPhantom;
+      setIsPhantomInstalled(isInstalled);
+    };
+    
+    checkPhantom();
+    
+    // Check again after a short delay in case the extension loads slowly
+    const timer = setTimeout(checkPhantom, 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Detect Farcaster context
   useEffect(() => {
@@ -95,20 +153,112 @@ export function MultiWalletProvider({
       });
   }, []);
 
-  // Determine connection status from Privy wallets
+  // Determine connection status
   const evmConnected = wallets.length > 0;
-  const solanaConnected = solanaWallets.length > 0;
+  const solanaConnected = solanaWalletConnected;
   
   // Get primary wallet addresses
   const evmAddress = wallets[0]?.address;
-  const solanaPublicKey = solanaWallets[0]?.address;
+  const solanaPublicKey = solanaPublicKeyObj?.toBase58();
+  
+  // Debug logging for Solana wallet state
+  useEffect(() => {
+    console.log("[MultiWallet] Solana state update:", {
+      publicKey: solanaPublicKey,
+      connected: solanaWalletConnected,
+      walletAdapter: solanaWalletAdapter ? "available" : "null",
+      activeFamily,
+      isConnected: evmConnected || solanaWalletConnected || privyAuthenticated,
+    });
+  }, [solanaWalletConnected, solanaPublicKey, solanaWalletAdapter, activeFamily, evmConnected, privyAuthenticated]);
+  
+  // Connect Solana wallet modal
+  const connectSolanaWallet = useCallback(async () => {
+    console.log("[MultiWallet] Connecting Solana wallet...");
+    console.log("[MultiWallet] Available wallets:", availableWallets?.map(w => w.adapter.name));
+    console.log("[MultiWallet] Currently selected wallet:", wallet?.adapter.name);
+    
+    // Try direct Phantom connection first if available
+    const phantomWallet = availableWallets?.find(w => w.adapter.name === PhantomWalletName);
+    
+    if (phantomWallet && select && connect) {
+      console.log("[MultiWallet] Phantom detected, connecting directly...");
+      try {
+        select(PhantomWalletName);
+        console.log("[MultiWallet] Selected Phantom, now connecting...");
+        await connect();
+        console.log("[MultiWallet] Phantom connected successfully");
+        return;
+      } catch (error) {
+        console.error("[MultiWallet] Direct Phantom connection failed:", error);
+      }
+    }
+    
+    // Fallback to modal
+    console.log("[MultiWallet] Falling back to wallet selection modal");
+    if (!setSolanaModalVisible) {
+      console.error("[MultiWallet] setSolanaModalVisible is not available - wallet modal won't open");
+      return;
+    }
+    setSolanaModalVisible(true);
+    console.log("[MultiWallet] Called setSolanaModalVisible(true)");
+  }, [availableWallets, wallet, select, connect, setSolanaModalVisible]);
+
+  // Unified disconnect for both Privy and Solana
+  const disconnect = useCallback(async () => {
+    console.log("[MultiWallet] Disconnecting all wallets...");
+    
+    // Disconnect wagmi first
+    if (evmConnected) {
+      console.log("[MultiWallet] Disconnecting wagmi...");
+      disconnectWagmi();
+    }
+    
+    // Disconnect Solana wallet if connected
+    if (solanaWalletConnected && disconnectSolanaWallet) {
+      console.log("[MultiWallet] Disconnecting Solana wallet...");
+      await disconnectSolanaWallet();
+    }
+    
+    // Disconnect Privy (handles social login)
+    console.log("[MultiWallet] Logging out from Privy...");
+    await logout();
+    
+    // Clear localStorage caches
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("wagmi.store");
+      localStorage.removeItem("wagmi.cache");
+      localStorage.removeItem("wagmi.recentConnectorId");
+      localStorage.removeItem("privy:token");
+      localStorage.removeItem("privy:refresh_token");
+    }
+    
+    // Reset active family
+    setActiveFamilyState("none");
+    
+    console.log("[MultiWallet] Disconnect complete");
+  }, [evmConnected, solanaWalletConnected, disconnectWagmi, disconnectSolanaWallet, logout]);
 
   // Auto-select active family based on connected wallets
   useEffect(() => {
+    console.log("[MultiWallet] Auto-select check:", {
+      activeFamily,
+      evmConnected,
+      solanaConnected,
+      privyAuthenticated,
+    });
+    
     if (activeFamily === "none") {
-      if (evmConnected) setActiveFamilyState("evm");
-      else if (solanaConnected) setActiveFamilyState("solana");
-      else if (privyAuthenticated) setActiveFamilyState("social");
+      if (evmConnected) {
+        console.log("[MultiWallet] Auto-selecting EVM");
+        setActiveFamilyState("evm");
+      } else if (solanaConnected) {
+        console.log("[MultiWallet] Auto-selecting Solana");
+        setActiveFamilyState("solana");
+      } else if (privyAuthenticated) {
+        console.log("[MultiWallet] Auto-selecting social");
+        setActiveFamilyState("social");
+      }
     }
   }, [activeFamily, evmConnected, solanaConnected, privyAuthenticated]);
 
@@ -211,14 +361,18 @@ export function MultiWalletProvider({
     evmAddress,
     solanaConnected,
     solanaPublicKey,
+    solanaWallet: solanaWalletAdapter,
     privyAuthenticated,
     privyReady,
     privyUser,
     isFarcasterContext,
     paymentPairLabel,
+    isPhantomInstalled,
     login,
     logout,
     connectWallet,
+    connectSolanaWallet,
+    disconnect,
   };
 
   return (

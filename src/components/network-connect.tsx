@@ -7,8 +7,10 @@ import { useMultiWallet } from "@/components/multiwallet";
 import { BaseLogo, SolanaLogo } from "@/components/icons/index";
 
 /**
- * NetworkConnectButton - Wallet connection via Privy
- * Shows modal to choose Base or Solana, then triggers Privy login for that chain
+ * NetworkConnectButton - Unified wallet connection
+ * Shows modal to choose Base or Solana network
+ * - Base: Uses Privy for EVM wallet connection (MetaMask, Coinbase, etc.)
+ * - Solana: Uses Solana wallet-adapter for native Solana wallets (Phantom, Solflare, etc.)
  * 
  * IMPORTANT: If used inside another modal, provide onBeforeOpen callback
  * to close parent modal first (prevents modal nesting issues)
@@ -23,7 +25,7 @@ export function NetworkConnectButton({
   onBeforeOpen?: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const { setActiveFamily, login } = useMultiWallet();
+  const { setActiveFamily, login, connectSolanaWallet } = useMultiWallet();
 
   const handleButtonClick = useCallback(async () => {
     // Close parent modal first if provided (avoids modal nesting)
@@ -45,13 +47,16 @@ export function NetworkConnectButton({
   }, [login, setActiveFamily]);
 
   const onChooseSolana = useCallback(() => {
-    setActiveFamily("solana");
+    console.log("[NetworkConnect] Solana chosen, closing modal and connecting...");
     setOpen(false);
-    // Small delay to ensure modal closes smoothly before Privy opens
+    // Small delay to ensure modal closes smoothly before Solana wallet modal opens
     setTimeout(() => {
-      login();
+      console.log("[NetworkConnect] Setting activeFamily to solana");
+      setActiveFamily("solana");
+      console.log("[NetworkConnect] Calling connectSolanaWallet");
+      connectSolanaWallet();
     }, 100);
-  }, [setActiveFamily, login]);
+  }, [setActiveFamily, connectSolanaWallet]);
 
   return (
     <>

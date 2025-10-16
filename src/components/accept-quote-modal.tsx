@@ -49,7 +49,7 @@ export function AcceptQuoteModal({
   onComplete,
 }: AcceptQuoteModalProps) {
   const { isConnected, address } = useAccount();
-  const { activeFamily, isConnected: walletConnected } = useMultiWallet();
+  const { activeFamily, isConnected: walletConnected, solanaWallet, solanaPublicKey } = useMultiWallet();
   const router = useRouter();
   const {
     otcAddress,
@@ -381,17 +381,15 @@ export function AcceptQuoteModal({
         );
       }
 
-      const connection = new Connection(SOLANA_RPC, "confirmed");
-      // @ts-ignore - wallet adapter injects window.solana
-      const wallet = (globalThis as any).solana;
-      if (!wallet?.publicKey) {
+      // Use Solana wallet from context
+      if (!solanaWallet || !solanaWallet.publicKey) {
         throw new Error("Connect a Solana wallet to continue.");
       }
 
+      const connection = new Connection(SOLANA_RPC, "confirmed");
       const provider = new anchor.AnchorProvider(
         connection,
-        // Anchor expects an object with signTransaction / signAllTransactions
-        wallet,
+        solanaWallet as any,
         { commitment: "confirmed" },
       );
       console.log("Fetching IDL");
@@ -460,7 +458,7 @@ export function AcceptQuoteModal({
         .accountsStrict({
           desk,
           deskTokenTreasury,
-          beneficiary: wallet.publicKey,
+          beneficiary: solanaWallet.publicKey,
           offer: offerKeypair.publicKey,
           systemProgram: SolSystemProgram.programId,
         })
@@ -509,7 +507,7 @@ export function AcceptQuoteModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           offerAddress: offerKeypair.publicKey.toString(),
-          beneficiary: wallet.publicKey.toString(),
+          beneficiary: solanaWallet.publicKey.toBase58(),
         }),
       });
 
@@ -539,14 +537,14 @@ export function AcceptQuoteModal({
         return;
       }
 
-      const solanaWallet = wallet.publicKey.toString().toLowerCase();
+      const solanaWalletAddress = solanaPublicKey?.toLowerCase() || "";
 
       // CRITICAL: Capture tokenAmount NOW before any async operations
       const finalTokenAmount = tokenAmount;
 
       console.log("[Solana] Saving deal completion:", {
         quoteId: initialQuote.quoteId,
-        wallet: solanaWallet,
+        wallet: solanaWalletAddress,
         offerId: nextOfferId.toString(),
         tokenAmount: finalTokenAmount,
         tokenAmountType: typeof finalTokenAmount,
@@ -565,7 +563,7 @@ export function AcceptQuoteModal({
           transactionHash: "",
           chain: "solana",
           offerAddress: offerKeypair.publicKey.toString(),
-          beneficiary: solanaWallet,
+          beneficiary: solanaWalletAddress,
         }),
       });
 
@@ -834,9 +832,9 @@ export function AcceptQuoteModal({
     >
       <div className="w-full max-w-[720px] mx-auto p-0 overflow-hidden rounded-2xl bg-zinc-950 text-white ring-1 ring-white/10">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5">
-          <div className="text-lg font-semibold tracking-wide">Your Quote</div>
-          <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center justify-between px-3 sm:px-5 pt-4 sm:pt-5">
+          <div className="text-base sm:text-lg font-semibold tracking-wide">Your Quote</div>
+          <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
             <button
               type="button"
               className={`px-2 py-1 rounded-md ${currency === "USDC" ? "bg-white text-black" : "text-zinc-300"}`}
@@ -859,11 +857,11 @@ export function AcceptQuoteModal({
         </div>
 
         {/* Main amount card */}
-        <div className="m-5 rounded-xl bg-zinc-900 ring-1 ring-white/10">
-          <div className="flex items-center justify-between px-5 pt-4">
-            <div className="text-sm text-zinc-400">Amount to Buy</div>
-            <div className="flex items-center gap-3 text-sm text-zinc-400">
-              <span>Balance: {balanceDisplay}</span>
+        <div className="m-3 sm:m-5 rounded-xl bg-zinc-900 ring-1 ring-white/10">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-3 sm:px-5 pt-3 sm:pt-4 gap-2">
+            <div className="text-xs sm:text-sm text-zinc-400">Amount to Buy</div>
+            <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-zinc-400">
+              <span className="whitespace-nowrap">Balance: {balanceDisplay}</span>
               <button
                 type="button"
                 className="text-orange-400 hover:text-orange-300 font-medium"
@@ -873,8 +871,8 @@ export function AcceptQuoteModal({
               </button>
             </div>
           </div>
-          <div className="px-5 pb-2">
-            <div className="flex items-center justify-between gap-3">
+          <div className="px-3 sm:px-5 pb-2">
+            <div className="flex items-center justify-between gap-2 sm:gap-3">
               <input
                 data-testid="token-amount-input"
                 type="number"
@@ -884,7 +882,7 @@ export function AcceptQuoteModal({
                 }
                 min={MIN_TOKENS}
                 max={ONE_MILLION}
-                className="w-full bg-transparent border-none outline-none text-5xl sm:text-6xl font-extrabold tracking-tight text-white"
+                className="w-full bg-transparent border-none outline-none text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white"
               />
               <div className="flex items-center gap-2 text-right">
                 <div className="h-9 w-9 rounded-full bg-orange-500/10 flex items-center justify-center">
@@ -913,23 +911,23 @@ export function AcceptQuoteModal({
         </div>
 
         {/* Stats row */}
-        <div className="px-5 pb-1">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-sm">
+        <div className="px-3 sm:px-5 pb-1">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 text-xs sm:text-sm">
             <div>
-              <div className="text-zinc-500">Your Discount</div>
-              <div className="text-lg font-semibold">
+              <div className="text-zinc-500 text-xs">Your Discount</div>
+              <div className="text-base sm:text-lg font-semibold">
                 {(discountBps / 100).toFixed(0)}%
               </div>
             </div>
             <div>
-              <div className="text-zinc-500">Maturity</div>
-              <div className="text-lg font-semibold">
-                {Math.round(lockupDays / 30)} months
+              <div className="text-zinc-500 text-xs">Maturity</div>
+              <div className="text-base sm:text-lg font-semibold">
+                {Math.round(lockupDays / 30)} mo
               </div>
             </div>
-            <div>
-              <div className="text-zinc-500">Maturity date</div>
-              <div className="text-lg font-semibold">
+            <div className="col-span-2 sm:col-span-1">
+              <div className="text-zinc-500 text-xs">Maturity date</div>
+              <div className="text-base sm:text-lg font-semibold">
                 {new Date(
                   Date.now() + lockupDays * 24 * 60 * 60 * 1000,
                 ).toLocaleDateString(undefined, {
@@ -943,14 +941,14 @@ export function AcceptQuoteModal({
         </div>
 
         {requireApprover && (
-          <div className="px-5 pb-1 text-xs text-zinc-400">
+          <div className="px-3 sm:px-5 pb-1 text-xs text-zinc-400">
             Payment will be executed by the desk&apos;s whitelisted approver
             wallet on your behalf after approval.
           </div>
         )}
 
         {(error || validationError || insufficientFunds) && (
-          <div className="px-5 pt-2 text-xs text-red-400">
+          <div className="px-3 sm:px-5 pt-2 text-xs text-red-400">
             {error ||
               validationError ||
               (insufficientFunds
@@ -961,7 +959,7 @@ export function AcceptQuoteModal({
 
         {/* Actions / Connect state */}
         {!walletConnected ? (
-          <div className="px-5 pb-5">
+          <div className="px-3 sm:px-5 pb-4 sm:pb-5">
             <div className="rounded-xl overflow-hidden ring-1 ring-white/10 bg-zinc-900">
               <div className="relative">
                 <div className="relative aspect-[16/9] w-full bg-gradient-to-br from-zinc-900 to-zinc-800">
@@ -973,16 +971,16 @@ export function AcceptQuoteModal({
                       backgroundSize: "contain",
                     }}
                   />
-                  <div className="relative z-10 h-full w-full flex flex-col items-center justify-center text-center px-6">
-                    <h3 className="text-xl font-semibold text-white tracking-tight mb-2">
+                  <div className="relative z-10 h-full w-full flex flex-col items-center justify-center text-center px-4 sm:px-6">
+                    <h3 className="text-lg sm:text-xl font-semibold text-white tracking-tight mb-2">
                       Connect Wallet
                     </h3>
-                    <p className="text-zinc-300 text-sm mb-4">
-                      Get discounted elizaOS tokens. Let’s deal, anon.
+                    <p className="text-zinc-300 text-xs sm:text-sm mb-4">
+                      Get discounted elizaOS tokens. Let's deal, anon.
                     </p>
                     <div className="inline-flex gap-2">
                       <NetworkConnectButton 
-                        className="!h-9"
+                        className="!h-9 !px-4"
                         onBeforeOpen={() => {
                           // Close accept quote modal before opening network selection
                           onClose();
@@ -994,26 +992,26 @@ export function AcceptQuoteModal({
                   </div>
                 </div>
               </div>
-              <div className="p-4 text-xs text-zinc-400">
+              <div className="p-3 sm:p-4 text-xs text-zinc-400">
                 Connect a wallet to continue and complete your purchase.
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 mt-4">
+            <div className="flex items-center justify-end gap-2 sm:gap-3 mt-3 sm:mt-4">
               <Button
                 onClick={onClose}
                 color="dark"
                 className="bg-zinc-800 text-white border-zinc-700"
               >
-                Cancel
+                <div className="px-3 sm:px-4 py-2">Cancel</div>
               </Button>
             </div>
           </div>
         ) : step !== "complete" ? (
-          <div className="flex items-center justify-end gap-3 px-5 py-5">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 px-3 sm:px-5 py-4 sm:py-5">
             <Button
               onClick={onClose}
               color="dark"
-              className="bg-zinc-800 text-white border-zinc-700"
+              className="bg-zinc-800 text-white border-zinc-700 w-full sm:w-auto"
             >
               <div className="px-4 py-2">Cancel</div>
             </Button>
@@ -1021,7 +1019,7 @@ export function AcceptQuoteModal({
               data-testid="confirm-amount-button"
               onClick={handleConfirm}
               color="orange"
-              className="bg-orange-600 border-orange-700 hover:brightness-110"
+              className="bg-orange-600 border-orange-700 hover:brightness-110 w-full sm:w-auto"
               disabled={
                 Boolean(validationError) || insufficientFunds || isProcessing
               }

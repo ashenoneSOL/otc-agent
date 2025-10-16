@@ -105,6 +105,10 @@ NEXT_PUBLIC_URL=http://localhost:2222  # or your production URL
 # Agent
 GROQ_API_KEY=<your key>
 
+# Price Feeds (for live market data)
+COINGECKO_API_KEY=<optional - for Base/Ethereum token prices>
+BIRDEYE_API_KEY=<optional - for Solana token prices>
+
 # Auth (dev defaults)
 API_SECRET_KEY=dev-admin-key
 WORKER_AUTH_TOKEN=dev-worker-secret
@@ -117,6 +121,24 @@ POSTGRES_URL=postgres://eliza:password@localhost:5439/eliza
 X_CONSUMER_KEY=<key>
 X_CONSUMER_SECRET=<secret>
 ```
+
+### Market Data API Keys
+
+To display real-time token prices and 24h price changes:
+
+**CoinGecko (for Base/Ethereum tokens):**
+- Free API: No key needed (rate limited)
+- Pro API: Get key from [coingecko.com/en/api](https://www.coingecko.com/en/api)
+- Add to `.env.local`: `COINGECKO_API_KEY=your-key-here`
+
+**Birdeye (for Solana tokens):**
+- Get free API key from [birdeye.so](https://birdeye.so/)
+- Add to `.env.local`: `BIRDEYE_API_KEY=your-key-here`
+
+**Price Updates:**
+- Frontend auto-refreshes every 30 seconds
+- Backend caches for 5 minutes
+- Displays price, 24h change %, market cap, and volume
 
 ## 🎯 Multi-Network Support
 

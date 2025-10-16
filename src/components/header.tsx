@@ -90,28 +90,30 @@ export function Header() {
 
   return (
     <header className="z-20 bg-transparent">
-      <nav className="px-4 lg:px-6 w-full" aria-label="Global">
-        <div className="flex items-center justify-between py-4 gap-4 flex-nowrap">
-          <div className="flex shrink-0">
+      <nav className="px-3 sm:px-4 lg:px-6 w-full" aria-label="Global">
+        <div className="flex items-center justify-between py-3 sm:py-4 gap-2 sm:gap-4 flex-nowrap">
+          <div className="flex shrink-0 min-w-0">
             <Link href="/" className="-m-1.5 p-1.5">
-              <Logo width={290} height={22} />
+              <div className="w-[180px] sm:w-[240px] lg:w-[290px]">
+                <Logo width={290} height={22} className="w-full h-auto" />
+              </div>
             </Link>
           </div>
 
           <div className="hidden lg:flex flex-1 min-w-0 items-center justify-center gap-x-3 overflow-x-auto whitespace-nowrap">
             <NavLinks />
           </div>
-          <div className="flex items-center justify-end whitespace-nowrap shrink-0 gap-2">
+          <div className="flex items-center justify-end whitespace-nowrap shrink-0 gap-1.5 sm:gap-2">
             <div className="hidden lg:block">
               <WalletConnector onConnectionChange={() => {}} />
             </div>
             <button
               type="button"
-              className="lg:hidden -m-2.5 inline-flex items-center justify-center rounded-md p-2.5 text-zinc-700 dark:text-zinc-400"
+              className="lg:hidden -m-2 inline-flex items-center justify-center rounded-md p-2 text-zinc-700 dark:text-zinc-400"
               onClick={() => setMobileMenuOpen(true)}
             >
               <span className="sr-only">Open main menu</span>
-              <Bars3Icon className="h-6 w-6" aria-hidden="true" />
+              <Bars3Icon className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden="true" />
             </button>
           </div>
         </div>

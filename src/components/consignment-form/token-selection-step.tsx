@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import { useMultiWallet } from "../multiwallet";
 import type { Token } from "@/services/database";
@@ -35,19 +35,30 @@ export function TokenSelectionStep({
     loadTokens();
   }, [activeFamily]);
 
+  const uniqueTokens = useMemo(() => {
+    const seen = new Map<string, Token>();
+    tokens.forEach(token => {
+      const key = `${token.chain}-${token.contractAddress.toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.set(key, token);
+      }
+    });
+    return Array.from(seen.values());
+  }, [tokens]);
+
   if (loading) {
     return <div>Loading tokens...</div>;
   }
 
   return (
     <div className="space-y-4">
-      {tokens.map((token) => (
+      {uniqueTokens.map((token) => (
         <div
-          key={token.id}
+          key={`${token.chain}-${token.contractAddress}`}
           onClick={() => updateFormData({ tokenId: token.id })}
           className={`p-4 rounded-lg border cursor-pointer transition-colors ${
             formData.tokenId === token.id
-              ? "border-emerald-600 bg-emerald-600/5"
+              ? "border-orange-600 bg-orange-600/5"
               : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
           }`}
         >
@@ -61,10 +72,13 @@ export function TokenSelectionStep({
                 className="w-10 h-10 rounded-full"
               />
             )}
-            <div>
+            <div className="flex-1">
               <div className="font-semibold">{token.symbol}</div>
               <div className="text-sm text-zinc-600 dark:text-zinc-400">
                 {token.name}
+              </div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-500 font-mono mt-1">
+                {token.contractAddress.slice(0, 6)}...{token.contractAddress.slice(-4)}
               </div>
             </div>
           </div>

@@ -611,7 +611,7 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
   }, [entityId, createNewRoom]);
 
   return (
-    <>
+    <div className="h-full flex flex-col min-h-0">
       <ChatBody
         messages={messages}
         isLoadingHistory={isLoadingHistory}
@@ -666,7 +666,7 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
           </div>
         </div>
       </Dialog>
-    </>
+    </div>
   );
 };
 
@@ -851,7 +851,7 @@ function ChatBody({
   onClearChat: () => void;
 }) {
   return (
-    <div className="flex flex-1 min-h-0 h-full w-full">
+    <div className="flex flex-col h-full min-h-0 w-full">
       {/* Connect wallet overlay */}
       <Dialog
         open={showConnectOverlay}
@@ -931,9 +931,9 @@ function ChatBody({
       </Dialog>
 
       {/* Main container - full width */}
-      <div className="relative z-10 flex flex-1 min-h-0 p-4">
+      <div className="relative z-10 flex-1 flex flex-col min-h-0 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
         {/* Chat section - Full width */}
-        <div className="flex-1 flex flex-col h-full min-w-0">
+        <div className="flex-1 flex flex-col min-h-0 p-2 sm:p-3">
           <ChatHeader
             messages={messages}
             apiQuote={currentQuote}
@@ -946,7 +946,7 @@ function ChatBody({
           {/* Chat Messages - only scrollable area */}
           <div
             ref={messagesContainerRef}
-            className="flex-1 min-h-0 overflow-y-auto px-4 mb-2"
+            className="flex-1 min-h-0 overflow-y-auto px-2 mb-2"
           >
             {isLoadingHistory ? (
               <div className="flex items-center justify-center min-h-full">

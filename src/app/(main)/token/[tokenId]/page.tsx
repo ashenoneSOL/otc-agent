@@ -11,6 +11,8 @@ const Chat = dynamicImport(() => import("@/components/chat"), { ssr: false });
 
 export const dynamic = "force-dynamic";
 
+const PRICE_REFRESH_INTERVAL = 30000; // 30 seconds
+
 export default function TokenPage() {
   const params = useParams();
   const tokenId = params.tokenId as string;
@@ -30,8 +32,22 @@ export default function TokenPage() {
       setLoading(false);
     }
 
+    async function refreshMarketData() {
+      if (!token) return;
+      
+      const response = await fetch(`/api/market-data/${tokenId}`);
+      const data = await response.json();
+      
+      if (data.success && data.marketData) {
+        setMarketData(data.marketData);
+      }
+    }
+
     loadTokenData();
-  }, [tokenId]);
+
+    const interval = setInterval(refreshMarketData, PRICE_REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [tokenId, token]);
 
   if (loading) {
     return (
@@ -60,18 +76,23 @@ export default function TokenPage() {
   }
 
   return (
-    <>
-      <main className="flex-1 px-4 sm:px-6 py-8">
-        <div className="max-w-7xl mx-auto">
-          <TokenHeader token={token} marketData={marketData} />
-
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-4">Negotiate a Deal</h2>
-            <Chat />
+    <div className="flex flex-col h-screen">
+      <main className="flex-1 flex flex-col min-h-0">
+        <div className="px-3 sm:px-4 md:px-6 pt-3 sm:pt-4">
+          <div className="max-w-7xl mx-auto">
+            <TokenHeader token={token} marketData={marketData} />
+          </div>
+        </div>
+        
+        <div className="flex-1 flex flex-col min-h-0 px-3 sm:px-4 md:px-6 pb-3 sm:pb-4">
+          <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col min-h-0">
+            <h2 className="text-sm font-semibold mb-2 px-1 text-zinc-600 dark:text-zinc-400">Negotiate a Deal</h2>
+            <div className="flex-1 min-h-0">
+              <Chat />
+            </div>
           </div>
         </div>
       </main>
-      <Footer />
-    </>
+    </div>
   );
 }
