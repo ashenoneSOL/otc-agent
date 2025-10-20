@@ -7,6 +7,17 @@ import { useMultiWallet } from "@/components/multiwallet";
 import { MyListingsTab } from "@/components/my-listings-tab";
 import { useOTC } from "@/hooks/contracts/useOTC";
 import { resumeFreshAuth } from "@/utils/x-share";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/table";
+import { Tab } from "@headlessui/react";
+import Image from "next/image";
+import { OffchainLookupResponseMalformedError } from "node_modules/viem/_types/errors/ccip";
 
 function formatDate(tsSeconds: bigint): string {
   const d = new Date(Number(tsSeconds) * 1000);
@@ -42,7 +53,7 @@ export function MyDealsContent() {
     emergencyRefundsEnabled,
   } = useOTC();
   const [activeTab, setActiveTab] = useState<"purchases" | "listings">(
-    "purchases",
+    "purchases"
   );
   const [sortAsc, setSortAsc] = useState(true);
   const [refunding, setRefunding] = useState<bigint | null>(null);
@@ -65,10 +76,10 @@ export function MyDealsContent() {
 
     const [dealsRes, consignmentsRes] = await Promise.all([
       fetch(`/api/deal-completion?wallet=${walletAddr}`).then((res) =>
-        res.json(),
+        res.json()
       ),
       fetch(`/api/consignments?consigner=${walletAddr}`).then((res) =>
-        res.json(),
+        res.json()
       ),
     ]);
 
@@ -93,7 +104,7 @@ export function MyDealsContent() {
     if (activeFamily === "solana") {
       console.log(
         "[MyDeals] Using Solana deals from database:",
-        solanaDeals.length,
+        solanaDeals.length
       );
 
       if (solanaDeals.length === 0) {
@@ -121,7 +132,7 @@ export function MyDealsContent() {
           "[MyDeals] Token amount:",
           tokenAmountRaw,
           "→",
-          tokenAmountBigInt.toString(),
+          tokenAmountBigInt.toString()
         );
 
         return {
@@ -163,7 +174,7 @@ export function MyDealsContent() {
       // Only show executed or approved deals (in-progress)
       if (deal.status !== "executed" && deal.status !== "approved") {
         console.log(
-          `[MyDeals] Skipping deal ${deal.quoteId} with status: ${deal.status}`,
+          `[MyDeals] Skipping deal ${deal.quoteId} with status: ${deal.status}`
         );
         continue;
       }
@@ -176,7 +187,7 @@ export function MyDealsContent() {
       if (contractOffer) {
         // We have both database and contract data - use contract structure with quoteId
         console.log(
-          `[MyDeals] Matched DB deal ${deal.quoteId} to contract offer ${deal.offerId}`,
+          `[MyDeals] Matched DB deal ${deal.quoteId} to contract offer ${deal.offerId}`
         );
 
         result.push({
@@ -191,7 +202,7 @@ export function MyDealsContent() {
         // Database deal without matching contract offer (possibly old data or Solana)
         // Transform to match offer structure
         console.log(
-          `[MyDeals] Using DB-only deal ${deal.quoteId} (no contract match)`,
+          `[MyDeals] Using DB-only deal ${deal.quoteId} (no contract match)`
         );
 
         const createdTs = deal.createdAt
@@ -256,7 +267,7 @@ export function MyDealsContent() {
       ...filteredContractOnly.map((o) => ({
         ...o,
         quoteId: undefined, // No quoteId - will use API fallback
-      })),
+      }))
     );
 
     console.log("[MyDeals] Final combined deals:", {
@@ -291,6 +302,8 @@ export function MyDealsContent() {
 
   const hasWallet = isConnected;
 
+  console.log("myu offers ->", myOffers);
+
   if (!hasWallet) {
     return (
       <main className="flex-1 min-h-[70vh] flex items-center justify-center">
@@ -304,10 +317,11 @@ export function MyDealsContent() {
     );
   }
 
+  console.log(sorted);
   return (
     <>
       <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 sm:py-6">
-        <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
+        {/* <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
             <h1 className="text-xl sm:text-2xl font-semibold">My Deals</h1>
           </div>
@@ -500,6 +514,83 @@ export function MyDealsContent() {
               })}
             </div>
           )}
+        </div> */}
+        <div className="bg-[#101010] rounded-xl border-[1px] border-[#353535] min-h-[330px] h-fit max-w-6xl mx-auto space-y-4 sm:space-y-6">
+          {/* card header */}
+          <div className="px-12 gap-x-4 mt-5 flex flex-col lg:flex-row w-full">
+            <div className="w-full flex flex-row place-items-center lg:w-2/5">
+              <div className="flex flex-col">
+                <h1 className="text-white font-normal text-[16px]">
+                  Total Bonded Value
+                </h1>
+                <p className="text-white text-[32px] font-bold">
+                  32,202{" "}
+                  <span className="text-white text-[16px] font-bold">USD</span>
+                </p>
+              </div>
+              <div className="hidden lg:block ml-auto border-l-[1px] border-white/10 h-full" />
+            </div>
+
+            <div className="w-full flex flex-row place-items-start lg:w-2/5">
+              <div className="flex flex-col">
+                <h1 className="text-white font-normal text-[16px]">
+                  Total Deals
+                </h1>
+                <p className="text-white text-[32px] font-bold">3</p>
+              </div>
+              <div className="hidden lg:block ml-auto border-l-[1px] border-white/10 h-full" />
+            </div>
+
+            <div className="w-full place-items-start lg:w-2/5">
+              <h1 className="text-white font-normal text-[16px]">
+                Average Discount
+              </h1>
+              <p className="text-white text-[32px] font-bold">18.3%</p>
+            </div>
+          </div>
+          <div className="w-full border-t-2 border-dashed border-white/20" />
+          {/* card content(table) */}
+          {/* card content(table) */}
+          <div className="px-0 pb-6">
+            <Table className="w-full place-self-center">
+              <TableHeader>
+                <TableRow className="border-white/10 hover:bg-transparent">
+                  <TableHead className="text-red-500 font-medium w-1/4">
+                    Amount $Eliza
+                  </TableHead>
+                  <TableHead className="text-white/70 font-medium w-1/4">
+                    Maturity Date
+                  </TableHead>
+                  <TableHead className="text-white/70 font-medium w-1/4">
+                    Negotiated Discount
+                  </TableHead>
+                  <TableHead className="text-white/70 font-medium w-1/4">
+                    Negotiated Maturity
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow className="border-white/10 hover:bg-white/5">
+                  <TableCell className="text-white font-normal text-[12px] w-1/4">
+                    10,952
+                  </TableCell>
+                  <TableCell className="text-white font-normal text-[12px] w-1/4">
+                    6 months
+                  </TableCell>
+                  <TableCell className="text-white w-1/4">
+                    <div className="bg-[#0A95421F] py-1 px-3 text-[#78FF75] font-bold h-fit w-fit rounded-xl">
+                      21%
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-white w-1/4">
+                    <div className="bg-[#9393931F] py-1 px-2 text-white font-bold h-fit w-fit rounded-xl">
+                      240 days
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </main>
     </>
