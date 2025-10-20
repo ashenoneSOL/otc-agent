@@ -302,8 +302,6 @@ export function MyDealsContent() {
 
   const hasWallet = isConnected;
 
-  console.log("myu offers ->", myOffers);
-
   if (!hasWallet) {
     return (
       <main className="flex-1 min-h-[70vh] flex items-center justify-center">
@@ -317,7 +315,6 @@ export function MyDealsContent() {
     );
   }
 
-  console.log(sorted);
   return (
     <>
       <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 sm:py-6">
@@ -517,8 +514,8 @@ export function MyDealsContent() {
         </div> */}
         <div className="bg-[#101010] rounded-xl border-[1px] border-[#353535] min-h-[330px] h-fit max-w-6xl mx-auto space-y-4 sm:space-y-6">
           {/* card header */}
-          <div className="px-4 md:px-8 xl:px-12 gap-x-4 mt-5 flex flex-row w-full">
-            <div className="w-full flex flex-row place-items-center lg:w-2/5">
+          <div className="w-full flex flex-col gap-y-2 lg:flex-row lg:gap-x-4 px-4 md:px-8 xl:px-12 mt-5">
+            <div className="w-full flex flex-row place-items-center lg:w-2/5 border-b border-white/10 pb-4 lg:border-none lg:pb-0">
               <div className="flex flex-col">
                 <h1 className="text-white font-normal text-[16px]">
                   Total Bonded Value
@@ -531,7 +528,7 @@ export function MyDealsContent() {
               <div className="hidden lg:block ml-auto border-l-[1px] border-white/10 h-full" />
             </div>
 
-            <div className="w-full flex flex-row place-items-start lg:w-2/5">
+            <div className="w-full flex flex-row place-items-start lg:w-2/5 border-b border-white/10 pb-4 lg:border-none lg:pb-0">
               <div className="flex flex-col">
                 <h1 className="text-white font-normal text-[16px]">
                   Total Deals
@@ -543,7 +540,7 @@ export function MyDealsContent() {
               <div className="hidden lg:block ml-auto border-l-[1px] border-white/10 h-full" />
             </div>
 
-            <div className="w-full place-items-start lg:w-2/5">
+            <div className="w-full place-items-start lg:w-2/5 pb-4">
               <h1 className="text-white font-normal text-[16px]">
                 Average Discount
               </h1>
@@ -553,8 +550,6 @@ export function MyDealsContent() {
             </div>
           </div>
           <div className="w-full border-t-2 border-dashed border-white/20" />
-          {/* card content(table) */}
-          {/* card content(table) */}
           <div className="px-0 pb-6">
             <Table className="w-full place-self-center text-left">
               <TableHeader>
