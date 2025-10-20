@@ -18,6 +18,7 @@ import {
 import { Tab } from "@headlessui/react";
 import Image from "next/image";
 import { OffchainLookupResponseMalformedError } from "node_modules/viem/_types/errors/ccip";
+import { ArrowUp } from "lucide-react";
 
 function formatDate(tsSeconds: bigint): string {
   const d = new Date(Number(tsSeconds) * 1000);
@@ -317,7 +318,7 @@ export function MyDealsContent() {
 
   return (
     <>
-      <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 sm:py-6">
+      <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 sm:py-24">
         {/* <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
             <h1 className="text-xl sm:text-2xl font-semibold">My Deals</h1>
@@ -554,12 +555,12 @@ export function MyDealsContent() {
             <Table className="w-full place-self-center text-left">
               <TableHeader>
                 <TableRow className="border-white/10 hover:bg-transparent">
-                  {/* Added consistent padding to headers */}
-                  <TableHead className="text-red-500 font-medium w-1/4 px-3">
+                  <TableHead className="font-medium w-1/4 px-3">
                     Amount $Eliza
                   </TableHead>
-                  <TableHead className="text-white/70 font-medium w-1/4 px-4">
+                  <TableHead className="flex flex-row  items-center text-white/70 hover:text-white cursor-pointer font-medium w-1/4 px-4">
                     Maturity Date
+                    <ArrowUp className="ml-1" size={15} />
                   </TableHead>
                   <TableHead className="text-white/70 font-medium w-1/4 px-4">
                     Negotiated Discount
@@ -571,23 +572,23 @@ export function MyDealsContent() {
               </TableHeader>
               <div className="w-full border-t-[1px] border-[#121A08]" />
               <TableBody>
-                <TableRow className="border-white/10 hover:bg-white/5 ">
+                <TableRow className="border-white/10 hover:bg-white/5">
                   <TableCell className="text-white font-normal text-[12px] w-1/4 p-0">
                     <div className="py-1 px-3">10,952</div>
                   </TableCell>
 
                   <TableCell className="text-white font-normal text-[12px] w-1/4 p-0">
-                    <div className="py-1 px-3">6 months</div>
+                    <div className="py-1 px-3 whitespace-nowrap">6 months</div>
                   </TableCell>
 
                   <TableCell className="text-white w-1/4 p-0">
-                    <div className="bg-[#0A95421F] py-1 px-3 text-[#78FF75] font-bold h-fit w-fit rounded-xl">
+                    <div className="bg-[#0A95421F] text-[12px] py-1 px-3 text-[#78FF75] font-bold h-fit w-fit rounded-xl">
                       21%
                     </div>
                   </TableCell>
 
-                  <TableCell className="text-white w-1/4 p-0">
-                    <div className="bg-[#9393931F] py-1 px-3 text-white font-bold h-fit w-fit rounded-xl">
+                  <TableCell className="text-white w-1/4 p-0 whitespace-nowrap">
+                    <div className="flex items-center whitespace-nowrap text-[12px] bg-[#9393931F] py-1 -ml-5 px-3 text-white font-bold h-fit w-fit rounded-xl">
                       240 days
                     </div>
                   </TableCell>
