@@ -73,7 +73,7 @@ export function TableRow({
       {...props}
       className={clsx(
         className,
-        "flex min-w-full w-1/4 items-center gap-x-8 px-4 sm:px-6 lg:px-8",
+        "flex min-w-full items-center gap-x-8 px-4 sm:px-6 lg:px-8",
       )}
     />
   );
