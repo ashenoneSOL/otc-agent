@@ -552,38 +552,42 @@ export function MyDealsContent() {
           {/* card content(table) */}
           {/* card content(table) */}
           <div className="px-0 pb-6">
-            <Table className="w-full place-self-center">
+            <Table className="w-full place-self-center text-left">
               <TableHeader>
                 <TableRow className="border-white/10 hover:bg-transparent">
-                  <TableHead className="text-red-500 font-medium w-1/4">
+                  {/* Added consistent padding to headers */}
+                  <TableHead className="text-red-500 font-medium w-1/4 px-3">
                     Amount $Eliza
                   </TableHead>
-                  <TableHead className="text-white/70 font-medium w-1/4">
+                  <TableHead className="text-white/70 font-medium w-1/4 px-4">
                     Maturity Date
                   </TableHead>
-                  <TableHead className="text-white/70 font-medium w-1/4">
+                  <TableHead className="text-white/70 font-medium w-1/4 px-4">
                     Negotiated Discount
                   </TableHead>
-                  <TableHead className="text-white/70 font-medium w-1/4">
+                  <TableHead className="text-white/70 font-medium w-1/4 ">
                     Negotiated Maturity
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow className="border-white/10 hover:bg-white/5">
-                  <TableCell className="text-white font-normal text-[12px] w-1/4">
-                    10,952
+                <TableRow className="border-white/10 hover:bg-white/5 ">
+                  <TableCell className="text-white font-normal text-[12px] w-1/4 p-0">
+                    <div className="py-1 px-3">10,952</div>
                   </TableCell>
-                  <TableCell className="text-white font-normal text-[12px] w-1/4">
-                    6 months
+
+                  <TableCell className="text-white font-normal text-[12px] w-1/4 p-0">
+                    <div className="py-1 px-3">6 months</div>
                   </TableCell>
-                  <TableCell className="text-white w-1/4">
+
+                  <TableCell className="text-white w-1/4 p-0">
                     <div className="bg-[#0A95421F] py-1 px-3 text-[#78FF75] font-bold h-fit w-fit rounded-xl">
                       21%
                     </div>
                   </TableCell>
-                  <TableCell className="text-white w-1/4">
-                    <div className="bg-[#9393931F] py-1 px-2 text-white font-bold h-fit w-fit rounded-xl">
+
+                  <TableCell className="text-white w-1/4 p-0">
+                    <div className="bg-[#9393931F] py-1 px-3 text-white font-bold h-fit w-fit rounded-xl">
                       240 days
                     </div>
                   </TableCell>
