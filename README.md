@@ -34,7 +34,7 @@ cd vendor/otc-desk
 bun run dev
 ```
 
-The app will be available at **http://localhost:5005**
+The app will be available at **http://localhost:5004**
 
 The startup script automatically:
 - ✅ Checks if PostgreSQL container exists
@@ -196,7 +196,7 @@ bun run db:push
 # Generate Solana keypair (first run only)
 cd solana/otc-program && solana-keygen new -o id.json && cd ../..
 
-# Start everything (Anvil + Solana + Next.js on :5005)
+# Start everything (Anvil + Solana + Next.js on :5004)
 bun run dev
 ```
 
@@ -247,7 +247,7 @@ This ensures a smooth user experience even when wallet interactions are rejected
 
 ## Environment
 
-Create a `.env.local` file in `vendor/otc-desk/` with the following configuration:
+Create a `.env.local` file with the following configuration:
 
 ```env
 # EVM (Jeju L2)
@@ -261,7 +261,7 @@ NEXT_PUBLIC_SOLANA_PROGRAM_ID=<program id from deploy>
 
 # Privy (REQUIRED - Single auth provider for all wallets & social login)
 NEXT_PUBLIC_PRIVY_APP_ID=<your-privy-app-id>  # Get from dashboard.privy.io
-NEXT_PUBLIC_URL=http://localhost:5005  # or your production URL
+NEXT_PUBLIC_URL=http://localhost:5004  # or your production URL
 
 # Agent
 GROQ_API_KEY=<your key>
@@ -281,6 +281,15 @@ POSTGRES_URL=postgres://eliza:password@localhost:5439/eliza
 # Twitter (optional)
 X_CONSUMER_KEY=<key>
 X_CONSUMER_SECRET=<secret>
+
+# Development: Cloudflare Tunnel CORS (optional)
+# When using 'bun run tunnel', copy the domain here (without https://)
+# Example: TUNNEL_DOMAIN=abc-123.trycloudflare.com
+TUNNEL_DOMAIN=
+
+# Development: Additional allowed origins (optional, comma-separated)
+# Example: ALLOWED_DEV_ORIGINS=192.168.1.100:5004,custom-domain.local:5004
+ALLOWED_DEV_ORIGINS=
 ```
 
 **Note:** The `POSTGRES_URL` must match the database started by docker-compose (see Prerequisites section above).
@@ -334,11 +343,11 @@ Your OTC desk supports multiple networks and authentication methods:
 1. Create account at [dashboard.privy.io](https://dashboard.privy.io/)
 2. Create new app, copy App ID
 3. Enable: Farcaster, Email, Google (User Management > Authentication)
-4. Add domains: `http://localhost:5005`, `https://farcaster.xyz`, your production URL
+4. Add domains: `http://localhost:5004`, `https://farcaster.xyz`, your production URL
 5. Set in `.env.local`:
    ```env
    NEXT_PUBLIC_PRIVY_APP_ID=your-app-id
-   NEXT_PUBLIC_URL=http://localhost:5005
+   NEXT_PUBLIC_URL=http://localhost:5004
    ```
 
 **Behavior:**
@@ -360,10 +369,20 @@ bun run dev
 
 # Terminal 2
 bun run tunnel
-# Copy the public HTTPS URL
-
-# Test at: farcaster.xyz/~/developers/mini-apps/embed
+# Copy the public HTTPS URL (e.g., https://abc-123.trycloudflare.com)
 ```
+
+**Avoiding CORS Errors:**
+The tunnel URL changes each time you restart. To allow Next.js hot reload through the tunnel:
+
+1. Copy the tunnel domain from the terminal output (without `https://`)
+2. Add to `.env.local`:
+   ```env
+   TUNNEL_DOMAIN=abc-123.trycloudflare.com
+   ```
+3. Restart dev server: `bun run dev`
+
+**Test at:** `farcaster.xyz/~/developers/mini-apps/embed`
 
 **Auto-login:** Only works when accessed through Farcaster clients, not direct browser access.
 
@@ -812,7 +831,7 @@ The OTC Agent automatically starts when launching Jeju development environment:
 
 ```bash
 cd /Users/shawwalters/jeju
-bun run dev  # OTC Agent auto-starts on http://localhost:5005
+bun run dev  # OTC Agent auto-starts on http://localhost:5004
 ```
 
 Configured in `/scripts/dev.ts` - detects `vendor/otc-desk` and launches automatically with Anvil.

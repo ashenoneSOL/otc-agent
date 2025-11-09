@@ -203,26 +203,48 @@ export function MultiWalletProvider({
       wallet?.adapter.name,
     );
 
-    // Try direct Phantom connection first if available
+    // If already connected to Solana, just return
+    if (solanaWalletConnected) {
+      console.log("[MultiWallet] Already connected to Solana wallet");
+      return;
+    }
+
+    // If switching from another network (EVM), always show modal to avoid race conditions
+    if (evmConnected) {
+      console.log("[MultiWallet] Switching from EVM, showing modal");
+      if (!setSolanaModalVisible) {
+        console.error(
+          "[MultiWallet] setSolanaModalVisible is not available - wallet modal won't open",
+        );
+        return;
+      }
+      setSolanaModalVisible(true);
+      return;
+    }
+
+    // Try direct Phantom connection only if no current connection
     const phantomWallet = availableWallets?.find(
       (w) => w.adapter.name === PhantomWalletName,
     );
 
-    if (phantomWallet && select && connect) {
+    if (phantomWallet && select && connect && !wallet) {
       console.log("[MultiWallet] Phantom detected, connecting directly...");
       try {
         select(PhantomWalletName);
-        console.log("[MultiWallet] Selected Phantom, now connecting...");
+        console.log("[MultiWallet] Selected Phantom, connecting...");
+        
+        // Connect immediately - select() is synchronous
         await connect();
         console.log("[MultiWallet] Phantom connected successfully");
         return;
       } catch (error) {
         console.error("[MultiWallet] Direct Phantom connection failed:", error);
+        // Fall through to modal
       }
     }
 
     // Fallback to modal
-    console.log("[MultiWallet] Falling back to wallet selection modal");
+    console.log("[MultiWallet] Showing wallet selection modal");
     if (!setSolanaModalVisible) {
       console.error(
         "[MultiWallet] setSolanaModalVisible is not available - wallet modal won't open",
@@ -231,7 +253,7 @@ export function MultiWalletProvider({
     }
     setSolanaModalVisible(true);
     console.log("[MultiWallet] Called setSolanaModalVisible(true)");
-  }, [availableWallets, wallet, select, connect, setSolanaModalVisible]);
+  }, [availableWallets, wallet, select, connect, setSolanaModalVisible, solanaWalletConnected, evmConnected]);
 
   // Switch Solana wallet - always shows modal for wallet selection
   const switchSolanaWallet = useCallback(() => {

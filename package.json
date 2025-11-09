@@ -39,6 +39,7 @@
     "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
     "@libsql/client": "^0.15.15",
+    "@neynar/nodejs-sdk": "^3.84.0",
     "@prisma/client": "^6.16.2",
     "@privy-io/react-auth": "^3.3.0",
     "@radix-ui/react-accordion": "^1.2.12",

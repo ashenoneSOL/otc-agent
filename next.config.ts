@@ -5,11 +5,28 @@ const nextConfig: NextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
-  outputFileTracingRoot: '/Users/shawwalters/jeju',
+  // Remove hardcoded path - use process.cwd() or remove entirely
+  // outputFileTracingRoot: '/Users/shawwalters/jeju',
   serverExternalPackages: ['handlebars', '@elizaos/plugin-sql', '@elizaos/core'],
   experimental: {
     inlineCss: true,
   },
+  // Fix cross-origin chunk loading issues
+  // Supports localhost development and Cloudflare tunnels out of the box
+  allowedDevOrigins: process.env.NODE_ENV === 'development' 
+    ? [
+        // Common localhost patterns (works for all developers)
+        'localhost:5004',
+        '127.0.0.1:5004',
+        '0.0.0.0:5004',
+        
+        // Cloudflare tunnel support (set TUNNEL_DOMAIN in .env.local)
+        ...(process.env.TUNNEL_DOMAIN ? [process.env.TUNNEL_DOMAIN] : []),
+        
+        // Allow custom origins via environment variable (comma-separated)
+        ...(process.env.ALLOWED_DEV_ORIGINS?.split(',').map(o => o.trim()) || []),
+      ].filter(Boolean)
+    : [],
   webpack: (config, { isServer }) => {
     // Ignore handlebars require.extensions warning
     config.ignoreWarnings = [

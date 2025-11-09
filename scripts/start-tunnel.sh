@@ -39,7 +39,7 @@ if ! command -v cloudflared &> /dev/null; then
 fi
 
 # Check if local server is running
-PORT=${PORT:-5005}
+PORT=${PORT:-5004}
 if ! lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1 ; then
     echo -e "${YELLOW}⚠️  Local server not detected on port $PORT${NC}"
     echo -e "${YELLOW}Make sure to run 'npm run dev' in another terminal first${NC}"
@@ -58,6 +58,11 @@ echo -e "${BLUE}═════════════════════�
 echo -e "${BLUE}  Tunnel is starting...${NC}"
 echo -e "${BLUE}  Look for the public URL below (https://xxx.trycloudflare.com)${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
+echo ""
+echo -e "${YELLOW}📝 To avoid CORS errors with Next.js:${NC}"
+echo -e "${YELLOW}   1. Copy the tunnel URL from below${NC}"
+echo -e "${YELLOW}   2. Add to .env.local: ${NC}${GREEN}TUNNEL_DOMAIN=your-subdomain.trycloudflare.com${NC}"
+echo -e "${YELLOW}   3. Restart: ${NC}${GREEN}bun run dev${NC}"
 echo ""
 
 # Start cloudflare tunnel
