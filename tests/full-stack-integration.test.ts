@@ -367,12 +367,19 @@ describe('Deployment Readiness', () => {
     }
     
     // Deployment scripts (these should always exist)
-    const evmDeploy = path.join(
+    const evmDeployScript = path.join(
       process.cwd(),
-      'contracts/scripts/deploy-eliza-otc.ts'
+      'contracts/script/DeployElizaOTC.s.sol'
     );
-    expect(fs.existsSync(evmDeploy)).toBe(true);
-    console.log('  ✅ EVM deployment script');
+    expect(fs.existsSync(evmDeployScript)).toBe(true);
+    console.log('  ✅ Foundry deployment script');
+    
+    const evmDeployBash = path.join(
+      process.cwd(),
+      'contracts/scripts/deploy-with-forge.sh'
+    );
+    expect(fs.existsSync(evmDeployBash)).toBe(true);
+    console.log('  ✅ Bash deployment wrapper');
     
     // Check vercel config for cron
     const vercelConfig = path.join(process.cwd(), 'vercel.json');
