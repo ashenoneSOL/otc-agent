@@ -75,10 +75,19 @@ class AgentRuntimeManager {
 
       // Initialize runtime with database configuration for SQL plugin
       // In localnet mode, connects to Docker PostgreSQL on port 5439
+      // In production (Vercel), uses Neon Storage integration variables
       const dbPort = process.env.POSTGRES_DEV_PORT || process.env.VENDOR_OTC_DESK_DB_PORT || 5439;
       const DEFAULT_POSTGRES_URL = `postgres://eliza:password@localhost:${dbPort}/eliza`;
       
-      console.log(`[AgentRuntime] Database config: port=${dbPort}`);
+      // Check for Vercel Neon Storage variables first, then fallback to standard names
+      const postgresUrl = 
+        process.env.DATABASE_POSTGRES_URL ||     // Vercel Neon Storage (pooled)
+        process.env.DATABASE_URL_UNPOOLED ||     // Vercel Neon Storage (unpooled)
+        process.env.POSTGRES_URL ||              // Standard
+        process.env.POSTGRES_DATABASE_URL ||     // Alternative standard
+        DEFAULT_POSTGRES_URL;                    // Local development
+      
+      console.log(`[AgentRuntime] Database config: ${postgresUrl.includes('localhost') ? 'localhost:' + dbPort : 'remote (Vercel/Neon)'}`);
       
       // Use the existing agent ID from DB (b850bc30-45f8-0041-a00a-83df46d8555d)
       const RUNTIME_AGENT_ID = "b850bc30-45f8-0041-a00a-83df46d8555d" as UUID;
@@ -90,10 +99,7 @@ class AgentRuntimeManager {
           SMALL_GROQ_MODEL:
             process.env.SMALL_GROQ_MODEL || "llama-3.1-8b-instant",
           LARGE_GROQ_MODEL: process.env.LARGE_GROQ_MODEL || "qwen/qwen3-32b",
-          POSTGRES_URL:
-            process.env.POSTGRES_URL ||
-            process.env.POSTGRES_DATABASE_URL ||
-            DEFAULT_POSTGRES_URL,
+          POSTGRES_URL: postgresUrl,
           ...agent.character.settings,
         },
       } as any);
