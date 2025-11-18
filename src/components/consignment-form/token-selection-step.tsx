@@ -10,6 +10,8 @@ import { localhost } from "wagmi/chains";
 import type { Abi, Address } from "viem";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
+import { RegisterTokenModal } from "../register-token-modal";
+import { Plus } from "lucide-react";
 
 interface StepProps {
   formData: any;
@@ -61,6 +63,7 @@ export function TokenSelectionStep({
   const [tokens, setTokens] = useState<TokenWithBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
 
   const fetchSolanaBalance = useCallback(
     async (mintAddress: string, userPublicKey: string): Promise<string> => {
@@ -77,6 +80,12 @@ export function TokenSelectionStep({
     },
     [connection],
   );
+
+  const handleRegistrationSuccess = useCallback(() => {
+    // Reload tokens after successful registration
+    setLoading(true);
+    setHasLoadedOnce(false);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -236,6 +245,16 @@ export function TokenSelectionStep({
 
   return (
     <div className="space-y-4">
+      {/* Register New Token Button */}
+      <Button
+        onClick={() => setShowRegisterModal(true)}
+        outline
+        className="w-full border-dashed"
+      >
+        <Plus className="mr-2 h-4 w-4" />
+        Register Token from Wallet
+      </Button>
+
       {tokens.map((token) => (
         <div
           key={token.id}
@@ -301,6 +320,14 @@ export function TokenSelectionStep({
           Next
         </Button>
       )}
+
+      {/* Register Token Modal */}
+      <RegisterTokenModal
+        open={showRegisterModal}
+        onOpenChange={setShowRegisterModal}
+        onSuccess={handleRegistrationSuccess}
+        defaultChain={activeFamily === "solana" ? "solana" : "base"}
+      />
     </div>
   );
 }

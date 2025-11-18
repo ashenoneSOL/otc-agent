@@ -5,8 +5,8 @@ const nextConfig: NextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
-  // Remove hardcoded path - use process.cwd() or remove entirely
-  // outputFileTracingRoot: '/Users/shawwalters/jeju',
+  // Explicitly set workspace root to prevent lockfile detection warnings
+  outputFileTracingRoot: process.cwd(),
   serverExternalPackages: ['handlebars', '@elizaos/plugin-sql', '@elizaos/core'],
   experimental: {
     inlineCss: true,

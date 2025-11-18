@@ -74,21 +74,15 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
   // Consignments
   mapping(uint256 => Consignment) public consignments;
   uint256 public nextConsignmentId = 1;
-
-  // Default token support
-  IERC20 public immutable token;
-  uint8 public immutable tokenDecimals;
-  AggregatorV3Interface public tokenUsdFeed;
   
   // Shared
   IERC20 public immutable usdc;
   AggregatorV3Interface public ethUsdFeed;
   
   // Fallback price overrides (only used when oracle fails)
-  uint256 public manualTokenPrice; // 8 decimals
   uint256 public manualEthPrice; // 8 decimals
-  uint256 public manualPriceTimestamp;
-  bool public useManualPrices = false;
+  uint256 public manualEthPriceTimestamp;
+  bool public useManualEthPrice = false;
 
   // Limits and controls
   uint256 public minUsdAmount = 5 * 1e8; // $5 with 8 decimals
@@ -163,25 +157,15 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
 
   constructor(
     address owner_,
-    IERC20 token_,
     IERC20 usdc_,
-    AggregatorV3Interface tokenUsdFeed_,
     AggregatorV3Interface ethUsdFeed_,
     address agent_
   ) Ownable(owner_) {
-    require(address(token_) != address(0) && address(usdc_) != address(0), "bad tokens");
-    token = token_;
+    require(address(usdc_) != address(0), "bad usdc");
     usdc = usdc_;
-    tokenUsdFeed = tokenUsdFeed_;
     ethUsdFeed = ethUsdFeed_;
     agent = agent_;
-    // Enforce expected 8-decimal price feeds
-    require(tokenUsdFeed.decimals() == 8, "token feed decimals");
     require(ethUsdFeed.decimals() == 8, "eth feed decimals");
-    // Read and validate token decimals (allow up to 18 decimals like Solana)
-    uint8 tokenDec = IERC20Metadata(address(token_)).decimals();
-    require(tokenDec <= 18, "token decimals");
-    tokenDecimals = tokenDec;
     require(IERC20Metadata(address(usdc_)).decimals() == 6, "usdc decimals");
   }
 
@@ -196,11 +180,10 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     require(required > 0 && required <= 10, "invalid required approvals");
     requiredApprovals = required;
   }
-  function setFeeds(AggregatorV3Interface tokenUsd, AggregatorV3Interface ethUsd) external onlyOwner {
-    require(tokenUsd.decimals() == 8, "token feed decimals");
+  function setEthFeed(AggregatorV3Interface ethUsd) external onlyOwner {
     require(ethUsd.decimals() == 8, "eth feed decimals");
-    tokenUsdFeed = tokenUsd; ethUsdFeed = ethUsd;
-    emit FeedsUpdated(address(tokenUsd), address(ethUsd));
+    ethUsdFeed = ethUsd;
+    emit FeedsUpdated(address(0), address(ethUsd));
   }
   function setMaxFeedAge(uint256 secs) external onlyOwner { maxFeedAgeSeconds = secs; emit MaxFeedAgeUpdated(secs); }
   function setLimits(uint256 minUsd, uint256 maxToken, uint256 expirySecs, uint256 unlockDelaySecs) external onlyOwner {
@@ -220,15 +203,12 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
   function setRequireApproverToFulfill(bool enabled) external onlyOwner { requireApproverToFulfill = enabled; emit RequireApproverFulfillUpdated(enabled); }
   function setEmergencyRefund(bool enabled) external onlyOwner { emergencyRefundsEnabled = enabled; emit EmergencyRefundEnabled(enabled); }
   function setEmergencyRefundDeadline(uint256 days_) external onlyOwner { emergencyRefundDeadline = days_ * 1 days; }
-  function setManualPrices(uint256 tokenPrice, uint256 ethPrice, bool useManual) external onlyOwner {
-    require(tokenPrice > 0 && ethPrice > 0, "invalid prices");
-    // Add reasonable price bounds to prevent accidental/malicious extreme values
-    require(tokenPrice <= 1e12, "token price too high"); // Max $10,000 per token
+  function setManualEthPrice(uint256 ethPrice, bool useManual) external onlyOwner {
+    require(ethPrice > 0, "invalid price");
     require(ethPrice >= 1e6 && ethPrice <= 1e13, "eth price out of bounds"); // $0.01 - $100,000
-    manualTokenPrice = tokenPrice;
     manualEthPrice = ethPrice;
-    manualPriceTimestamp = block.timestamp;
-    useManualPrices = useManual;
+    manualEthPriceTimestamp = block.timestamp;
+    useManualEthPrice = useManual;
   }
   function pause() external onlyOwner { _pause(); }
   function unpause() external onlyOwner { _unpause(); }
@@ -375,62 +355,10 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
 
   function availableTokenInventoryForToken(bytes32 tokenId) public view returns (uint256) {
     RegisteredToken memory tkn = tokens[tokenId];
+    require(tkn.tokenAddress != address(0), "token not registered");
     uint256 bal = IERC20(tkn.tokenAddress).balanceOf(address(this));
     if (bal < tokenReserved[tokenId]) return 0;
     return bal - tokenReserved[tokenId];
-  }
-
-  // Legacy createOffer for backward compatibility (uses default token)
-  // Creates offer directly from available inventory without consignment
-  function createOffer(
-    uint256 tokenAmount,
-    uint256 discountBps,
-    PaymentCurrency currency,
-    uint256 lockupSeconds
-  ) external nonReentrant whenNotPaused returns (uint256) {
-    require(tokenAmount > 0, "zero amount");
-    require(lockupSeconds <= maxLockupSeconds, "lockup too long");
-    
-    // Use default token (bytes32(0) means use immutable token)
-    bytes32 defaultTokenId = bytes32(0);
-    
-    // Check available inventory
-    uint256 available = IERC20(token).balanceOf(address(this)) - tokenReserved[defaultTokenId];
-    require(tokenAmount <= available, "insufficient inventory");
-    require(tokenAmount <= maxTokenPerOrder, "exceeds max");
-    
-    uint256 priceUsdPerToken = _readTokenUsdPrice();
-    uint256 totalUsd = _mulDiv(tokenAmount, priceUsdPerToken, 10 ** tokenDecimals);
-    totalUsd = (totalUsd * (10_000 - discountBps)) / 10_000;
-    require(totalUsd >= minUsdAmount, "min usd not met");
-    
-    tokenReserved[defaultTokenId] += tokenAmount;
-    
-    uint256 offerId = nextOfferId++;
-    offers[offerId] = Offer({
-      consignmentId: 0, // No consignment for legacy offers
-      tokenId: defaultTokenId,
-      beneficiary: msg.sender,
-      tokenAmount: tokenAmount,
-      discountBps: discountBps,
-      createdAt: block.timestamp,
-      unlockTime: block.timestamp + lockupSeconds + defaultUnlockDelaySeconds,
-      priceUsdPerToken: priceUsdPerToken,
-      maxPriceDeviation: 1000, // 10% default
-      ethUsdPrice: currency == PaymentCurrency.ETH ? _readEthUsdPrice() : 0,
-      currency: currency,
-      approved: false,
-      paid: false,
-      fulfilled: false,
-      cancelled: false,
-      payer: address(0),
-      amountPaid: 0
-    });
-    
-    _beneficiaryOfferIds[msg.sender].push(offerId);
-    openOfferIds.push(offerId);
-    emit OfferCreated(offerId, msg.sender, tokenAmount, discountBps, currency);
-    return offerId;
   }
 
   // Multi-token offer creation
@@ -501,12 +429,9 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     require(!o.cancelled && !o.paid, "bad state");
     require(!offerApprovals[offerId][msg.sender], "already approved by you");
     
-    uint256 currentPrice;
-    if (o.tokenId != bytes32(0)) {
-      currentPrice = _readTokenUsdPriceFromOracle(tokens[o.tokenId].priceOracle);
-    } else {
-      currentPrice = _readTokenUsdPrice();
-    }
+    RegisteredToken memory tkn = tokens[o.tokenId];
+    require(tkn.tokenAddress != address(0), "token not registered");
+    uint256 currentPrice = _readTokenUsdPriceFromOracle(tkn.priceOracle);
     
     uint256 priceDiff = currentPrice > o.priceUsdPerToken ? 
       currentPrice - o.priceUsdPerToken : o.priceUsdPerToken - currentPrice;
@@ -540,12 +465,9 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     Offer storage o = offers[offerId];
     require(o.beneficiary != address(0), "no offer");
     
-    uint256 tokenDecimalsFactor;
-    if (o.tokenId != bytes32(0)) {
-      tokenDecimalsFactor = 10 ** tokens[o.tokenId].decimals;
-    } else {
-      tokenDecimalsFactor = 10 ** tokenDecimals;
-    }
+    RegisteredToken memory tkn = tokens[o.tokenId];
+    require(tkn.tokenAddress != address(0), "token not registered");
+    uint256 tokenDecimalsFactor = 10 ** tkn.decimals;
     
     uint256 totalUsd = _mulDiv(o.tokenAmount, o.priceUsdPerToken, tokenDecimalsFactor);
     totalUsd = (totalUsd * (10_000 - o.discountBps)) / 10_000;
@@ -565,13 +487,13 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
       require(msg.sender == o.beneficiary || msg.sender == agent || isApprover[msg.sender], "fulfill restricted");
     }
 
-    if (o.tokenId != bytes32(0)) {
-      uint256 currentPrice = _readTokenUsdPriceFromOracle(tokens[o.tokenId].priceOracle);
-      uint256 priceDiff = currentPrice > o.priceUsdPerToken ? 
-        currentPrice - o.priceUsdPerToken : o.priceUsdPerToken - currentPrice;
-      uint256 deviationBps = (priceDiff * 10000) / o.priceUsdPerToken;
-      require(deviationBps <= o.maxPriceDeviation, "price volatility exceeded");
-    }
+    RegisteredToken memory tkn = tokens[o.tokenId];
+    require(tkn.tokenAddress != address(0), "token not registered");
+    uint256 currentPrice = _readTokenUsdPriceFromOracle(tkn.priceOracle);
+    uint256 priceDiff = currentPrice > o.priceUsdPerToken ? 
+      currentPrice - o.priceUsdPerToken : o.priceUsdPerToken - currentPrice;
+    uint256 deviationBps = (priceDiff * 10000) / o.priceUsdPerToken;
+    require(deviationBps <= o.maxPriceDeviation, "price volatility exceeded");
 
     uint256 usd = totalUsdForOffer(offerId);
     if (o.currency == PaymentCurrency.ETH) {
@@ -614,13 +536,9 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     
     tokenReserved[o.tokenId] -= o.tokenAmount;
     
-    // Use default token if tokenId is 0 (legacy offers)
-    if (o.tokenId == bytes32(0)) {
-      token.safeTransfer(o.beneficiary, o.tokenAmount);
-    } else {
-      RegisteredToken memory tkn = tokens[o.tokenId];
-      IERC20(tkn.tokenAddress).safeTransfer(o.beneficiary, o.tokenAmount);
-    }
+    RegisteredToken memory tkn = tokens[o.tokenId];
+    require(tkn.tokenAddress != address(0), "token not registered");
+    IERC20(tkn.tokenAddress).safeTransfer(o.beneficiary, o.tokenAmount);
     
     emit TokensClaimed(offerId, o.beneficiary, o.tokenAmount);
   }
@@ -633,17 +551,13 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
       Offer storage o = offers[id];
       if (o.beneficiary == address(0) || !o.paid || o.cancelled || o.fulfilled) continue;
       if (block.timestamp < o.unlockTime) continue;
+      
+      RegisteredToken memory tkn = tokens[o.tokenId];
+      if (tkn.tokenAddress == address(0)) continue; // Skip if token not registered
+      
       o.fulfilled = true;
-      
       tokenReserved[o.tokenId] -= o.tokenAmount;
-      
-      // Use default token if tokenId is 0 (legacy offers)
-      if (o.tokenId == bytes32(0)) {
-        token.safeTransfer(o.beneficiary, o.tokenAmount);
-      } else {
-        RegisteredToken memory tkn = tokens[o.tokenId];
-        IERC20(tkn.tokenAddress).safeTransfer(o.beneficiary, o.tokenAmount);
-      }
+      IERC20(tkn.tokenAddress).safeTransfer(o.beneficiary, o.tokenAmount);
       
       emit TokensClaimed(id, o.beneficiary, o.tokenAmount);
     }
@@ -684,25 +598,11 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     require(updatedAt > 0 && block.timestamp - updatedAt <= maxFeedAgeSeconds, "stale price");
     return uint256(answer);
   }
-
-  function _readTokenUsdPrice() internal view returns (uint256) {
-    if (useManualPrices) {
-      require(manualTokenPrice > 0, "manual price not set");
-      require(block.timestamp - manualPriceTimestamp <= maxFeedAgeSeconds, "manual price too old");
-      return manualTokenPrice;
-    }
-    
-    (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) = tokenUsdFeed.latestRoundData();
-    require(answer > 0, "bad price");
-    require(answeredInRound >= roundId, "stale round");
-    require(updatedAt > 0 && block.timestamp - updatedAt <= maxFeedAgeSeconds, "stale price");
-    return uint256(answer);
-  }
   
   function _readEthUsdPrice() internal view returns (uint256) {
-    if (useManualPrices) {
+    if (useManualEthPrice) {
       require(manualEthPrice > 0, "manual eth price not set");
-      require(block.timestamp - manualPriceTimestamp <= maxFeedAgeSeconds, "manual price too old");
+      require(block.timestamp - manualEthPriceTimestamp <= maxFeedAgeSeconds, "manual price too old");
       return manualEthPrice;
     }
     

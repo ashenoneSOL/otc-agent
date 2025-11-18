@@ -6,6 +6,11 @@
 .pnp.js
 .yarn/install-state.gz
 
+# Package manager lockfiles (we use Bun)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
 # testing
 /coverage
 /playwright-report
