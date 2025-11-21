@@ -38,7 +38,9 @@ async function setCachedPrice(key: string, value: PriceCache): Promise<void> {
  * Fetch token price from CoinGecko API by coingecko ID
  * For dynamic multi-token pricing, use MarketDataService instead
  */
-async function fetchTokenPriceFromCoinGecko(coingeckoId: string): Promise<number | null> {
+async function fetchTokenPriceFromCoinGecko(
+  coingeckoId: string,
+): Promise<number | null> {
   const response = await fetch(
     `https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoId}&vs_currencies=usd`,
     {
@@ -49,7 +51,9 @@ async function fetchTokenPriceFromCoinGecko(coingeckoId: string): Promise<number
   );
 
   if (!response.ok) {
-    console.warn(`CoinGecko API returned ${response.status} for ${coingeckoId}`);
+    console.warn(
+      `CoinGecko API returned ${response.status} for ${coingeckoId}`,
+    );
     return null;
   }
 
@@ -78,7 +82,9 @@ export async function getElizaPriceUsd(): Promise<number> {
   }
 
   // Try to fetch from CoinGecko
-  const price = await fetchTokenPriceFromCoinGecko(DEFAULT_TOKEN_CONFIG.coingeckoId);
+  const price = await fetchTokenPriceFromCoinGecko(
+    DEFAULT_TOKEN_CONFIG.coingeckoId,
+  );
 
   if (price !== null) {
     // Update runtime cache

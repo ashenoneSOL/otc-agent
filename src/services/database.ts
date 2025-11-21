@@ -13,7 +13,15 @@ import type {
   Chain,
 } from "@/types";
 
-export type { PaymentCurrency, QuoteStatus, Chain, Token, TokenMarketData, OTCConsignment, ConsignmentDeal };
+export type {
+  PaymentCurrency,
+  QuoteStatus,
+  Chain,
+  Token,
+  TokenMarketData,
+  OTCConsignment,
+  ConsignmentDeal,
+};
 
 export class QuoteDB {
   static async createQuote(data: {

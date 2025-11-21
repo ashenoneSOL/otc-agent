@@ -38,9 +38,12 @@ export async function GET(
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to fetch market data",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch market data",
       },
-      { status: 404 }
+      { status: 404 },
     );
   }
 }

@@ -23,20 +23,25 @@ export async function startBaseListener() {
     return;
   }
 
-  const registrationHelperAddress = process.env.NEXT_PUBLIC_REGISTRATION_HELPER_ADDRESS;
+  const registrationHelperAddress =
+    process.env.NEXT_PUBLIC_REGISTRATION_HELPER_ADDRESS;
   if (!registrationHelperAddress) {
     console.error("[Base Listener] REGISTRATION_HELPER_ADDRESS not configured");
     return;
   }
 
-  const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
-  
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
+
   const client = createPublicClient({
     chain: base,
     transport: http(rpcUrl),
   });
 
-  console.log("[Base Listener] Starting listener for", registrationHelperAddress);
+  console.log(
+    "[Base Listener] Starting listener for",
+    registrationHelperAddress,
+  );
   isListening = true;
 
   // Watch for TokenRegistered events
@@ -92,7 +97,12 @@ async function handleTokenRegistered(client: any, log: any) {
       registeredBy: string;
     };
 
-    console.log("[Base Listener] Token registered:", tokenAddress, "by", registeredBy);
+    console.log(
+      "[Base Listener] Token registered:",
+      tokenAddress,
+      "by",
+      registeredBy,
+    );
 
     // Fetch token metadata from blockchain
     const [symbol, name, decimals] = await Promise.all([
@@ -125,9 +135,14 @@ async function handleTokenRegistered(client: any, log: any) {
       description: `Registered via RegistrationHelper by ${registeredBy}`,
     });
 
-    console.log(`[Base Listener] ✅ Successfully registered ${symbol} (${tokenAddress}) to database`);
+    console.log(
+      `[Base Listener] ✅ Successfully registered ${symbol} (${tokenAddress}) to database`,
+    );
   } catch (error) {
-    console.error("[Base Listener] Failed to process TokenRegistered event:", error);
+    console.error(
+      "[Base Listener] Failed to process TokenRegistered event:",
+      error,
+    );
   }
 }
 
@@ -135,13 +150,15 @@ async function handleTokenRegistered(client: any, log: any) {
  * Backfill historical events (run once after deployment)
  */
 export async function backfillBaseEvents(fromBlock?: bigint) {
-  const registrationHelperAddress = process.env.NEXT_PUBLIC_REGISTRATION_HELPER_ADDRESS;
+  const registrationHelperAddress =
+    process.env.NEXT_PUBLIC_REGISTRATION_HELPER_ADDRESS;
   if (!registrationHelperAddress) {
     throw new Error("REGISTRATION_HELPER_ADDRESS not configured");
   }
 
-  const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
-  
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
+
   const client = createPublicClient({
     chain: base,
     transport: http(rpcUrl),
@@ -150,7 +167,9 @@ export async function backfillBaseEvents(fromBlock?: bigint) {
   const latestBlock = await client.getBlockNumber();
   const startBlock = fromBlock || latestBlock - BigInt(10000); // Last ~10k blocks
 
-  console.log(`[Base Backfill] Fetching events from block ${startBlock} to ${latestBlock}`);
+  console.log(
+    `[Base Backfill] Fetching events from block ${startBlock} to ${latestBlock}`,
+  );
 
   const logs = await client.getLogs({
     address: registrationHelperAddress as `0x${string}`,
@@ -177,4 +196,3 @@ export async function backfillBaseEvents(fromBlock?: bigint) {
 
   console.log("[Base Backfill] ✅ Backfill complete");
 }
-

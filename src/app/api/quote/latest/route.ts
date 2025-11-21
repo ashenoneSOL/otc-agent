@@ -100,7 +100,12 @@ export async function GET(request: NextRequest) {
       }
     : null;
 
-  console.log("[Quote API] Returning:", formattedQuote?.quoteId ?? "null", "chain:", tokenChain);
+  console.log(
+    "[Quote API] Returning:",
+    formattedQuote?.quoteId ?? "null",
+    "chain:",
+    tokenChain,
+  );
   return NextResponse.json({ success: true, quote: formattedQuote });
 }
 

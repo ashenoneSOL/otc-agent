@@ -75,9 +75,7 @@ export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
 
         // Deduplicate consignments by ID
         const uniqueConsignments: OTCConsignment[] = Array.from(
-          new Map(
-            consignmentsList.map((c) => [c.id, c]),
-          ).values(),
+          new Map(consignmentsList.map((c) => [c.id, c])).values(),
         );
 
         // Group consignments by tokenId
@@ -160,7 +158,8 @@ export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
           No results found
         </h3>
         <p className="text-zinc-600 dark:text-zinc-400">
-          No tokens match &quot;{searchQuery}&quot;. Try a different search term.
+          No tokens match &quot;{searchQuery}&quot;. Try a different search
+          term.
         </p>
       </div>
     );

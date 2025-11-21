@@ -3,13 +3,14 @@ import type { Address } from "viem";
 /**
  * Get the appropriate OTC contract address based on network configuration
  * Uses the same logic as getChain() to determine which network is active
- * 
+ *
  * @returns The OTC contract address for the current network
  * @throws Error if no contract address is configured for the selected network
  */
 export function getContractAddress(): Address {
   const env = process.env.NODE_ENV;
-  const network = process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet";
+  const network =
+    process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet";
 
   // Production: Use mainnet addresses
   if (env === "production") {
@@ -17,7 +18,7 @@ export function getContractAddress(): Address {
       const address = process.env.NEXT_PUBLIC_BASE_OTC_ADDRESS;
       if (!address) {
         throw new Error(
-          `NEXT_PUBLIC_BASE_OTC_ADDRESS is required when NETWORK=base in production`
+          `NEXT_PUBLIC_BASE_OTC_ADDRESS is required when NETWORK=base in production`,
         );
       }
       return address as Address;
@@ -26,7 +27,7 @@ export function getContractAddress(): Address {
       const address = process.env.NEXT_PUBLIC_BSC_OTC_ADDRESS;
       if (!address) {
         throw new Error(
-          `NEXT_PUBLIC_BSC_OTC_ADDRESS is required when NETWORK=bsc in production`
+          `NEXT_PUBLIC_BSC_OTC_ADDRESS is required when NETWORK=bsc in production`,
         );
       }
       return address as Address;
@@ -35,7 +36,7 @@ export function getContractAddress(): Address {
     const address = process.env.NEXT_PUBLIC_JEJU_OTC_ADDRESS;
     if (!address) {
       throw new Error(
-        `NEXT_PUBLIC_JEJU_OTC_ADDRESS is required for Jeju mainnet in production`
+        `NEXT_PUBLIC_JEJU_OTC_ADDRESS is required for Jeju mainnet in production`,
       );
     }
     return address as Address;
@@ -79,4 +80,3 @@ export function getContractAddress(): Address {
         "0x0000000000000000000000000000000000000000") as Address;
   }
 }
-

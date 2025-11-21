@@ -8,7 +8,10 @@ interface EVMChainSelectorProps {
   onCancel?: () => void;
 }
 
-export function EVMChainSelector({ onSelectChain, onCancel }: EVMChainSelectorProps) {
+export function EVMChainSelector({
+  onSelectChain,
+  onCancel,
+}: EVMChainSelectorProps) {
   return (
     <div className="space-y-4">
       <h3 className="text-center text-lg sm:text-xl font-semibold mb-4 text-zinc-900 dark:text-white">
@@ -67,4 +70,3 @@ export function EVMChainSelector({ onSelectChain, onCancel }: EVMChainSelectorPr
     </div>
   );
 }
-

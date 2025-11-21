@@ -47,13 +47,15 @@ export async function GET(request: NextRequest) {
   let OTC_ADDRESS: Address;
   try {
     OTC_ADDRESS = getContractAddress();
-    console.log(`[Check Matured OTC] Using contract address: ${OTC_ADDRESS} for network: ${process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet"}`);
+    console.log(
+      `[Check Matured OTC] Using contract address: ${OTC_ADDRESS} for network: ${process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet"}`,
+    );
   } catch (error) {
     console.error("[Check Matured OTC] Failed to get contract address:", error);
     return NextResponse.json(
-      { 
+      {
         error: "Missing contract address configuration",
-        details: error instanceof Error ? error.message : "Unknown error"
+        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },
     );

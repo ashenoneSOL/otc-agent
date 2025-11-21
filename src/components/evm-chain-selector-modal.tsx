@@ -14,13 +14,13 @@ interface EVMChainSelectorModalProps {
 /**
  * EVM Chain Selector Modal - Consolidated component
  * Wraps EVMChainSelector in a Dialog and handles the connection flow
- * 
+ *
  * This eliminates duplicate modal logic across 8+ components
  */
-export function EVMChainSelectorModal({ 
-  isOpen, 
+export function EVMChainSelectorModal({
+  isOpen,
   onClose,
-  onChainSelected 
+  onChainSelected,
 }: EVMChainSelectorModalProps) {
   const { setActiveFamily, setSelectedEVMChain, login } = useMultiWallet();
 
@@ -28,12 +28,12 @@ export function EVMChainSelectorModal({
     setSelectedEVMChain(chain);
     setActiveFamily("evm");
     onClose();
-    
+
     // Notify parent if callback provided
     if (onChainSelected) {
       onChainSelected(chain);
     }
-    
+
     // Trigger wallet connection
     login();
   };
@@ -49,4 +49,3 @@ export function EVMChainSelectorModal({
     </Dialog>
   );
 }
-

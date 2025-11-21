@@ -21,7 +21,13 @@ export function calculateFinancials(params: {
   paymentAmount: string;
   paymentCurrency: PaymentCurrency;
 } {
-  const { tokenAmountWei, priceUsdPerToken8Decimals, discountBps, ethUsdPrice8Decimals, currency } = params;
+  const {
+    tokenAmountWei,
+    priceUsdPerToken8Decimals,
+    discountBps,
+    ethUsdPrice8Decimals,
+    currency,
+  } = params;
 
   // totalUsd = (tokenAmount * priceUsdPerToken) / 1e18 (result in 8 decimals)
   const totalUsd8 = (tokenAmountWei * priceUsdPerToken8Decimals) / BigInt(1e18);
@@ -41,7 +47,8 @@ export function calculateFinancials(params: {
 
   if (currency === 0) {
     // Calculate required ETH
-    if (!ethUsdPrice8Decimals) throw new Error("ETH price required for ETH payments");
+    if (!ethUsdPrice8Decimals)
+      throw new Error("ETH price required for ETH payments");
     const ethPrice = Number(ethUsdPrice8Decimals) / 1e8;
     paymentAmount = (discountedUsd / ethPrice).toFixed(6);
   } else {
@@ -61,7 +68,10 @@ export function calculateFinancials(params: {
 /**
  * Calculate APR from discount and lockup period
  */
-export function calculateAPR(discountBps: number, lockupMonths: number): number {
+export function calculateAPR(
+  discountBps: number,
+  lockupMonths: number,
+): number {
   if (lockupMonths <= 0) return 0;
   const discountPercent = discountBps / 100;
   return (discountPercent / lockupMonths) * 12;
@@ -70,7 +80,10 @@ export function calculateAPR(discountBps: number, lockupMonths: number): number 
 /**
  * Validate discount is within allowed range
  */
-export function validateDiscount(discountBps: number, maxDiscountBps: number = 2500): void {
+export function validateDiscount(
+  discountBps: number,
+  maxDiscountBps: number = 2500,
+): void {
   if (discountBps < 0) throw new Error("Discount cannot be negative");
   if (discountBps > maxDiscountBps) {
     throw new Error(`Discount cannot exceed ${maxDiscountBps / 100}%`);
@@ -80,15 +93,24 @@ export function validateDiscount(discountBps: number, maxDiscountBps: number = 2
 /**
  * Validate lockup period is within allowed range
  */
-export function validateLockup(lockupDays: number, minDays: number = 1, maxDays: number = 365): void {
-  if (lockupDays < minDays) throw new Error(`Lockup must be at least ${minDays} days`);
-  if (lockupDays > maxDays) throw new Error(`Lockup cannot exceed ${maxDays} days`);
+export function validateLockup(
+  lockupDays: number,
+  minDays: number = 1,
+  maxDays: number = 365,
+): void {
+  if (lockupDays < minDays)
+    throw new Error(`Lockup must be at least ${minDays} days`);
+  if (lockupDays > maxDays)
+    throw new Error(`Lockup cannot exceed ${maxDays} days`);
 }
 
 /**
  * Format payment amount based on currency
  */
-export function formatPaymentAmount(amountPaid: bigint, currency: 0 | 1): string {
+export function formatPaymentAmount(
+  amountPaid: bigint,
+  currency: 0 | 1,
+): string {
   if (currency === 0) {
     // ETH (18 decimals)
     return (Number(amountPaid) / 1e18).toFixed(6);
@@ -96,4 +118,3 @@ export function formatPaymentAmount(amountPaid: bigint, currency: 0 | 1): string
   // USDC (6 decimals)
   return (Number(amountPaid) / 1e6).toFixed(2);
 }
-

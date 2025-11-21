@@ -99,14 +99,14 @@ export async function POST(request: NextRequest) {
     // Convert any number/string to BigInt-safe string (handles scientific notation)
     const toBigIntString = (value: string | number): string => {
       let num: number;
-      
-      if (typeof value === 'string') {
+
+      if (typeof value === "string") {
         num = Number(value);
         if (isNaN(num) || !isFinite(num)) {
           throw new Error(`Invalid number: ${value}`);
         }
         // If string has no decimal and no scientific notation, use it directly
-        if (!value.includes('.') && !value.toLowerCase().includes('e')) {
+        if (!value.includes(".") && !value.toLowerCase().includes("e")) {
           try {
             return BigInt(value).toString();
           } catch {
@@ -116,15 +116,15 @@ export async function POST(request: NextRequest) {
       } else {
         num = value;
       }
-      
+
       // Convert number to integer string (handling scientific notation)
       // Use Intl.NumberFormat to avoid scientific notation in output
       const floored = Math.floor(num);
-      const formatted = new Intl.NumberFormat('en-US', {
+      const formatted = new Intl.NumberFormat("en-US", {
         maximumFractionDigits: 0,
         useGrouping: false,
       }).format(floored);
-      
+
       return formatted;
     };
 
@@ -157,7 +157,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error creating consignment:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create consignment" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create consignment",
+      },
       { status: 500 },
     );
   }

@@ -49,10 +49,10 @@ export default function ConsignPageClient() {
     connectSolanaWallet,
     isPhantomInstalled,
   } = useMultiWallet();
-  
+
   const [step, setStep] = useState(1);
   const [showEVMChainSelector, setShowEVMChainSelector] = React.useState(false);
-  
+
   const [formData, setFormData] = useState({
     tokenId: "",
     amount: "",
@@ -136,9 +136,7 @@ export default function ConsignPageClient() {
               <div
                 key={s}
                 className={`w-full h-1.5 sm:h-2 ${
-                  s <= step
-                    ? "bg-orange-500"
-                    : "bg-zinc-200 dark:bg-zinc-800"
+                  s <= step ? "bg-orange-500" : "bg-zinc-200 dark:bg-zinc-800"
                 } ${s < 5 ? "mr-1 sm:mr-2" : ""} rounded-full`}
               />
             ))}
@@ -208,4 +206,3 @@ export default function ConsignPageClient() {
     </main>
   );
 }
-

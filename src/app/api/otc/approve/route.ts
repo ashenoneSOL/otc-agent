@@ -42,7 +42,9 @@ export async function POST(request: NextRequest) {
       } catch (fileError) {
         // File doesn't exist or can't be read
       }
-      throw new Error("No OTC address configured. Set NETWORK and chain-specific NEXT_PUBLIC_*_OTC_ADDRESS env var.");
+      throw new Error(
+        "No OTC address configured. Set NETWORK and chain-specific NEXT_PUBLIC_*_OTC_ADDRESS env var.",
+      );
     }
   };
 
@@ -633,13 +635,15 @@ export async function POST(request: NextRequest) {
           },
         ] as Abi;
 
-        const { request: approveUsdcReq } = await publicClient.simulateContract({
-          address: usdcAddress,
-          abi: erc20Abi,
-          functionName: "approve",
-          args: [OTC_ADDRESS, requiredUsdc],
-          account: accountAddr,
-        });
+        const { request: approveUsdcReq } = await publicClient.simulateContract(
+          {
+            address: usdcAddress,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [OTC_ADDRESS, requiredUsdc],
+            account: accountAddr,
+          },
+        );
 
         await walletClient.writeContract(approveUsdcReq);
         console.log("[Approve API] USDC approved");
@@ -662,7 +666,7 @@ export async function POST(request: NextRequest) {
       console.log("[Approve API] ✅ Offer fulfilled automatically");
     } catch (fulfillError) {
       console.error("[Approve API] ❌ Auto-fulfill failed:", fulfillError);
-      
+
       // Check if offer got paid by another transaction during our attempt
       const recheckOffer = (await publicClient.readContract({
         address: OTC_ADDRESS,
@@ -670,16 +674,18 @@ export async function POST(request: NextRequest) {
         functionName: "offers",
         args: [BigInt(offerId)],
       } as any)) as any;
-      
+
       const recheckParsed = parseOfferStruct(recheckOffer);
-      
+
       if (recheckParsed.paid) {
-        console.log("[Approve API] ✅ Offer was paid by another transaction, continuing...");
+        console.log(
+          "[Approve API] ✅ Offer was paid by another transaction, continuing...",
+        );
         fulfillTxHash = undefined; // No fulfillTx from us, but offer is paid
       } else {
         // Offer is approved but not paid - this is a real error
         throw new Error(
-          `Auto-fulfill failed: ${fulfillError instanceof Error ? fulfillError.message : String(fulfillError)}. Offer is approved but not paid.`
+          `Auto-fulfill failed: ${fulfillError instanceof Error ? fulfillError.message : String(fulfillError)}. Offer is approved but not paid.`,
         );
       }
     }

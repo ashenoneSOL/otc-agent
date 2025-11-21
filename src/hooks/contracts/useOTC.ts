@@ -12,7 +12,11 @@ import {
 } from "wagmi";
 import { keccak256, stringToBytes, decodeEventLog } from "viem";
 import type { Abi, Address } from "viem";
-import type { Offer, ConsignmentParams, ConsignmentCreationResult } from "@/types";
+import type {
+  Offer,
+  ConsignmentParams,
+  ConsignmentCreationResult,
+} from "@/types";
 import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
 
 const erc20Abi = [
@@ -76,7 +80,9 @@ export function useOTC(): {
   approveUsdc: (amount: bigint) => Promise<unknown>;
   emergencyRefund: (offerId: bigint) => Promise<unknown>;
   withdrawConsignment: (consignmentId: bigint) => Promise<unknown>;
-  createConsignmentOnChain: (params: ConsignmentParams) => Promise<ConsignmentCreationResult>;
+  createConsignmentOnChain: (
+    params: ConsignmentParams,
+  ) => Promise<ConsignmentCreationResult>;
   approveToken: (tokenAddress: Address, amount: bigint) => Promise<unknown>;
   getTokenAddress: (tokenId: string) => Promise<Address>;
   getRequiredGasDeposit: () => Promise<bigint>;
@@ -354,10 +360,12 @@ export function useOTC(): {
     } as any);
   }
 
-  async function createConsignmentOnChain(params: ConsignmentParams): Promise<ConsignmentCreationResult> {
+  async function createConsignmentOnChain(
+    params: ConsignmentParams,
+  ): Promise<ConsignmentCreationResult> {
     if (!otcAddress) throw new Error("No OTC address");
     if (!account) throw new Error("No wallet connected");
-    
+
     // Fetch token data to get the contract's tokenId (keccak256 hash)
     const tokenResponse = await fetch(`/api/tokens/${params.tokenId}`);
     if (!tokenResponse.ok) {
@@ -367,10 +375,10 @@ export function useOTC(): {
     if (!tokenData.success || !tokenData.token) {
       throw new Error(`Token ${params.tokenId} not found`);
     }
-    
+
     // Get the symbol and compute the contract tokenId (keccak256 of the symbol)
     const tokenIdBytes32 = keccak256(stringToBytes(tokenData.token.symbol));
-    
+
     const txHash = await writeContractAsync({
       address: otcAddress,
       abi,
@@ -397,18 +405,20 @@ export function useOTC(): {
 
     // Wait for transaction receipt and parse the consignmentId from the event
     console.log("[useOTC] Waiting for transaction receipt:", txHash);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: txHash as `0x${string}`,
+    });
     console.log("[useOTC] Receipt received, parsing ConsignmentCreated event");
     console.log("[useOTC] Receipt logs count:", receipt.logs.length);
     console.log("[useOTC] OTC contract address:", otcAddress);
-    
+
     // Find ConsignmentCreated event from the OTC contract
     const consignmentCreatedEvent = receipt.logs.find((log: any) => {
       // Check if log is from our OTC contract
       if (log.address.toLowerCase() !== otcAddress.toLowerCase()) {
         return false;
       }
-      
+
       try {
         const decoded = decodeEventLog({
           abi,
@@ -424,8 +434,13 @@ export function useOTC(): {
     });
 
     if (!consignmentCreatedEvent) {
-      console.error("[useOTC] No ConsignmentCreated event found. Receipt logs:", receipt.logs);
-      throw new Error("ConsignmentCreated event not found in transaction receipt");
+      console.error(
+        "[useOTC] No ConsignmentCreated event found. Receipt logs:",
+        receipt.logs,
+      );
+      throw new Error(
+        "ConsignmentCreated event not found in transaction receipt",
+      );
     }
 
     const decoded = decodeEventLog({
@@ -435,8 +450,11 @@ export function useOTC(): {
     });
 
     const consignmentId = (decoded.args as any).consignmentId as bigint;
-    console.log("[useOTC] Consignment created with ID:", consignmentId.toString());
-    
+    console.log(
+      "[useOTC] Consignment created with ID:",
+      consignmentId.toString(),
+    );
+
     return { txHash: txHash as `0x${string}`, consignmentId };
   }
 
@@ -452,10 +470,10 @@ export function useOTC(): {
 
   // Helper to extract contract address from tokenId format: "token-{chain}-{address}"
   function extractContractAddress(tokenId: string): Address {
-    const parts = tokenId.split('-');
+    const parts = tokenId.split("-");
     if (parts.length >= 3) {
       // Format is: token-chain-address, so join everything after the second dash
-      return parts.slice(2).join('-') as Address;
+      return parts.slice(2).join("-") as Address;
     }
     // Fallback: assume it's already an address
     return tokenId as Address;

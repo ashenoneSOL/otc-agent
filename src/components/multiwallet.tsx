@@ -240,7 +240,7 @@ export function MultiWalletProvider({
       try {
         select(PhantomWalletName);
         console.log("[MultiWallet] Selected Phantom, connecting...");
-        
+
         // Connect immediately - select() is synchronous
         await connect();
         console.log("[MultiWallet] Phantom connected successfully");
@@ -261,7 +261,15 @@ export function MultiWalletProvider({
     }
     setSolanaModalVisible(true);
     console.log("[MultiWallet] Called setSolanaModalVisible(true)");
-  }, [availableWallets, wallet, select, connect, setSolanaModalVisible, solanaWalletConnected, evmConnected]);
+  }, [
+    availableWallets,
+    wallet,
+    select,
+    connect,
+    setSolanaModalVisible,
+    solanaWalletConnected,
+    evmConnected,
+  ]);
 
   // Switch Solana wallet - always shows modal for wallet selection
   const switchSolanaWallet = useCallback(() => {
@@ -335,7 +343,12 @@ export function MultiWalletProvider({
 
   // Only reset to "none" if everything is disconnected
   useEffect(() => {
-    if (!evmConnected && !solanaConnected && !privyAuthenticated && activeFamily !== "none") {
+    if (
+      !evmConnected &&
+      !solanaConnected &&
+      !privyAuthenticated &&
+      activeFamily !== "none"
+    ) {
       console.log("[MultiWallet] All disconnected, resetting to none");
       setActiveFamilyState("none");
     }
@@ -353,7 +366,11 @@ export function MultiWalletProvider({
   // Determine if current chain is Jeju (mainnet, testnet, or localnet)
   const isJejuChain = useMemo(() => {
     if (!chainId) return false;
-    return chainId === jejuMainnet.id || chainId === jejuTestnet.id || chainId === jejuLocalnet.id;
+    return (
+      chainId === jejuMainnet.id ||
+      chainId === jejuTestnet.id ||
+      chainId === jejuLocalnet.id
+    );
   }, [chainId]);
 
   // EVM network name

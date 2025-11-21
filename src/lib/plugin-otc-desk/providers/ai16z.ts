@@ -2,7 +2,8 @@ import { Provider } from "@elizaos/core";
 
 export const tokenProvider: Provider = {
   name: "AI16Z_HISTORY",
-  description: "[OPTIONAL] Historical information about $elizaOS and $ai16z rebrand - use only when user specifically asks about ai16z or elizaOS history",
+  description:
+    "[OPTIONAL] Historical information about $elizaOS and $ai16z rebrand - use only when user specifically asks about ai16z or elizaOS history",
   position: 100,
   dynamic: true,
   get: async () => {

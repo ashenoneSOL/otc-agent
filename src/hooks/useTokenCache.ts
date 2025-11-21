@@ -106,9 +106,12 @@ function subscribeToMarketData(
   if (!marketDataRefreshIntervals.has(tokenId)) {
     async function refreshMarketData() {
       const response = await fetch(`/api/market-data/${tokenId}`);
-      
+
       if (!response.ok) {
-        console.warn(`Failed to fetch market data for ${tokenId}:`, response.status);
+        console.warn(
+          `Failed to fetch market data for ${tokenId}:`,
+          response.status,
+        );
         return;
       }
 

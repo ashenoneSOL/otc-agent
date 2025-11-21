@@ -23,16 +23,23 @@ export function NegotiationParamsStep({
   onConnectEvm,
   onConnectSolana,
 }: StepProps) {
-  const minDiscountInvalid = !formData.minDiscountBps || formData.minDiscountBps <= 0;
-  const maxDiscountInvalid = !formData.maxDiscountBps || formData.maxDiscountBps <= 0;
-  const discountRangeInvalid = formData.minDiscountBps > formData.maxDiscountBps;
-  
-  const minLockupInvalid = !formData.minLockupDays || formData.minLockupDays <= 0;
-  const maxLockupInvalid = !formData.maxLockupDays || formData.maxLockupDays <= 0;
+  const minDiscountInvalid =
+    !formData.minDiscountBps || formData.minDiscountBps <= 0;
+  const maxDiscountInvalid =
+    !formData.maxDiscountBps || formData.maxDiscountBps <= 0;
+  const discountRangeInvalid =
+    formData.minDiscountBps > formData.maxDiscountBps;
+
+  const minLockupInvalid =
+    !formData.minLockupDays || formData.minLockupDays <= 0;
+  const maxLockupInvalid =
+    !formData.maxLockupDays || formData.maxLockupDays <= 0;
   const lockupRangeInvalid = formData.minLockupDays > formData.maxLockupDays;
-  
-  const fixedDiscountInvalid = !formData.fixedDiscountBps || formData.fixedDiscountBps <= 0;
-  const fixedLockupInvalid = !formData.fixedLockupDays || formData.fixedLockupDays <= 0;
+
+  const fixedDiscountInvalid =
+    !formData.fixedDiscountBps || formData.fixedDiscountBps <= 0;
+  const fixedLockupInvalid =
+    !formData.fixedLockupDays || formData.fixedLockupDays <= 0;
 
   return (
     <div className="space-y-6">
@@ -74,7 +81,9 @@ export function NegotiationParamsStep({
               />
               {(minDiscountInvalid || discountRangeInvalid) && (
                 <p className="text-xs text-red-500 mt-1">
-                  {minDiscountInvalid ? "Must be greater than 0" : "Must be ≤ max discount"}
+                  {minDiscountInvalid
+                    ? "Must be greater than 0"
+                    : "Must be ≤ max discount"}
                 </p>
               )}
             </div>
@@ -98,7 +107,9 @@ export function NegotiationParamsStep({
               />
               {(maxDiscountInvalid || discountRangeInvalid) && (
                 <p className="text-xs text-red-500 mt-1">
-                  {maxDiscountInvalid ? "Must be greater than 0" : "Must be ≥ min discount"}
+                  {maxDiscountInvalid
+                    ? "Must be greater than 0"
+                    : "Must be ≥ min discount"}
                 </p>
               )}
             </div>
@@ -123,7 +134,9 @@ export function NegotiationParamsStep({
               />
               {(minLockupInvalid || lockupRangeInvalid) && (
                 <p className="text-xs text-red-500 mt-1">
-                  {minLockupInvalid ? "Must be greater than 0" : "Must be ≤ max lockup"}
+                  {minLockupInvalid
+                    ? "Must be greater than 0"
+                    : "Must be ≤ max lockup"}
                 </p>
               )}
             </div>
@@ -145,7 +158,9 @@ export function NegotiationParamsStep({
               />
               {(maxLockupInvalid || lockupRangeInvalid) && (
                 <p className="text-xs text-red-500 mt-1">
-                  {maxLockupInvalid ? "Must be greater than 0" : "Must be ≥ min lockup"}
+                  {maxLockupInvalid
+                    ? "Must be greater than 0"
+                    : "Must be ≥ min lockup"}
                 </p>
               )}
             </div>
@@ -172,7 +187,9 @@ export function NegotiationParamsStep({
               }`}
             />
             {fixedDiscountInvalid && (
-              <p className="text-xs text-red-500 mt-1">Must be greater than 0</p>
+              <p className="text-xs text-red-500 mt-1">
+                Must be greater than 0
+              </p>
             )}
           </div>
 
@@ -193,7 +210,9 @@ export function NegotiationParamsStep({
               }`}
             />
             {fixedLockupInvalid && (
-              <p className="text-xs text-red-500 mt-1">Must be greater than 0</p>
+              <p className="text-xs text-red-500 mt-1">
+                Must be greater than 0
+              </p>
             )}
           </div>
         </>
@@ -209,7 +228,9 @@ export function NegotiationParamsStep({
         </Button>
         {formData.tokenId && requiredChain && !isConnectedToRequiredChain ? (
           <Button
-            onClick={requiredChain === "solana" ? onConnectSolana : onConnectEvm}
+            onClick={
+              requiredChain === "solana" ? onConnectSolana : onConnectEvm
+            }
             disabled={
               !formData.minDiscountBps ||
               !formData.maxDiscountBps ||

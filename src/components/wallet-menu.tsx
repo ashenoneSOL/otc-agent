@@ -88,7 +88,9 @@ export function WalletMenu() {
     setIsOpen(false);
     const targetFamily = activeFamily === "solana" ? "evm" : "solana";
 
-    console.log(`[WalletMenu] Switching from ${activeFamily} to ${targetFamily}`);
+    console.log(
+      `[WalletMenu] Switching from ${activeFamily} to ${targetFamily}`,
+    );
 
     // Then open appropriate connection modal for target network
     if (targetFamily === "evm") {

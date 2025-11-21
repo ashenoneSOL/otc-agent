@@ -36,7 +36,7 @@ export function TokenDealsSection({
 
   const totalAvailable = consignments.reduce(
     (sum, c) => sum + BigInt(c.remainingAmount),
-    0n
+    0n,
   );
 
   return (

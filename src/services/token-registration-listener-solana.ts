@@ -23,12 +23,16 @@ export async function startSolanaListener() {
     return;
   }
 
-  const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
   connection = new Connection(rpcUrl, "confirmed");
 
   try {
     // Load IDL
-    const idlPath = path.join(process.cwd(), "solana/otc-program/target/idl/otc.json");
+    const idlPath = path.join(
+      process.cwd(),
+      "solana/otc-program/target/idl/otc.json",
+    );
     const idl = JSON.parse(await fs.readFile(idlPath, "utf8"));
 
     // Create dummy wallet for reading (we don't need to sign)
@@ -38,11 +42,9 @@ export async function startSolanaListener() {
       signAllTransactions: async (txs: any[]) => txs,
     };
 
-    const provider = new AnchorProvider(
-      connection,
-      dummyWallet as Wallet,
-      { commitment: "confirmed" }
-    );
+    const provider = new AnchorProvider(connection, dummyWallet as Wallet, {
+      commitment: "confirmed",
+    });
 
     program = new Program(idl, provider);
 
@@ -55,7 +57,7 @@ export async function startSolanaListener() {
       async (logs, context) => {
         await handleProgramLogs(logs);
       },
-      "confirmed"
+      "confirmed",
     );
 
     // Handle graceful shutdown
@@ -89,17 +91,22 @@ async function handleProgramLogs(logs: any) {
   try {
     // Check if this is a register_token instruction
     const logMessages = logs.logs;
-    
+
     // Look for register_token instruction signature
-    const hasRegisterToken = logMessages.some((log: string) =>
-      log.includes("Instruction: RegisterToken") || log.includes("register_token")
+    const hasRegisterToken = logMessages.some(
+      (log: string) =>
+        log.includes("Instruction: RegisterToken") ||
+        log.includes("register_token"),
     );
 
     if (!hasRegisterToken) {
       return;
     }
 
-    console.log("[Solana Listener] Token registration detected:", logs.signature);
+    console.log(
+      "[Solana Listener] Token registration detected:",
+      logs.signature,
+    );
 
     // Parse transaction to extract token details
     if (connection) {
@@ -124,16 +131,21 @@ async function parseRegisterTokenTransaction(tx: any) {
   try {
     // Extract token mint and metadata from transaction
     // This is simplified - actual implementation would parse instruction data
-    
+
     // For now, log that we detected a registration
-    console.log("[Solana Listener] Detected token registration transaction:", tx.transaction.signatures[0]);
-    
+    console.log(
+      "[Solana Listener] Detected token registration transaction:",
+      tx.transaction.signatures[0],
+    );
+
     // TODO: Parse instruction data to extract:
     // - token_mint address
     // - price_feed_id
     // - Register token to database
-    
-    console.warn("[Solana Listener] ⚠️ Solana registration parsing not yet implemented");
+
+    console.warn(
+      "[Solana Listener] ⚠️ Solana registration parsing not yet implemented",
+    );
   } catch (error) {
     console.error("[Solana Listener] Failed to parse transaction:", error);
   }
@@ -148,15 +160,23 @@ export async function backfillSolanaEvents(signatures?: string[]) {
     throw new Error("SOLANA_PROGRAM_ID not configured");
   }
 
-  const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
   const conn = new Connection(rpcUrl, "confirmed");
 
-  console.log("[Solana Backfill] Fetching recent transactions for program", programId);
+  console.log(
+    "[Solana Backfill] Fetching recent transactions for program",
+    programId,
+  );
 
   // Get recent signatures
-  const sigs = signatures || (
-    await conn.getSignaturesForAddress(new PublicKey(programId), { limit: 100 })
-  ).map(s => s.signature);
+  const sigs =
+    signatures ||
+    (
+      await conn.getSignaturesForAddress(new PublicKey(programId), {
+        limit: 100,
+      })
+    ).map((s) => s.signature);
 
   console.log(`[Solana Backfill] Found ${sigs.length} transactions`);
 
@@ -168,8 +188,10 @@ export async function backfillSolanaEvents(signatures?: string[]) {
       });
 
       if (tx && tx.meta && tx.meta.logMessages) {
-        const hasRegisterToken = tx.meta.logMessages.some(log =>
-          log.includes("Instruction: RegisterToken") || log.includes("register_token")
+        const hasRegisterToken = tx.meta.logMessages.some(
+          (log) =>
+            log.includes("Instruction: RegisterToken") ||
+            log.includes("register_token"),
         );
 
         if (hasRegisterToken) {
@@ -177,7 +199,10 @@ export async function backfillSolanaEvents(signatures?: string[]) {
         }
       }
     } catch (error) {
-      console.warn(`[Solana Backfill] Failed to process signature ${sig}:`, error);
+      console.warn(
+        `[Solana Backfill] Failed to process signature ${sig}:`,
+        error,
+      );
     }
   }
 
@@ -210,4 +235,3 @@ async function fetchSPLTokenMetadata(mintAddress: string) {
     return null;
   }
 }
-

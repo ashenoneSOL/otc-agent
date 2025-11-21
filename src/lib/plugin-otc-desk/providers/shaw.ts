@@ -2,7 +2,8 @@ import { Provider } from "@elizaos/core";
 
 export const tokenProvider: Provider = {
   name: "SHAW_INFO",
-  description: "[OPTIONAL] Historical information about Shaw Walters - use only when user specifically asks about Shaw or the platform's origins",
+  description:
+    "[OPTIONAL] Historical information about Shaw Walters - use only when user specifically asks about Shaw or the platform's origins",
   position: 99,
   dynamic: true,
   get: async () => {

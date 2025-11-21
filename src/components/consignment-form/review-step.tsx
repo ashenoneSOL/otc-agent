@@ -19,10 +19,22 @@ interface StepProps {
   onConnectSolana?: () => void;
 }
 
-export function ReviewStep({ formData, onBack, requiredChain, isConnectedToRequiredChain, onConnectEvm, onConnectSolana }: StepProps) {
+export function ReviewStep({
+  formData,
+  onBack,
+  requiredChain,
+  isConnectedToRequiredChain,
+  onConnectEvm,
+  onConnectSolana,
+}: StepProps) {
   const { activeFamily, evmAddress, solanaPublicKey } = useMultiWallet();
   const { address } = useAccount();
-  const { createConsignmentOnChain, approveToken, getTokenAddress, getRequiredGasDeposit } = useOTC();
+  const {
+    createConsignmentOnChain,
+    approveToken,
+    getTokenAddress,
+    getRequiredGasDeposit,
+  } = useOTC();
   const [copied, setCopied] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tokenAddress, setTokenAddress] = useState<string | null>(null);
@@ -31,10 +43,10 @@ export function ReviewStep({ formData, onBack, requiredChain, isConnectedToRequi
   const getDisplayToken = (tokenId: string) => {
     // Remove prefix like "token-base-" or "token-solana-"
     const cleanToken = tokenId?.replace(/^token-(base|solana|evm)-/i, "") || "";
-    
+
     // If short enough, show full address
     if (cleanToken.length <= 16) return cleanToken;
-    
+
     // Otherwise show first 6 and last 4 characters
     return `${cleanToken.slice(0, 6)}...${cleanToken.slice(-4)}`;
   };
@@ -59,7 +71,8 @@ export function ReviewStep({ formData, onBack, requiredChain, isConnectedToRequi
 
   const handleOpenModal = async () => {
     // Validate before opening modal
-    const consignerAddress = activeFamily === "solana" ? solanaPublicKey : evmAddress;
+    const consignerAddress =
+      activeFamily === "solana" ? solanaPublicKey : evmAddress;
 
     if (!consignerAddress) {
       alert("Please connect your wallet before creating a consignment");
@@ -94,7 +107,9 @@ export function ReviewStep({ formData, onBack, requiredChain, isConnectedToRequi
         setTokenAddress(fetchedTokenAddress);
         setGasDeposit(fetchedGasDeposit);
       } catch (err) {
-        alert(`Failed to fetch token information: ${err instanceof Error ? err.message : "Unknown error"}`);
+        alert(
+          `Failed to fetch token information: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
         return;
       }
     }
@@ -104,31 +119,38 @@ export function ReviewStep({ formData, onBack, requiredChain, isConnectedToRequi
 
   const handleApproveToken = async (): Promise<string> => {
     if (!tokenAddress) throw new Error("Token address not found");
-    const txHash = await approveToken(tokenAddress as any, BigInt(formData.amount));
+    const txHash = await approveToken(
+      tokenAddress as any,
+      BigInt(formData.amount),
+    );
     return txHash as string;
   };
 
-  const handleCreateConsignment = async (): Promise<{ txHash: string; consignmentId: string }> => {
+  const handleCreateConsignment = async (): Promise<{
+    txHash: string;
+    consignmentId: string;
+  }> => {
     if (!gasDeposit) throw new Error("Gas deposit not calculated");
 
-    const result: { txHash: `0x${string}`; consignmentId: bigint } = await createConsignmentOnChain({
-      tokenId: formData.tokenId,
-      amount: BigInt(formData.amount),
-      isNegotiable: formData.isNegotiable,
-      fixedDiscountBps: formData.fixedDiscountBps ?? 0,
-      fixedLockupDays: formData.fixedLockupDays ?? 0,
-      minDiscountBps: formData.minDiscountBps,
-      maxDiscountBps: formData.maxDiscountBps,
-      minLockupDays: formData.minLockupDays,
-      maxLockupDays: formData.maxLockupDays,
-      minDealAmount: BigInt(formData.minDealAmount),
-      maxDealAmount: BigInt(formData.maxDealAmount),
-      isFractionalized: formData.isFractionalized,
-      isPrivate: formData.isPrivate,
-      maxPriceVolatilityBps: formData.maxPriceVolatilityBps,
-      maxTimeToExecute: formData.maxTimeToExecuteSeconds,
-      gasDeposit,
-    });
+    const result: { txHash: `0x${string}`; consignmentId: bigint } =
+      await createConsignmentOnChain({
+        tokenId: formData.tokenId,
+        amount: BigInt(formData.amount),
+        isNegotiable: formData.isNegotiable,
+        fixedDiscountBps: formData.fixedDiscountBps ?? 0,
+        fixedLockupDays: formData.fixedLockupDays ?? 0,
+        minDiscountBps: formData.minDiscountBps,
+        maxDiscountBps: formData.maxDiscountBps,
+        minLockupDays: formData.minLockupDays,
+        maxLockupDays: formData.maxLockupDays,
+        minDealAmount: BigInt(formData.minDealAmount),
+        maxDealAmount: BigInt(formData.maxDealAmount),
+        isFractionalized: formData.isFractionalized,
+        isPrivate: formData.isPrivate,
+        maxPriceVolatilityBps: formData.maxPriceVolatilityBps,
+        maxTimeToExecute: formData.maxTimeToExecuteSeconds,
+        gasDeposit,
+      });
 
     return {
       txHash: result.txHash,
@@ -241,8 +263,10 @@ export function ReviewStep({ formData, onBack, requiredChain, isConnectedToRequi
           Back
         </Button>
         {formData.tokenId && requiredChain && !isConnectedToRequiredChain ? (
-          <Button 
-            onClick={requiredChain === "solana" ? onConnectSolana : onConnectEvm}
+          <Button
+            onClick={
+              requiredChain === "solana" ? onConnectSolana : onConnectEvm
+            }
             className={`flex-1 !py-2 !px-4 text-white ${
               requiredChain === "solana"
                 ? "bg-gradient-to-br from-[#9945FF] to-[#14F195] hover:opacity-90"
@@ -252,9 +276,9 @@ export function ReviewStep({ formData, onBack, requiredChain, isConnectedToRequi
             Connect to {requiredChain === "solana" ? "Solana" : "EVM"}
           </Button>
         ) : (
-          <Button 
-            onClick={handleOpenModal} 
-            color="blue" 
+          <Button
+            onClick={handleOpenModal}
+            color="blue"
             className="flex-1 bg-orange-500 hover:bg-orange-600 !py-2 !px-4"
           >
             Create
@@ -267,7 +291,9 @@ export function ReviewStep({ formData, onBack, requiredChain, isConnectedToRequi
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         formData={formData}
-        consignerAddress={activeFamily === "solana" ? solanaPublicKey || "" : evmAddress || ""}
+        consignerAddress={
+          activeFamily === "solana" ? solanaPublicKey || "" : evmAddress || ""
+        }
         chain={activeFamily === "solana" ? "solana" : "ethereum"}
         activeFamily={activeFamily as string}
         onApproveToken={handleApproveToken}

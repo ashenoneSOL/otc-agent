@@ -12,7 +12,12 @@ export type { ChatMessage } from "./chat-message";
 export type { Citation, ChatStreamData } from "./chat";
 
 // Re-export from plugin types
-export type { PaymentCurrency, QuoteStatus, QuoteMemory, UserSessionMemory as PluginUserSessionMemory } from "@/lib/plugin-otc-desk/types";
+export type {
+  PaymentCurrency,
+  QuoteStatus,
+  QuoteMemory,
+  UserSessionMemory as PluginUserSessionMemory,
+} from "@/lib/plugin-otc-desk/types";
 
 //==============================================================================
 // CHAIN TYPES
@@ -20,7 +25,15 @@ export type { PaymentCurrency, QuoteStatus, QuoteMemory, UserSessionMemory as Pl
 
 export type EVMChain = "base" | "bsc" | "jeju";
 export type { Chain, ChainFamily, ChainConfig } from "@/config/chains";
-export { SUPPORTED_CHAINS, isEVMChain, isSolanaChain, getChainConfig, getChainFromId, getChainFromNumericId, isJejuChainId } from "@/config/chains";
+export {
+  SUPPORTED_CHAINS,
+  isEVMChain,
+  isSolanaChain,
+  getChainConfig,
+  getChainFromId,
+  getChainFromNumericId,
+  isJejuChainId,
+} from "@/config/chains";
 
 //==============================================================================
 // OTC CONTRACT TYPES
@@ -222,4 +235,3 @@ export interface ConsignmentCreationResult {
   txHash: `0x${string}`;
   consignmentId: bigint;
 }
-

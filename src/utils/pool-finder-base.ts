@@ -34,10 +34,11 @@ const poolAbi = parseAbi([
  * @returns Array of pool information sorted by TVL
  */
 export async function findUniswapV3Pools(
-  tokenAddress: string
+  tokenAddress: string,
 ): Promise<PoolInfo[]> {
-  const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
-  
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
+
   const client = createPublicClient({
     chain: base,
     transport: http(rpcUrl),
@@ -52,11 +53,18 @@ export async function findUniswapV3Pools(
         address: UNISWAP_V3_FACTORY,
         abi: factoryAbi,
         functionName: "getPool",
-        args: [tokenAddress as `0x${string}`, USDC_ADDRESS as `0x${string}`, fee],
+        args: [
+          tokenAddress as `0x${string}`,
+          USDC_ADDRESS as `0x${string}`,
+          fee,
+        ],
         authorizationList: [],
       });
 
-      if (poolAddress && poolAddress !== "0x0000000000000000000000000000000000000000") {
+      if (
+        poolAddress &&
+        poolAddress !== "0x0000000000000000000000000000000000000000"
+      ) {
         const poolInfo = await getPoolInfo(client, poolAddress, "USDC");
         if (poolInfo) {
           pools.push(poolInfo);
@@ -74,11 +82,18 @@ export async function findUniswapV3Pools(
         address: UNISWAP_V3_FACTORY,
         abi: factoryAbi,
         functionName: "getPool",
-        args: [tokenAddress as `0x${string}`, WETH_ADDRESS as `0x${string}`, fee],
+        args: [
+          tokenAddress as `0x${string}`,
+          WETH_ADDRESS as `0x${string}`,
+          fee,
+        ],
         authorizationList: [],
       });
 
-      if (poolAddress && poolAddress !== "0x0000000000000000000000000000000000000000") {
+      if (
+        poolAddress &&
+        poolAddress !== "0x0000000000000000000000000000000000000000"
+      ) {
         const poolInfo = await getPoolInfo(client, poolAddress, "WETH");
         if (poolInfo) {
           pools.push(poolInfo);
@@ -101,7 +116,7 @@ export async function findUniswapV3Pools(
 async function getPoolInfo(
   client: any,
   poolAddress: string,
-  baseToken: "USDC" | "WETH"
+  baseToken: "USDC" | "WETH",
 ): Promise<PoolInfo | null> {
   try {
     const [token0, token1, liquidity, slot0Data] = await Promise.all([
@@ -161,9 +176,9 @@ function estimateTVL(liquidity: bigint, baseToken: "USDC" | "WETH"): number {
   // Very rough estimate
   // For USDC: 1 unit of liquidity ≈ $1-10 TVL
   // For WETH: 1 unit of liquidity ≈ $0.001-0.01 TVL (assuming ETH at $3000)
-  
+
   const liquidityNum = Number(liquidity);
-  
+
   if (baseToken === "USDC") {
     return liquidityNum * 2; // Rough multiplier
   } else {
@@ -174,13 +189,15 @@ function estimateTVL(liquidity: bigint, baseToken: "USDC" | "WETH"): number {
 /**
  * Find the best pool for a token (highest TVL)
  */
-export async function findBestPool(tokenAddress: string): Promise<PoolInfo | null> {
+export async function findBestPool(
+  tokenAddress: string,
+): Promise<PoolInfo | null> {
   const pools = await findUniswapV3Pools(tokenAddress);
-  
+
   if (pools.length === 0) {
     return null;
   }
-  
+
   // Return pool with highest TVL
   return pools[0];
 }
@@ -211,4 +228,3 @@ export function formatPoolInfo(pool: PoolInfo): string {
   const feePercent = (pool.fee / 10000).toFixed(2);
   return `${pool.baseToken} Pool (${feePercent}% fee) - TVL: $${pool.tvlUsd.toLocaleString()}`;
 }
-

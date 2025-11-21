@@ -160,20 +160,8 @@ export async function POST(request: NextRequest) {
     } else if (offerId && offerId !== "0") {
       // Fetch on-chain data for EVM deals
       // Use chain-specific contract address based on NETWORK env var
-      let OTC_ADDRESS: Address;
-      try {
-        OTC_ADDRESS = getContractAddress();
-      } catch (error) {
-        console.error("[DealCompletion] Failed to get contract address:", error);
-        return NextResponse.json(
-          { 
-            error: "Missing contract address configuration",
-            details: error instanceof Error ? error.message : "Unknown error"
-          },
-          { status: 500 },
-        );
-      }
-      
+      const OTC_ADDRESS = getContractAddress();
+
       const chain = getChain();
       const RPC_URL = getRpcUrl();
 
@@ -181,85 +169,103 @@ export async function POST(request: NextRequest) {
         offerId,
         OTC_ADDRESS,
         RPC_URL,
-        network: process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet",
+        network:
+          process.env.NETWORK ||
+          process.env.NEXT_PUBLIC_JEJU_NETWORK ||
+          "localnet",
       });
 
       const publicClient = createPublicClient({
         chain,
         transport: http(RPC_URL),
       });
-        const abi = otcArtifact.abi as any;
+      const abi = otcArtifact.abi;
 
-        const offerData = (await publicClient.readContract({
-          address: OTC_ADDRESS,
-          abi,
-          functionName: "offers",
-          args: [BigInt(offerId)],
-        } as any)) as any;
+      const offerData = (await publicClient.readContract({
+        address: OTC_ADDRESS,
+        abi,
+        functionName: "offers",
+        args: [BigInt(offerId)],
+        authorizationList: [],
+      })) as [
+        Address,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        number,
+        boolean,
+        boolean,
+        boolean,
+        boolean,
+        Address,
+        bigint,
+      ];
 
-        // Contract returns array: [beneficiary, tokenAmount, discountBps, createdAt, unlockTime,
-        //   priceUsdPerToken, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]
-        const [
-          ,
-          tokenAmount,
-          discountBps,
-          ,
-          ,
-          priceUsdPerToken,
-          ,
-          currency,
-          ,
-          paid,
-          ,
-          ,
-          ,
-          amountPaid,
-        ] = offerData;
+      // Contract returns array: [beneficiary, tokenAmount, discountBps, createdAt, unlockTime,
+      //   priceUsdPerToken, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]
+      const [
+        ,
+        tokenAmount,
+        discountBps,
+        ,
+        ,
+        priceUsdPerToken,
+        ,
+        currency,
+        ,
+        paid,
+        ,
+        ,
+        ,
+        amountPaid,
+      ] = offerData;
 
-        console.log("[DealCompletion] Offer data from contract:", {
-          tokenAmount: tokenAmount?.toString(),
-          priceUsdPerToken: priceUsdPerToken?.toString(),
-          discountBps: discountBps?.toString(),
-          amountPaid: amountPaid?.toString(),
-          currency,
-          paid,
-        });
+      console.log("[DealCompletion] Offer data from contract:", {
+        tokenAmount: tokenAmount?.toString(),
+        priceUsdPerToken: priceUsdPerToken?.toString(),
+        discountBps: discountBps?.toString(),
+        amountPaid: amountPaid?.toString(),
+        currency,
+        paid,
+      });
 
-        // Calculate real USD values from on-chain data
-        // tokenAmount is 18 decimals, priceUsdPerToken is 8 decimals
-        const tokenAmountWei = BigInt(tokenAmount);
-        const priceUsd8 = BigInt(priceUsdPerToken);
-        const discountBpsNum = Number(discountBps);
-        const amountPaidBig = BigInt(amountPaid);
+      // Calculate real USD values from on-chain data
+      // tokenAmount is 18 decimals, priceUsdPerToken is 8 decimals
+      const tokenAmountWei = BigInt(tokenAmount);
+      const priceUsd8 = BigInt(priceUsdPerToken);
+      const discountBpsNum = Number(discountBps);
+      const amountPaidBig = BigInt(amountPaid);
 
-        // totalUsd = (tokenAmount * priceUsdPerToken) / 1e18 (result in 8 decimals)
-        const totalUsd8 = (tokenAmountWei * priceUsd8) / BigInt(1e18);
-        totalUsd = Number(totalUsd8) / 1e8;
+      // totalUsd = (tokenAmount * priceUsdPerToken) / 1e18 (result in 8 decimals)
+      const totalUsd8 = (tokenAmountWei * priceUsd8) / BigInt(1e18);
+      totalUsd = Number(totalUsd8) / 1e8;
 
-        // discountUsd = totalUsd * discountBps / 10000
-        const discountUsd8 = (totalUsd8 * BigInt(discountBpsNum)) / 10000n;
-        discountUsd = Number(discountUsd8) / 1e8;
+      // discountUsd = totalUsd * discountBps / 10000
+      const discountUsd8 = (totalUsd8 * BigInt(discountBpsNum)) / 10000n;
+      discountUsd = Number(discountUsd8) / 1e8;
 
-        // discountedUsd = totalUsd - discountUsd
-        const discountedUsd8 = totalUsd8 - discountUsd8;
-        discountedUsd = Number(discountedUsd8) / 1e8;
+      // discountedUsd = totalUsd - discountUsd
+      const discountedUsd8 = totalUsd8 - discountUsd8;
+      discountedUsd = Number(discountedUsd8) / 1e8;
 
-        // Format payment amount based on currency
-        if (currency === 0) {
-          // ETH (18 decimals)
-          actualPaymentAmount = (Number(amountPaidBig) / 1e18).toFixed(6);
-        } else {
-          // USDC (6 decimals)
-          actualPaymentAmount = (Number(amountPaidBig) / 1e6).toFixed(2);
-        }
-
-        console.log("[DealCompletion] Calculated from on-chain data:", {
-          totalUsd,
-          discountUsd,
-          discountedUsd,
-          actualPaymentAmount,
-        });
+      // Format payment amount based on currency
+      if (currency === 0) {
+        // ETH (18 decimals)
+        actualPaymentAmount = (Number(amountPaidBig) / 1e18).toFixed(6);
+      } else {
+        // USDC (6 decimals)
+        actualPaymentAmount = (Number(amountPaidBig) / 1e6).toFixed(2);
       }
+
+      console.log("[DealCompletion] Calculated from on-chain data:", {
+        totalUsd,
+        discountUsd,
+        discountedUsd,
+        actualPaymentAmount,
+      });
     } else {
       // No offerId, use quote values (fallback)
       const discountBps = quote.discountBps;

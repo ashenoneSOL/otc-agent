@@ -90,7 +90,7 @@ export function TokenSelectionStep({
   useEffect(() => {
     setLoading(true);
     setHasLoadedOnce(false);
-    
+
     async function loadUserTokens() {
       if (!isConnected) {
         setLoading(false);
