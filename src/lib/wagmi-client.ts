@@ -1,7 +1,7 @@
 import { createConfig, http } from "wagmi";
 import type { Config } from "wagmi";
 import { localhost, base, baseSepolia, bsc, bscTestnet } from "wagmi/chains";
-import { injected, walletConnect } from "wagmi/connectors";
+import { injected } from "wagmi/connectors";
 import { jejuMainnet, jejuTestnet, jejuLocalnet } from "@/lib/chains";
 
 // Custom RPC URLs
@@ -80,13 +80,11 @@ function getTransports() {
 }
 
 // Create connectors only on client side to avoid indexedDB SSR errors
+// Note: WalletConnect is handled by Privy, so we only use injected connector here
 function getConnectors() {
   if (typeof window === "undefined") return [];
   return [
     injected({ shimDisconnect: true }),
-    walletConnect({
-      projectId: process.env.NEXT_PUBLIC_PROJECT_ID || "demo-project-id",
-    }),
   ];
 }
 
