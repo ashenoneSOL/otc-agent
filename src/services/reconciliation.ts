@@ -197,18 +197,26 @@ export class ReconciliationService {
   }
 }
 
-// Singleton instance
-export const reconciliationService = new ReconciliationService();
+// Lazy singleton instance - only created when needed (at runtime, not build time)
+let reconciliationServiceInstance: ReconciliationService | null = null;
+
+function getReconciliationService(): ReconciliationService {
+  if (!reconciliationServiceInstance) {
+    reconciliationServiceInstance = new ReconciliationService();
+  }
+  return reconciliationServiceInstance;
+}
 
 export async function runReconciliationTask(): Promise<void> {
   console.log("\n🔄 [Reconciliation Task] Starting...\n");
 
-  const health = await reconciliationService.healthCheck();
+  const service = getReconciliationService();
+  const health = await service.healthCheck();
   console.log(
     `[Reconciliation] Block: ${health.blockNumber}, Contract: ${health.contractAddress}\n`,
   );
 
-  const result = await reconciliationService.reconcileAllActive();
+  const result = await service.reconcileAllActive();
   console.log(
     `\n✅ [Reconciliation] Complete: ${result.updated}/${result.total} updated\n`,
   );

@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer as SplTransfer};
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
-declare_id!("8X2wDShtcJ5mFrcsJPjK8tQCD16zBqzsUGwhSCM4ggko");
+declare_id!("DxqVpYeu9iaqSbTPZpmkfQEWUxzdRH6ziEhtT8aSAesX");
 
 #[event]
 pub struct OfferCreated {

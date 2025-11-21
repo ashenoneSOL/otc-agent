@@ -76,11 +76,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             },
             // Explicitly disable Solana in Privy to prevent warnings
             // Solana is handled separately by SolanaWalletProvider
-            externalWallets: {
-              solana: {
-                connectors: [], // Empty array to disable Solana in Privy
-              },
-            },
+            // externalWallets.solana is omitted to disable Solana in Privy
             // Embedded wallets for users without external wallets
             embeddedWallets: {
               ethereum: {

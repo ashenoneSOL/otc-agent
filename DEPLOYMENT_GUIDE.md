@@ -125,7 +125,41 @@ solana balance
 - Use a faucet (for devnet/testnet) or
 - Buy SOL and transfer to your deployment wallet
 
-### 1.5.2 Build Solana Program
+### 1.5.2 Verify Program ID Before Building
+
+**CRITICAL:** Before building, ensure the `declare_id!` in your Rust code matches the program keypair. This prevents program ID mismatch errors.
+
+```bash
+cd solana/otc-program
+
+# 1. Get the program ID from the keypair (generated during first build or manually)
+solana-keygen pubkey target/deploy/otc-keypair.json
+
+# 2. Verify it matches declare_id! in programs/otc/src/lib.rs
+grep "declare_id" programs/otc/src/lib.rs
+
+# 3. If they don't match, update declare_id! to match the keypair:
+#    declare_id!("<PROGRAM_ID_FROM_KEYPAIR>");
+```
+
+**Why this matters:**
+- The program ID is determined by `target/deploy/otc-keypair.json`
+- The `declare_id!` macro embeds the program ID into the compiled binary
+- If they don't match, you'll get `DeclaredProgramIdMismatch` errors at runtime
+- **Once a program is closed, its program ID cannot be reused** - you must generate a new keypair
+
+**If keypair doesn't exist yet:**
+```bash
+# Generate a new program keypair
+solana-keygen new -o target/deploy/otc-keypair.json --force --no-bip39-passphrase
+
+# Get the program ID
+solana-keygen pubkey target/deploy/otc-keypair.json
+
+# Update declare_id! in programs/otc/src/lib.rs to match
+```
+
+### 1.5.3 Build Solana Program
 
 ```bash
 cd solana/otc-program
@@ -135,9 +169,12 @@ anchor build
 
 # This creates: target/deploy/otc.so
 # Note: Anchor doesn't have a --release flag - it builds optimized by default
+
+# Verify the IDL has the correct address
+cat target/idl/otc.json | grep '"address"'
 ```
 
-### 1.5.3 Deploy to Mainnet
+### 1.5.4 Deploy to Mainnet
 
 **Option A: Using Anchor (Recommended)**
 
@@ -166,7 +203,7 @@ solana program deploy \
 # Save the program ID (from otc-keypair.json or output)
 ```
 
-### 1.5.4 Initialize Desk Account
+### 1.5.5 Initialize Desk Account
 
 After deployment, you need to initialize the desk account:
 
@@ -184,7 +221,7 @@ anchor run init-desk --provider.cluster mainnet
 - Price feeds configuration
 - Limits and parameters
 
-### 1.5.5 Save Deployment Info
+### 1.5.6 Save Deployment Info
 
 Save these values for environment variables:
 
@@ -194,7 +231,7 @@ Desk Address: <from init-desk output>
 Desk Owner: <your wallet address>
 ```
 
-### 1.5.6 Verify Deployment
+### 1.5.7 Verify Deployment
 
 ```bash
 # Check program exists
@@ -221,8 +258,19 @@ solana account <DESK_ADDRESS> --url https://api.mainnet-beta.solana.com
 
 **"Desk initialization fails"**
 - Ensure program is deployed first
-- Check you have enough SOL for account creation
+- Check you have enough SOL for account creation (~0.01 SOL needed)
 - Verify program ID matches in Anchor.toml
+
+**"DeclaredProgramIdMismatch" error**
+- This means `declare_id!` in Rust code doesn't match the deployed program ID
+- **Solution:** Update `declare_id!` to match the keypair, rebuild, and redeploy
+- **Prevention:** Always verify program ID before building (see Step 1.5.2)
+- **Note:** If you closed a program, you cannot reuse that program ID - generate a new keypair
+
+**"Closed programs cannot be recreated at the same program id"**
+- Once a program is closed, its program ID is permanently retired
+- You must generate a new keypair and deploy to a new program ID
+- Update all environment variables and code references to the new program ID
 
 **Note**: If you're deploying to devnet/testnet first for testing, use:
 ```bash
