@@ -1,9 +1,10 @@
 /**
  * Page Load and Navigation Tests
  * Tests all pages can load and basic navigation works
+ * Uses Anvil infrastructure for testing
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/walletTest';
 
 test.describe('Page Load Tests', () => {
   test('homepage loads correctly', async ({ page }) => {

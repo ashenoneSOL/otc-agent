@@ -1,4 +1,3 @@
-import { Connection, PublicKey } from "@solana/web3.js";
 
 export interface SolanaOracleInfo {
   type: "pyth" | "jupiter" | "raydium";
@@ -123,11 +122,6 @@ async function findRaydiumPool(
   tokenMint: string,
 ): Promise<SolanaOracleInfo | null> {
   try {
-    const rpcUrl =
-      process.env.NEXT_PUBLIC_SOLANA_RPC ||
-      "https://api.mainnet-beta.solana.com";
-    const connection = new Connection(rpcUrl, "confirmed");
-
     // Query Raydium API for pools
     const response = await fetch("https://api.raydium.io/v2/main/pairs");
 

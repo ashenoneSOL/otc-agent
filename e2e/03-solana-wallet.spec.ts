@@ -3,9 +3,10 @@
  * 
  * NOTE: Phantom wallet automation is limited, so we use page mocking
  * to test Solana integration. Real Phantom testing requires manual QA.
+ * Uses Anvil infrastructure for EVM testing context.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/walletTest';
 
 test.describe('Solana Wallet UI', () => {
   test.beforeEach(async ({ page }) => {

@@ -19,7 +19,7 @@ if command -v cloudflared &> /dev/null; then
     VERSION=$(cloudflared version 2>&1 | head -n 1)
     echo -e "${GREEN}✓ cloudflared is already installed: $VERSION${NC}"
     echo ""
-    echo "You can now run: npm run tunnel"
+    echo "You can now run: bun run tunnel"
     exit 0
 fi
 
@@ -84,7 +84,7 @@ case "$OS" in
         echo "Please install cloudflared manually:"
         echo "1. Download from: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/"
         echo "2. Extract and add to PATH"
-        echo "3. Run: npm run tunnel"
+        echo "3. Run: bun run tunnel"
         exit 1
         ;;
         
@@ -104,8 +104,8 @@ if command -v cloudflared &> /dev/null; then
     echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"
     echo ""
     echo -e "${BLUE}Next steps:${NC}"
-    echo "1. Start your dev server: ${YELLOW}npm run dev${NC}"
-    echo "2. In another terminal, start tunnel: ${YELLOW}npm run tunnel${NC}"
+    echo "1. Start your dev server: ${YELLOW}bun run dev${NC}"
+    echo "2. In another terminal, start tunnel: ${YELLOW}bun run tunnel${NC}"
     echo "3. Use the public URL for Farcaster testing"
     echo ""
 else

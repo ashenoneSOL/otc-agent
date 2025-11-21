@@ -35,7 +35,7 @@ export class ReconciliationService {
     try {
       this.otcAddress = getContractAddress();
       console.log(
-        `[ReconciliationService] Using contract address: ${this.otcAddress} for network: ${process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet"}`,
+        `[ReconciliationService] Using contract address: ${this.otcAddress} for network: ${process.env.NETWORK || "localhost"}`,
       );
     } catch (error) {
       console.error(
@@ -181,6 +181,48 @@ export class ReconciliationService {
     return { syncNeeded: result.updated };
   }
 
+  /**
+   * Alias for reconcileQuote - reconciles an offer by its offerId
+   * Note: This requires finding the quote that corresponds to this offerId
+   */
+  async reconcileOffer(offerId: string | number): Promise<{
+    updated: boolean;
+    oldStatus: string;
+    newStatus: string;
+  }> {
+    // Find quote by offerId
+    const activeQuotes = await QuoteDB.getActiveQuotes();
+    const quote = activeQuotes.find((q) => q.offerId === String(offerId));
+    
+    if (!quote) {
+      // If no quote found, read directly from contract and return status
+      const contractOffer = await this.readContractOffer(offerId);
+      const contractStatus = contractOffer.fulfilled
+        ? "executed"
+        : contractOffer.cancelled
+          ? "rejected"
+          : contractOffer.paid || contractOffer.approved
+            ? "approved"
+            : "active";
+      
+      return {
+        updated: false,
+        oldStatus: contractStatus,
+        newStatus: contractStatus,
+      };
+    }
+    
+    return this.reconcileQuote(quote.quoteId);
+  }
+
+  /**
+   * Alias for verifyQuoteState - verifies an offer by its offerId
+   */
+  async verifyOffer(offerId: string | number): Promise<{ syncNeeded: boolean }> {
+    const result = await this.reconcileOffer(offerId);
+    return { syncNeeded: result.updated };
+  }
+
   async healthCheck(): Promise<{
     blockNumber: number;
     contractAddress: string;
@@ -215,16 +257,24 @@ function getReconciliationService(): ReconciliationService {
 // Export a proxy object that lazily initializes the service
 export const reconciliationService = {
   get healthCheck() {
-    return getReconciliationService().healthCheck.bind(getReconciliationService());
+    return getReconciliationService().healthCheck.bind(
+      getReconciliationService(),
+    );
   },
   get reconcileAllActive() {
-    return getReconciliationService().reconcileAllActive.bind(getReconciliationService());
+    return getReconciliationService().reconcileAllActive.bind(
+      getReconciliationService(),
+    );
   },
   get reconcileOffer() {
-    return getReconciliationService().reconcileOffer.bind(getReconciliationService());
+    return getReconciliationService().reconcileOffer.bind(
+      getReconciliationService(),
+    );
   },
   get verifyOffer() {
-    return getReconciliationService().verifyOffer.bind(getReconciliationService());
+    return getReconciliationService().verifyOffer.bind(
+      getReconciliationService(),
+    );
   },
 };
 

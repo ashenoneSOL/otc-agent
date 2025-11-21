@@ -15,10 +15,10 @@ describe("wagmi-client chain availability", () => {
   });
 
   describe("Chain configuration based on environment", () => {
-    it("should include Jeju chains by default", () => {
+    it("should include localhost chain by default", () => {
       // Since we can't easily re-import the module, we test the expected behavior
       expect(process.env).toBeDefined();
-      // Jeju chains should always be available
+      // Localhost/Anvil chain should be available in development
     });
 
     it("should warn when Base RPC URL is missing in development", () => {
@@ -58,21 +58,11 @@ describe("wagmi-client chain availability", () => {
   });
 
   describe("Transport configuration", () => {
-    it("should use custom Jeju RPC URL from environment", () => {
-      const customUrl = "http://custom-jeju-rpc:9545";
-      process.env.NEXT_PUBLIC_JEJU_RPC_URL = customUrl;
+    it("should use custom RPC URL from environment", () => {
+      const customUrl = "http://custom-rpc:8545";
+      process.env.NEXT_PUBLIC_RPC_URL = customUrl;
 
-      expect(process.env.NEXT_PUBLIC_JEJU_RPC_URL).toBe(customUrl);
-    });
-
-    it("should default to localhost for Jeju localnet", () => {
-      delete process.env.NEXT_PUBLIC_JEJU_RPC_URL;
-      const expectedDefault = "http://127.0.0.1:9545";
-
-      // Default should be localhost
-      expect(process.env.NEXT_PUBLIC_JEJU_RPC_URL || expectedDefault).toBe(
-        expectedDefault,
-      );
+      expect(process.env.NEXT_PUBLIC_RPC_URL).toBe(customUrl);
     });
 
     it("should use Anvil localhost by default", () => {
@@ -111,9 +101,9 @@ describe("wagmi-client chain availability", () => {
     });
 
     it("should handle malformed URLs gracefully", () => {
-      process.env.NEXT_PUBLIC_JEJU_RPC_URL = "not-a-valid-url";
+      process.env.NEXT_PUBLIC_RPC_URL = "not-a-valid-url";
       // Implementation should handle this or fail gracefully
-      expect(process.env.NEXT_PUBLIC_JEJU_RPC_URL).toBe("not-a-valid-url");
+      expect(process.env.NEXT_PUBLIC_RPC_URL).toBe("not-a-valid-url");
     });
   });
 });

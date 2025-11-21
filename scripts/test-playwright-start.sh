@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🎭 Starting services for Playwright E2E tests on Jeju Localnet..."
+echo "🎭 Starting services for Playwright E2E tests on Anvil..."
 
 # Cleanup any existing processes
 pkill -9 -f "anvil" 2>/dev/null || true
@@ -15,33 +15,33 @@ lsof -t -i:2222 | xargs kill -9 2>/dev/null || true
 
 echo "✅ Cleaned up existing processes"
 
-# Start Jeju Localnet node in background (port 9545)
-echo "⛓️  Starting Jeju Localnet node..."
-export NEXT_PUBLIC_JEJU_RPC_URL=http://127.0.0.1:9545
-# For now, use anvil on port 9545 as Jeju localnet (until we have dedicated Jeju client)
-anvil --port 9545 --chain-id 1337 > jeju-localnet.log 2>&1 &
-JEJU_PID=$!
+# Start Anvil node in background (port 8545)
+echo "⛓️  Starting Anvil node..."
+export NEXT_PUBLIC_RPC_URL=http://127.0.0.1:8545
+# Use anvil on port 8545 for testing with CORS support
+anvil --host 0.0.0.0 --port 8545 --chain-id 31337 > anvil.log 2>&1 &
+ANVIL_PID=$!
 
-# Wait for Jeju node to be ready
-echo "⏳ Waiting for Jeju Localnet node (port 9545)..."
-timeout 30 bash -c 'until nc -z 127.0.0.1 9545; do sleep 1; done' || {
-  echo "❌ Jeju Localnet node failed to start"
-  kill $JEJU_PID 2>/dev/null || true
+# Wait for Anvil node to be ready
+echo "⏳ Waiting for Anvil node (port 8545)..."
+timeout 30 bash -c 'until nc -z 127.0.0.1 8545; do sleep 1; done' || {
+  echo "❌ Anvil node failed to start"
+  kill $ANVIL_PID 2>/dev/null || true
   exit 1
 }
-echo "✅ Jeju Localnet node ready"
+echo "✅ Anvil node ready"
 
-# Deploy contracts to Jeju Localnet
-echo "📝 Deploying contracts to Jeju Localnet..."
+# Deploy contracts to Anvil
+echo "📝 Deploying contracts to Anvil..."
 cd contracts
-# Deploy using Jeju RPC URL
-RPC_URL=http://127.0.0.1:9545 bun run deploy:eliza || {
+# Deploy using Anvil RPC URL
+RPC_URL=http://127.0.0.1:8545 bun run deploy:eliza || {
   echo "❌ Contract deployment failed"
-  kill $JEJU_PID 2>/dev/null || true
+  kill $ANVIL_PID 2>/dev/null || true
   exit 1
 }
 cd ..
-echo "✅ Contracts deployed to Jeju"
+echo "✅ Contracts deployed to Anvil"
 
 # Start Solana test validator in background
 echo "◎ Starting Solana test validator..."
@@ -68,10 +68,9 @@ if nc -z 127.0.0.1 8899 2>/dev/null; then
   echo "✅ Solana program deployed"
 fi
 
-# Start Next.js in background with Jeju configuration
+# Start Next.js in background with Anvil configuration
 echo "🚀 Starting Next.js dev server..."
-export NEXT_PUBLIC_JEJU_RPC_URL=http://127.0.0.1:9545
-export NEXT_PUBLIC_JEJU_NETWORK=localnet
+export NEXT_PUBLIC_RPC_URL=http://127.0.0.1:8545
 NEXT_PUBLIC_E2E_TEST=1 NODE_ENV=development next dev -p 2222 &
 NEXT_PID=$!
 
@@ -79,7 +78,7 @@ NEXT_PID=$!
 echo "⏳ Waiting for Next.js (port 2222)..."
 timeout 120 bash -c 'until curl -s http://localhost:2222 > /dev/null; do sleep 2; done' || {
   echo "❌ Next.js failed to start"
-  kill $JEJU_PID $NEXT_PID 2>/dev/null || true
+  kill $ANVIL_PID $NEXT_PID 2>/dev/null || true
   kill $SOLANA_PID 2>/dev/null || true
   exit 1
 }
@@ -93,7 +92,7 @@ echo ""
 echo "═══════════════════════════════════════════"
 echo "✅ All services ready for Playwright tests"
 echo "═══════════════════════════════════════════"
-echo "  Jeju Localnet:  http://127.0.0.1:9545"
+echo "  Anvil:          http://127.0.0.1:8545"
 echo "  Solana:         http://127.0.0.1:8899"
 echo "  Next.js:        http://localhost:2222"
 echo "═══════════════════════════════════════════"

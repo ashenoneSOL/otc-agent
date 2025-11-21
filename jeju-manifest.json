@@ -11,7 +11,7 @@
     "start": "bun run start"
   },
   "ports": {
-    "main": 5004,
+    "main": 3000,
     "api": 5005
   },
   "dependencies": ["contracts", "config"],

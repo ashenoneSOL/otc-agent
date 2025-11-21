@@ -748,7 +748,6 @@ function ChatHeader({
       ? (currentQuote.tokenChain === "solana" && activeFamily !== "solana") ||
         ((currentQuote.tokenChain === "base" ||
           currentQuote.tokenChain === "bsc" ||
-          currentQuote.tokenChain === "jeju" ||
           currentQuote.tokenChain === "ethereum") &&
           activeFamily !== "evm")
       : false;
@@ -1010,7 +1009,7 @@ function ChatBody({
                       </div>
                       <div className="text-xl sm:text-2xl font-bold">EVM</div>
                       <div className="text-xs text-white/70">
-                        Base, BSC, Jeju
+                        Base, BSC
                       </div>
                     </div>
                   </button>

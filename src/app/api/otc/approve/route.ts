@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     // Try to get chain-specific address first (production/configured networks)
     try {
       return getContractAddress();
-    } catch (error) {
+    } catch {
       // Fallback to devnet file for local development
       const deployed = path.join(
         process.cwd(),
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
           console.log(`[Approve API] Using devnet address: ${addr}`);
           return addr;
         }
-      } catch (fileError) {
+      } catch {
         // File doesn't exist or can't be read
       }
       throw new Error(

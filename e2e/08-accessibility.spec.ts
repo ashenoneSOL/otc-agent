@@ -1,9 +1,10 @@
 /**
  * Accessibility and ARIA Tests
  * Tests keyboard navigation, screen reader support, and WCAG compliance
+ * Uses Anvil for wallet-related accessibility tests
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/walletTest';
 
 test.describe('Keyboard Navigation', () => {
   test('can navigate entire page with keyboard', async ({ page }) => {

@@ -9,7 +9,7 @@ This is a **multi-chain AI-powered OTC (Over-The-Counter) trading desk** that in
 ## Development Environment
 
 **Package Manager**: Bun (required - do not use npm)
-**Port**: 5004
+**Port**: 3000
 **Database**: PostgreSQL with pgvector (auto-starts on port 5439)
 
 ### Essential Commands
@@ -79,7 +79,7 @@ cd contracts && forge test --match-test "testSpecificFunctionName" -vvv
 
 1. **No Traditional Database**: Uses Eliza runtime cache system as primary storage
 2. **Real Blockchain Testing**: All tests run against actual blockchains - NO MOCKS ALLOWED
-3. **Multi-Chain First**: Native support for Base, BSC, Jeju, Solana
+3. **Multi-Chain First**: Native support for Base, BSC, Solana
 4. **TDD Enforcement**: Tests must pass with real data, never mock data
 
 ### Development Principles
@@ -109,7 +109,7 @@ BIRDEYE_API_KEY=optional-for-solana-prices
 
 ### Multi-Chain Support
 
-**EVM Chains**: Base, BSC, Jeju (L3), Sepolia testnets
+**EVM Chains**: Base, BSC, Sepolia testnets
 **Solana**: Devnet/Mainnet with Anchor protocol
 **Pricing**: Unified USD pricing across all chains
 **Authentication**: Privy for EVM + native Solana wallets + Farcaster social login

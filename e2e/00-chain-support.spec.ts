@@ -1,9 +1,10 @@
 /**
  * Multi-Chain Support Verification
- * Verifies Base, BSC, and Jeju chain support in the UI
+ * Verifies Base and BSC chain support in the UI
+ * Uses Anvil for testing
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/walletTest';
 
 test.setTimeout(120000);
 
@@ -21,10 +22,10 @@ test.describe('Multi-Chain Support', () => {
     
     // EVM button should mention supported chains
     const evmButton = page.getByRole('button', { name: /evm/i });
-    await expect(evmButton).toContainText(/base.*bsc.*jeju/i);
+    await expect(evmButton).toContainText(/base.*bsc/i);
   });
 
-  test('EVM chain selector shows all three chains', async ({ page }) => {
+  test('EVM chain selector shows all EVM chains', async ({ page }) => {
     await page.goto('/');
     
     // Click connect
@@ -35,14 +36,13 @@ test.describe('Multi-Chain Support', () => {
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
     
-    // Should show all three EVM chains
+    // Should show all EVM chains
     await expect(page.getByRole('button', { name: /^base$/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /^bsc$/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^jeju$/i })).toBeVisible();
   });
 
   test('can select each EVM chain', async ({ page }) => {
-    const chains = ['base', 'bsc', 'jeju'];
+    const chains = ['base', 'bsc'];
     
     for (const chain of chains) {
       await page.goto('/');
@@ -93,19 +93,6 @@ test.describe('Multi-Chain Support', () => {
     // Should not have hardcoded "Base" in warnings
     expect(pageText).not.toContain('Switch to Base');
     expect(pageText).not.toContain('Connect to Base');
-  });
-});
-
-test.describe('Test Configuration', () => {
-  test('Jeju Localnet configuration is correct', async () => {
-    const jejuRpc = process.env.NEXT_PUBLIC_JEJU_RPC_URL || 'http://127.0.0.1:9545';
-    const jejuNetwork = process.env.NEXT_PUBLIC_JEJU_NETWORK || 'localnet';
-    
-    expect(jejuRpc).toContain('9545');
-    expect(jejuNetwork).toBe('localnet');
-    
-    console.log(`✅ Jeju RPC: ${jejuRpc}`);
-    console.log(`✅ Jeju Network: ${jejuNetwork}`);
   });
 });
 

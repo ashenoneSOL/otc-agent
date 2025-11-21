@@ -5,7 +5,7 @@ import React from "react";
 export const styles = {
   base: [
     // Base
-    "relative isolate inline-flex items-center justify-center gap-x-2 rounded-md border text-base/6 font-semibold",
+    "relative isolate inline-flex items-center justify-center gap-x-2 border text-base/6 font-semibold",
     // Focus
     "focus:outline-none",
     // Disabled

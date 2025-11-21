@@ -18,7 +18,7 @@ describe('OTC Desk - Component Tests', () => {
 
     it('shows chain name', () => {
       cy.get('[data-testid="chain-indicator"]').within(() => {
-        // Should show one of: Jeju, Base, BSC, Solana, Anvil
+        // Should show one of: Base, BSC, Solana, Anvil
         cy.get('span').should('exist');
       });
     });

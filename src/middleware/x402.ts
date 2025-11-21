@@ -11,9 +11,9 @@ const SERVICES = {
 
 export class X402PaymentHandler {
   async verifyPayment(txHash: string): Promise<boolean> {
-    // Verify transaction on Jeju chain
+    // Verify transaction on EVM chain
     const provider = ethers.getDefaultProvider(
-      process.env.JEJU_RPC_URL || "http://localhost:8545",
+      process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545",
     );
     const receipt = await provider.getTransactionReceipt(txHash);
     return receipt?.status === 1;

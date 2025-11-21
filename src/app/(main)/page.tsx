@@ -15,11 +15,10 @@ const DealFilters = dynamic(
 
 function MarketplaceContent() {
   const [filters, setFilters] = useState({
-    chains: ["ethereum", "base", "bsc", "jeju", "solana"] as (
+    chains: ["ethereum", "base", "bsc", "solana"] as (
       | "ethereum"
       | "base"
       | "bsc"
-      | "jeju"
       | "solana"
     )[],
     minMarketCap: 0,
@@ -42,7 +41,7 @@ function MarketplaceContent() {
           </div>
           <button
             onClick={() => (window.location.href = "/consign")}
-            className="hidden sm:block px-4 py-2 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700 whitespace-nowrap"
+            className="hidden sm:block px-4 py-2 bg-orange-600 text-white text-sm hover:bg-orange-700 whitespace-nowrap"
           >
             Create Listing
           </button>

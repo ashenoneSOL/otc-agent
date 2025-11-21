@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
 import { useMultiWallet } from "@/components/multiwallet";
 import { useWriteContract, usePublicClient } from "wagmi";
@@ -564,9 +565,11 @@ export function RegisterTokenModal({
                               </div>
                             </div>
                             {token.logoUrl && (
-                              <img
+                              <Image
                                 src={token.logoUrl}
                                 alt={token.symbol}
+                                width={48}
+                                height={48}
                                 className="w-12 h-12 rounded-full ml-3"
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).style.display =

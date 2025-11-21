@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🛑 Stopping Jeju Localnet services for OTC Agent"
+echo "🛑 Stopping Anvil services for OTC Agent"
 echo ""
 
 # Stop Docker services
@@ -12,16 +12,16 @@ else
   echo "⚠️  docker-compose.localnet.yml not found, skipping Docker cleanup"
 fi
 
-# Stop Jeju node
+# Stop Anvil node
 echo ""
-echo "🔧 Stopping Jeju L2 node..."
+echo "🔧 Stopping Anvil node..."
 cd ../..
 if [ -f "scripts/localnet/stop.ts" ]; then
   bun run scripts/localnet/stop.ts
-  echo "✅ Jeju node stopped"
+  echo "✅ Anvil node stopped"
 else
-  echo "⚠️  Jeju localnet stop script not found"
-  echo "💡 You may need to manually stop the Jeju node process"
+  echo "⚠️  Anvil stop script not found"
+  echo "💡 You may need to manually stop the Anvil node process"
 fi
 cd vendor/otc-desk
 

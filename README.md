@@ -1,6 +1,6 @@
 # Eliza OTC Desk
 
-Multi-chain AI-powered OTC trading desk with Eliza agent. Supports **Jeju**, Base, BSC, and Solana with full localnet E2E testing.
+Multi-chain AI-powered OTC trading desk with Eliza agent. Supports Base, BSC, and Solana with full localnet E2E testing.
 
 ## ✅ Hardhat → Anvil Migration Complete
 
@@ -16,7 +16,7 @@ All references to Hardhat have been replaced with Anvil. See contracts directory
 ## Features
 
 - 🤖 **AI Agent** - Eliza negotiates deals with users
-- ⛓️ **Multi-Chain** - Jeju (default), Base, BSC, Solana
+- ⛓️ **Multi-Chain** - Base (default), BSC, Solana
 - 🧪 **Real E2E Tests** - Deploys contracts, creates offers, verifies state (NO MOCKS)
 - 🔒 **Production Ready** - Multi-approver, oracle fallback, emergency refunds
 - 🚀 **Auto-Start** - Runs on localnet by default (`bun run dev`)
@@ -34,7 +34,7 @@ cd vendor/otc-desk
 bun run dev
 ```
 
-The app will be available at **http://localhost:5004**
+The app will be available at **http://localhost:3000**
 
 The startup script automatically:
 - ✅ Checks if PostgreSQL container exists
@@ -69,21 +69,18 @@ docker compose -f docker-compose.localnet.yml down
 
 | Chain | Network | Chain ID | Status | Logo |
 |-------|---------|----------|--------|------|
-| **Jeju** | Mainnet | 420691 | ✅ Default | 🟣 |
-| **Jeju** | Testnet | 420690 | ✅ Default | 🟣 |
-| **Jeju** | Localnet | 1337 | ✅ Default (E2E Tests) | 🟣 |
-| **Base** | Mainnet | 8453 | ✅ Full Support | 🔵 |
+| **Base** | Mainnet | 8453 | ✅ Default | 🔵 |
 | **Base** | Sepolia | 84532 | ✅ Full Support | 🔵 |
 | **BSC** | Mainnet | 56 | ✅ Full Support | 🟡 |
 | **BSC** | Testnet | 97 | ✅ Full Support | 🟡 |
 | **Solana** | Mainnet/Devnet | - | ✅ Full Support | 🟢 |
 
-**Default:** Jeju Localnet L2 (http://127.0.0.1:9545 - STATIC)  
-**E2E Tests:** Run on Jeju Localnet (Chain ID 1337, L2 Port 9545)
+**Default:** Anvil Local (http://127.0.0.1:8545)  
+**E2E Tests:** Run on Anvil (Chain ID 31337, Port 8545)
 
 ### Network Selection UX
 Users choose between:
-1. **EVM Networks** → Then select Base, BSC, or Jeju
+1. **EVM Networks** → Then select Base or BSC
 2. **Solana** → Direct connection
 
 This provides a clean, hierarchical selection that scales as more EVM chains are added.
@@ -107,7 +104,7 @@ Before running the app, you MUST:
    ```
 3. **Configure Privy Dashboard**:
    - Enable login methods: Wallet, Email, Google, Farcaster
-   - Add chains: Base (8453), BSC (56), Jeju (420691), Hardhat/Jeju Local (31337/1337)
+   - Add chains: Base (8453), BSC (56), Anvil Local (31337)
    - Enable Solana (devnet for testing)
 
 ### 📚 Migration Docs
@@ -169,7 +166,7 @@ Production supports any token via the token registration system.
 
 - `src/lib/agent.ts` - Eliza character and negotiation logic
 - `src/lib/plugin-otc-desk` - OTC plugin (providers, actions, quote service)
-- `src/lib/chains.ts` - Jeju chain definitions (mainnet, testnet, localnet)
+- `src/lib/getChain.ts` - Chain configuration and RPC URL resolution
 - `src/lib/getChain.ts` - Centralized chain configuration
 - `src/app/api/*` - API routes
 - `contracts/` - Foundry contracts (EVM)
@@ -196,7 +193,7 @@ bun run db:push
 # Generate Solana keypair (first run only)
 cd solana/otc-program && solana-keygen new -o id.json && cd ../..
 
-# Start everything (Anvil + Solana + Next.js on :5004)
+# Start everything (Anvil + Solana + Next.js on :3000)
 bun run dev
 ```
 
@@ -250,8 +247,8 @@ This ensures a smooth user experience even when wallet interactions are rejected
 Create a `.env.local` file with the following configuration:
 
 ```env
-# EVM (Jeju L2)
-NEXT_PUBLIC_RPC_URL=http://127.0.0.1:9545
+# EVM (Anvil Local)
+NEXT_PUBLIC_RPC_URL=http://127.0.0.1:8545
 NEXT_PUBLIC_OTC_ADDRESS=<set by deploy>
 APPROVER_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 
@@ -261,7 +258,7 @@ NEXT_PUBLIC_SOLANA_PROGRAM_ID=<program id from deploy>
 
 # Privy (REQUIRED - Single auth provider for all wallets & social login)
 NEXT_PUBLIC_PRIVY_APP_ID=<your-privy-app-id>  # Get from dashboard.privy.io
-NEXT_PUBLIC_URL=http://localhost:5004  # or your production URL
+NEXT_PUBLIC_URL=http://localhost:3000  # or your production URL
 
 # Agent
 GROQ_API_KEY=<your key>
@@ -288,7 +285,7 @@ X_CONSUMER_SECRET=<secret>
 TUNNEL_DOMAIN=
 
 # Development: Additional allowed origins (optional, comma-separated)
-# Example: ALLOWED_DEV_ORIGINS=192.168.1.100:5004,custom-domain.local:5004
+# Example: ALLOWED_DEV_ORIGINS=192.168.1.100:3000,custom-domain.local:3000
 ALLOWED_DEV_ORIGINS=
 ```
 
@@ -317,19 +314,6 @@ CRON_SECRET=<your-secure-random-string>
 APPROVER_PRIVATE_KEY=<your-approver-private-key>
 ```
 
-#### Required for Jeju Mainnet Deployment
-
-```env
-# Network Configuration
-NETWORK=jeju-mainnet  # Or leave unset (defaults to Jeju)
-
-# Contract Addresses (Jeju Mainnet)
-NEXT_PUBLIC_JEJU_OTC_ADDRESS=<deployed-contract-address>
-NEXT_PUBLIC_JEJU_RPC_URL=https://rpc.jeju.network
-
-# Database (same as Base)
-DATABASE_POSTGRES_URL=<from-vercel-neon-storage>
-```
 
 #### Troubleshooting Production Issues
 
@@ -346,10 +330,9 @@ DATABASE_POSTGRES_URL=<from-vercel-neon-storage>
 - The code uses `getContractAddress()` which selects the correct address based on `NETWORK`:
   - `NETWORK=base` → Uses `NEXT_PUBLIC_BASE_OTC_ADDRESS`
   - `NETWORK=bsc` → Uses `NEXT_PUBLIC_BSC_OTC_ADDRESS`
-  - `NETWORK=jeju-mainnet` or unset → Uses `NEXT_PUBLIC_JEJU_OTC_ADDRESS`
 
 **Common Mistakes:**
-- ❌ Forgetting to set `NETWORK=base` in production (causes code to default to Jeju mainnet)
+- ❌ Forgetting to set `NETWORK=base` in production
 - ❌ Using `NEXT_PUBLIC_OTC_ADDRESS` instead of chain-specific address (`NEXT_PUBLIC_BASE_OTC_ADDRESS`)
 - ❌ Database URL not configured (Vercel Neon Storage should provide `DATABASE_POSTGRES_URL` automatically)
 
@@ -402,11 +385,11 @@ Your OTC desk supports multiple networks and authentication methods:
 1. Create account at [dashboard.privy.io](https://dashboard.privy.io/)
 2. Create new app, copy App ID
 3. Enable: Farcaster, Email, Google (User Management > Authentication)
-4. Add domains: `http://localhost:5004`, `https://farcaster.xyz`, your production URL
+4. Add domains: `http://localhost:3000`, `https://farcaster.xyz`, your production URL
 5. Set in `.env.local`:
    ```env
    NEXT_PUBLIC_PRIVY_APP_ID=your-app-id
-   NEXT_PUBLIC_URL=http://localhost:5004
+   NEXT_PUBLIC_URL=http://localhost:3000
    ```
 
 **Behavior:**
@@ -548,18 +531,18 @@ bun run dev  # Terminal 1
 
 # Then run tests in Terminal 2:
 bun run test:e2e:pages       # Quick smoke test (3-5 min, 13 tests)
-bun run test:e2e             # Full suite (25-35 min, 237 tests) - Runs on Jeju Localnet
+bun run test:e2e             # Full suite (25-35 min, 237 tests) - Runs on Anvil
 bun run test:e2e:report      # View HTML report
 
 # Verify multi-chain support
-bash scripts/verify-chain-support.sh  # Verify Base, BSC, Jeju support
+bash scripts/verify-chain-support.sh  # Verify Base, BSC support
 
 # Debug failing tests
 bun run test:e2e:headed      # See browser
 bun run test:e2e:debug       # Playwright inspector
 ```
 
-**Test Network:** All Playwright tests run on **Jeju Localnet** (Chain ID 1337, Port 9545)
+**Test Network:** All Playwright tests run on **Anvil** (Chain ID 31337, Port 8545)
 
 **99% Coverage Achieved:**
 - ✅ **100% pages**: All 8 routes fully tested
@@ -614,7 +597,7 @@ All critical test suites verified with real on-chain transactions.
 ### ✅ Complete Flow E2E Tests - **ALL PASSING** (5/5)
 
 ```bash
-npm run test:complete-flow:only
+bun run test:complete-flow:only
 # Test Files  1 passed (1)
 # Tests  5 passed (5)
 ```
@@ -639,7 +622,7 @@ npm run test:complete-flow:only
 ### ✅ Contract E2E Tests - **ALL PASSING**
 
 ```bash
-cd contracts && npm run test:e2e
+cd contracts && bun run test:e2e
 # ✨ Test completed successfully!
 ```
 
@@ -667,7 +650,7 @@ cd contracts && npm run test:e2e
 ### ✅ Architecture Tests - **ALL PASSING** (23/23)
 
 ```bash
-npm run test
+bun run test
 # Test Files  3 passed (3)
 # Tests  23 passed (23)
 ```
@@ -870,10 +853,9 @@ Deploy to Vercel/Netlify/etc with production env vars.
 
 ### Running from Root
 
-All OTC Agent tests auto-run from the Jeju root:
+All OTC Agent tests auto-run from the project root:
 
 ```bash
-cd /Users/shawwalters/jeju
 bun run test  # Includes OTC Agent tests
 ```
 
@@ -886,11 +868,10 @@ Output:
 
 ## Auto-Start Integration
 
-The OTC Agent automatically starts when launching Jeju development environment:
+The OTC Agent automatically starts when launching the development environment:
 
 ```bash
-cd /Users/shawwalters/jeju
-bun run dev  # OTC Agent auto-starts on http://localhost:5004
+bun run dev  # OTC Agent auto-starts on http://localhost:3000
 ```
 
 Configured in `/scripts/dev.ts` - detects `vendor/otc-desk` and launches automatically with Anvil.

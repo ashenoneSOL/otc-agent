@@ -51,8 +51,8 @@ const WalletConnectorInner = ({
   return isConnected ? (
     <WalletMenu />
   ) : (
-    <NetworkConnectButton className="!h-9 !px-4 !text-sm bg-orange-500 hover:bg-orange-600 text-white rounded-lg">
-      Connect
+    <NetworkConnectButton className="!h-9 !px-4 !text-sm bg-orange-600 hover:bg-orange-700 text-white">
+      Log In
     </NetworkConnectButton>
   );
 };

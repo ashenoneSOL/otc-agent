@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master, multitoken-wip]
+    branches: [main]
   pull_request:
-    branches: [main, master, multitoken-wip]
+    branches: [main]
 
 jobs:
   test:

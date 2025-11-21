@@ -351,7 +351,7 @@ describe('Deployment Readiness', () => {
       console.log('  ✅ EVM contract artifacts');
       evmReady = true;
     } else {
-      console.log('  ⚠️  EVM artifacts not found (run: cd contracts && npm run compile)');
+      console.log('  ⚠️  EVM artifacts not found (run: cd contracts && bun run compile)');
     }
     
     // Solana artifacts (optional)

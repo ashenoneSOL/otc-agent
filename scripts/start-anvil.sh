@@ -20,14 +20,14 @@ echo "Starting Anvil with default test accounts..."
 echo ""
 
 # Start Anvil with compatible settings
-# --host 127.0.0.1 for local development
+# --host 0.0.0.0 allows CORS from browser (localhost:3000)
 # --port 8545 for compatibility with existing configs
 # --chain-id 31337 matches Hardhat default
 # --accounts 20 provides enough test accounts
 # --balance 10000 gives 10000 ETH per account
 # No --block-time flag = instant mining (default behavior)
 anvil \
-  --host 127.0.0.1 \
+  --host 0.0.0.0 \
   --port 8545 \
   --chain-id 31337 \
   --accounts 20 \

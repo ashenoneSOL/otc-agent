@@ -2,10 +2,6 @@ import { createPublicClient, http, parseAbi } from "viem";
 import { base } from "viem/chains";
 import { TokenRegistryService } from "./tokenRegistry";
 
-const REGISTRATION_HELPER_ABI = parseAbi([
-  "event TokenRegistered(bytes32 indexed tokenId, address indexed tokenAddress, address indexed pool, address oracle, address registeredBy)",
-]);
-
 const ERC20_ABI = parseAbi([
   "function symbol() view returns (string)",
   "function name() view returns (string)",

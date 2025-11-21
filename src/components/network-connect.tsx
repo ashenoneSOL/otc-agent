@@ -9,7 +9,7 @@ import { EVMChainSelectorModal } from "@/components/evm-chain-selector-modal";
 
 /**
  * NetworkConnectButton - Unified wallet connection
- * Shows modal to choose EVM (Base, BSC, Jeju) or Solana network
+ * Shows modal to choose EVM (Base, BSC) or Solana network
  * - EVM: Uses Privy for EVM wallet connection (MetaMask, Coinbase, etc.)
  * - Solana: Uses Solana wallet-adapter for native Solana wallets (Phantom, Solflare, etc.)
  *
@@ -71,12 +71,12 @@ export function NetworkConnectButton({
                 Choose a network
               </DialogTitle>
               <DialogBody className="pt-4">
-                <div className="bg-zinc-900/50 backdrop-blur-sm rounded-2xl p-6 border border-zinc-800/50 shadow-xl">
+                <div className="bg-zinc-900/50 backdrop-blur-sm p-6 border border-zinc-800/50 shadow-xl">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <button
                       type="button"
                       onClick={onChooseEvm}
-                      className="group rounded-xl p-8 sm:p-10 text-center transition-all duration-200 cursor-pointer text-white bg-gradient-to-br from-blue-600 to-blue-800 border-2 border-blue-700 hover:border-blue-600 hover:brightness-110 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 focus:ring-offset-zinc-900"
+                      className="group p-8 sm:p-10 text-center transition-all duration-200 cursor-pointer text-white bg-gradient-to-br from-blue-600 to-blue-800 border-2 border-blue-700 hover:border-blue-600 hover:brightness-110 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 focus:ring-offset-zinc-900"
                     >
                       <div className="flex flex-col items-center gap-4">
                         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
@@ -86,14 +86,14 @@ export function NetworkConnectButton({
                           EVM
                         </div>
                         <div className="text-xs text-white/70">
-                          Base, BSC, Jeju
+                          Base, BSC
                         </div>
                       </div>
                     </button>
                     <button
                       type="button"
                       onClick={onChooseSolana}
-                      className="group rounded-xl p-8 sm:p-10 text-center transition-all duration-200 cursor-pointer text-white bg-gradient-to-br from-[#9945FF] via-[#8752F3] to-[#14F195] border-2 border-[#9945FF]/50 hover:border-[#14F195]/50 hover:brightness-110 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#9945FF] focus:ring-offset-2 focus:ring-offset-zinc-900"
+                      className="group p-8 sm:p-10 text-center transition-all duration-200 cursor-pointer text-white bg-gradient-to-br from-[#9945FF] via-[#8752F3] to-[#14F195] border-2 border-[#9945FF]/50 hover:border-[#14F195]/50 hover:brightness-110 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#9945FF] focus:ring-offset-2 focus:ring-offset-zinc-900"
                     >
                       <div className="flex flex-col items-center gap-4">
                         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">

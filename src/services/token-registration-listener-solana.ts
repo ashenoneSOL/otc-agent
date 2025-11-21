@@ -1,12 +1,10 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { Program, AnchorProvider, Wallet } from "@coral-xyz/anchor";
-import { TokenRegistryService } from "./tokenRegistry";
 import { promises as fs } from "fs";
 import path from "path";
 
 let isListening = false;
 let connection: Connection | null = null;
-let program: Program | null = null;
 
 /**
  * Start listening for register_token events from Solana program
@@ -46,7 +44,7 @@ export async function startSolanaListener() {
       commitment: "confirmed",
     });
 
-    program = new Program(idl, provider);
+    new Program(idl, provider);
 
     console.log("[Solana Listener] Starting listener for program", programId);
     isListening = true;
@@ -54,7 +52,7 @@ export async function startSolanaListener() {
     // Subscribe to program logs
     const subscriptionId = connection.onLogs(
       new PublicKey(programId),
-      async (logs, context) => {
+      async (logs) => {
         await handleProgramLogs(logs);
       },
       "confirmed",
@@ -207,31 +205,4 @@ export async function backfillSolanaEvents(signatures?: string[]) {
   }
 
   console.log("[Solana Backfill] ✅ Backfill complete");
-}
-
-/**
- * Helper: Fetch SPL token metadata
- */
-async function fetchSPLTokenMetadata(mintAddress: string) {
-  if (!connection) {
-    throw new Error("Connection not initialized");
-  }
-
-  try {
-    const mint = new PublicKey(mintAddress);
-    const mintInfo = await connection.getParsedAccountInfo(mint);
-
-    if (mintInfo.value && "parsed" in mintInfo.value.data) {
-      const parsed = mintInfo.value.data.parsed;
-      return {
-        decimals: parsed.info.decimals,
-        supply: parsed.info.supply,
-      };
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Failed to fetch SPL token metadata:", error);
-    return null;
-  }
 }

@@ -8,7 +8,7 @@ async function seedTokens() {
   
   if (!fs.existsSync(deploymentPath)) {
     console.log("⚠️  Contracts not deployed yet, skipping seed");
-    console.log("   Run 'npm run dev' to deploy contracts first");
+    console.log("   Run 'bun run dev' to deploy contracts first");
     process.exit(0);
   }
 

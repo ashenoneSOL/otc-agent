@@ -5,8 +5,8 @@
  * Tests the full user journey with real wallet connection
  * 
  * SETUP REQUIRED:
- * 1. Start local Anvil node: npm run rpc:start
- * 2. Deploy contracts: npm run rpc:deploy
+ * 1. Start local Anvil node: bun run rpc:start
+ * 2. Deploy contracts: bun run rpc:deploy
  * 3. Run tests: npx cypress open (for headed mode with MetaMask)
  */
 

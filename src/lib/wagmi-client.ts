@@ -2,13 +2,10 @@ import { createConfig, http } from "wagmi";
 import type { Config } from "wagmi";
 import { localhost, base, baseSepolia, bsc, bscTestnet } from "wagmi/chains";
 import { injected, walletConnect } from "wagmi/connectors";
-import { jejuMainnet, jejuTestnet, jejuLocalnet } from "@/lib/chains";
 
 // Custom RPC URLs
 const baseRpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL;
 const bscRpcUrl = process.env.NEXT_PUBLIC_BSC_RPC_URL;
-const jejuRpcUrl =
-  process.env.NEXT_PUBLIC_JEJU_RPC_URL || "http://127.0.0.1:9545";
 const anvilRpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545";
 
 // Determine available chains based on configuration
@@ -16,13 +13,10 @@ function getAvailableChains() {
   const isDevelopment = process.env.NODE_ENV === "development";
   const chains = [];
 
-  // Add localnet chains first in dev mode (default)
+  // Add localhost/anvil chain in dev mode (default)
   if (isDevelopment) {
-    chains.push(jejuLocalnet, localhost);
+    chains.push(localhost);
   }
-
-  // Add Jeju chains (always available)
-  chains.push(jejuMainnet, jejuTestnet);
 
   // Add Base if RPC configured or in production
   if (baseRpcUrl || !isDevelopment) {
@@ -45,16 +39,15 @@ const chains = getAvailableChains();
 
 // Build transports dynamically based on available chains
 function getTransports() {
-  const transports: Record<number, ReturnType<typeof http>> = {
-    [jejuMainnet.id]: http(jejuRpcUrl),
-    [jejuTestnet.id]: http("https://testnet-rpc.jeju.network"),
-    [jejuLocalnet.id]: http(jejuRpcUrl),
-  };
+  const transports: Record<number, ReturnType<typeof http>> = {};
 
   const isDevelopment = process.env.NODE_ENV === "development";
 
   if (isDevelopment) {
-    transports[localhost.id] = http(anvilRpcUrl);
+    // Use proxy route in browser to avoid CORS issues, direct URL on server
+    const rpcUrl =
+      typeof window !== "undefined" ? "/api/rpc" : anvilRpcUrl;
+    transports[localhost.id] = http(rpcUrl);
   }
 
   // Add Base transports if configured

@@ -66,7 +66,6 @@ export function AcceptQuoteModal({
     ? (quoteChain === "solana" && activeFamily !== "solana") ||
       ((quoteChain === "base" ||
         quoteChain === "bsc" ||
-        quoteChain === "jeju" ||
         quoteChain === "ethereum") &&
         activeFamily !== "evm")
     : false;
@@ -94,7 +93,7 @@ export function AcceptQuoteModal({
     [rpcUrl],
   );
 
-  // Always use localhost chain for local RPC (Anvil/Jeju Localnet)
+  // Always use localhost chain for local RPC (Anvil)
   const readChain = useMemo(
     () =>
       isLocalRpc
@@ -1185,7 +1184,7 @@ export function AcceptQuoteModal({
                               EVM
                             </div>
                             <div className="text-xs text-white/70">
-                              Base, BSC, Jeju
+                              Base, BSC
                             </div>
                           </div>
                         </button>

@@ -119,7 +119,7 @@ async function getPoolInfo(
   baseToken: "USDC" | "WETH",
 ): Promise<PoolInfo | null> {
   try {
-    const [token0, token1, liquidity, slot0Data] = await Promise.all([
+    const [token0, token1, liquidity] = await Promise.all([
       client.readContract({
         address: poolAddress as `0x${string}`,
         abi: poolAbi,
@@ -136,12 +136,6 @@ async function getPoolInfo(
         address: poolAddress as `0x${string}`,
         abi: poolAbi,
         functionName: "liquidity",
-        authorizationList: [],
-      }),
-      client.readContract({
-        address: poolAddress as `0x${string}`,
-        abi: poolAbi,
-        functionName: "slot0",
         authorizationList: [],
       }),
     ]);

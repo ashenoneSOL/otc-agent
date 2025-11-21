@@ -1,58 +1,11 @@
 /**
  * Component Interaction Tests
- * Tests individual components and UI elements on Jeju chain
+ * Tests individual components and UI elements on Anvil
  */
 
-import { test as base, expect } from '@playwright/test';
-import { BrowserContext } from 'playwright-core';
-import { bootstrap, Dappwright, getWallet, MetaMaskWallet } from '@tenkeylabs/dappwright';
+import { test, expect } from './helpers/walletTest';
 
-base.setTimeout(600000);
-// Use Jeju Localnet for testing (default network)
-const JEJU_RPC = process.env.NEXT_PUBLIC_JEJU_RPC_URL || 'http://127.0.0.1:9545';
-const JEJU_CHAIN_ID = 1337;
-
-
-// Use Jeju Localnet for testing (default network)
-const JEJU_RPC = process.env.NEXT_PUBLIC_JEJU_RPC_URL || 'http://127.0.0.1:9545';
-const JEJU_CHAIN_ID = 1337;
-
-// Extend test with MetaMask wallet fixture
-export const test = base.extend<{ wallet: Dappwright }, { walletContext: BrowserContext }>({
-  walletContext: [
-    async ({}, use) => {
-      const [wallet, _, context] = await bootstrap('', {
-        wallet: 'metamask',
-        version: MetaMaskWallet.recommendedVersion,
-        seed: 'test test test test test test test test test test test junk',
-        headless: false,
-      });
-
-      // Add Jeju Localnet network (primary test network)
-      await wallet.addNetwork({
-        networkName: 'Jeju Localnet',
-        rpc: JEJU_RPC,
-        chainId: JEJU_CHAIN_ID,
-        symbol: 'ETH',
-      });
-
-      await wallet.switchNetwork('Jeju Localnet');
-
-      await use(context);
-      await context.close();
-    },
-    { scope: 'worker' },
-  ],
-  
-  context: async ({ walletContext }, use) => {
-    await use(walletContext);
-  },
-  
-  wallet: async ({ walletContext }, use) => {
-    const wallet = await getWallet('metamask', walletContext);
-    await use(wallet);
-  },
-});
+test.setTimeout(600000);
 
 test.describe('Header Component', () => {
   test('header renders and is always visible', async ({ page }) => {
@@ -218,7 +171,7 @@ test.describe('Chat Component', () => {
     await page.getByRole('button', { name: /connect/i }).first().click();
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /jeju/i }).click();
+    await page.getByRole('button', { name: /base/i }).click();
     await page.waitForTimeout(2000);
     await wallet.approve();
     await page.waitForTimeout(4000);
@@ -250,7 +203,7 @@ test.describe('Chat Component', () => {
     await page.getByRole('button', { name: /connect/i }).first().click();
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /jeju/i }).click();
+    await page.getByRole('button', { name: /base/i }).click();
     await page.waitForTimeout(2000);
     await wallet.approve();
     await page.waitForTimeout(4000);
@@ -284,7 +237,7 @@ test.describe('Accept Quote Modal', () => {
     await page.getByRole('button', { name: /connect/i }).first().click();
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /jeju/i }).click();
+    await page.getByRole('button', { name: /base/i }).click();
     await page.waitForTimeout(2000);
     await wallet.approve();
     await page.waitForTimeout(4000);

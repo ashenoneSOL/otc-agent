@@ -53,7 +53,7 @@ async function scanBaseTokens(
   const balanceResults = await publicClient.multicall({
     contracts: balanceCalls,
     allowFailure: true,
-  });
+  } as any);
 
   const tokens: ScannedToken[] = [];
 

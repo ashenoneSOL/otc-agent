@@ -9,8 +9,7 @@ import type { Address } from "viem";
  */
 export function getContractAddress(): Address {
   const env = process.env.NODE_ENV;
-  const network =
-    process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet";
+  const network = process.env.NETWORK || "localhost";
 
   // Production: Use mainnet addresses
   if (env === "production") {
@@ -32,11 +31,11 @@ export function getContractAddress(): Address {
       }
       return address as Address;
     }
-    // Default to Jeju mainnet in production
-    const address = process.env.NEXT_PUBLIC_JEJU_OTC_ADDRESS;
+    // Default to Base mainnet in production
+    const address = process.env.NEXT_PUBLIC_BASE_OTC_ADDRESS;
     if (!address) {
       throw new Error(
-        `NEXT_PUBLIC_JEJU_OTC_ADDRESS is required for Jeju mainnet in production`,
+        `NEXT_PUBLIC_BASE_OTC_ADDRESS is required for Base mainnet in production`,
       );
     }
     return address as Address;
@@ -44,19 +43,6 @@ export function getContractAddress(): Address {
 
   // Development/staging: Support multiple networks
   switch (network) {
-    case "jeju-mainnet":
-    case "mainnet":
-      return (process.env.NEXT_PUBLIC_JEJU_OTC_ADDRESS ||
-        process.env.NEXT_PUBLIC_OTC_ADDRESS) as Address;
-    case "jeju-testnet":
-    case "testnet":
-      return (process.env.NEXT_PUBLIC_JEJU_OTC_ADDRESS ||
-        process.env.NEXT_PUBLIC_OTC_ADDRESS) as Address;
-    case "jeju-localnet":
-    case "localnet":
-      return (process.env.NEXT_PUBLIC_JEJU_OTC_ADDRESS ||
-        process.env.NEXT_PUBLIC_OTC_ADDRESS ||
-        "0x0000000000000000000000000000000000000000") as Address;
     case "base":
       return (process.env.NEXT_PUBLIC_BASE_OTC_ADDRESS ||
         process.env.NEXT_PUBLIC_OTC_ADDRESS) as Address;
@@ -71,12 +57,12 @@ export function getContractAddress(): Address {
         process.env.NEXT_PUBLIC_OTC_ADDRESS) as Address;
     case "localhost":
     case "anvil":
+    case "localnet":
       return (process.env.NEXT_PUBLIC_OTC_ADDRESS ||
         "0x0000000000000000000000000000000000000000") as Address;
     default:
-      // Default to Jeju localnet in development
-      return (process.env.NEXT_PUBLIC_JEJU_OTC_ADDRESS ||
-        process.env.NEXT_PUBLIC_OTC_ADDRESS ||
+      // Default to localhost/anvil in development
+      return (process.env.NEXT_PUBLIC_OTC_ADDRESS ||
         "0x0000000000000000000000000000000000000000") as Address;
   }
 }

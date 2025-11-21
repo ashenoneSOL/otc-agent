@@ -171,7 +171,6 @@ export async function POST(request: NextRequest) {
         RPC_URL,
         network:
           process.env.NETWORK ||
-          process.env.NEXT_PUBLIC_JEJU_NETWORK ||
           "localnet",
       });
 

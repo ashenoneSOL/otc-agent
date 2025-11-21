@@ -16,9 +16,9 @@ test.describe("Wallet connect and actions", () => {
     await evmChoice.click();
     await page.waitForTimeout(1000);
 
-    // Choose Jeju chain
-    const jejuChoice = page.getByRole("button", { name: /jeju/i });
-    await jejuChoice.click();
+    // Choose Base chain
+    const baseChoice = page.getByRole("button", { name: /base/i });
+    await baseChoice.click();
 
     // Approve connection in MetaMask
     await wallet.approve();

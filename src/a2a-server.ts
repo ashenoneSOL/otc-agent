@@ -88,7 +88,7 @@ async function executeSkill(
             },
             {
               symbol: "elizaOS",
-              network: "jeju",
+              network: "base",
               minOrder: "1000",
               maxOrder: "1000000",
             },
@@ -336,8 +336,8 @@ app.get("/.well-known/agent-card.json", (_req: Request, res: Response) => {
     url: `http://localhost:${PORT}/a2a`,
     preferredTransport: "http",
     provider: {
-      organization: "Jeju Network",
-      url: "https://jeju.network",
+      organization: "Eliza OTC Desk",
+      url: "https://eliza.ai",
     },
     version: "1.0.0",
     capabilities: {

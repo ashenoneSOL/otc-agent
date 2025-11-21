@@ -2,7 +2,7 @@
 
 set -e
 
-echo "🚀 Starting Jeju Localnet for OTC Agent"
+echo "🚀 Starting Anvil for OTC Agent"
 echo ""
 
 # Check if we're in the right directory
@@ -16,18 +16,14 @@ command -v bun >/dev/null 2>&1 || { echo "❌ Error: bun is required but not ins
 command -v docker >/dev/null 2>&1 || { echo "❌ Error: docker is required but not installed"; exit 1; }
 
 # Set environment
-export NEXT_PUBLIC_JEJU_NETWORK=localnet
-export NEXT_PUBLIC_JEJU_RPC_URL=http://127.0.0.1:9545
 export NEXT_PUBLIC_RPC_URL=http://127.0.0.1:8545
 
 echo "📋 Environment Check"
-echo "  - Jeju Network: localnet"
-echo "  - Jeju RPC: $NEXT_PUBLIC_JEJU_RPC_URL"
 echo "  - Anvil RPC: $NEXT_PUBLIC_RPC_URL"
 echo ""
 
-# Start Jeju localnet from root
-echo "🔧 Starting Jeju L2 node..."
+# Start Anvil from root
+echo "🔧 Starting Anvil node..."
 cd ../..
 
 # Fail if script doesn't exist
@@ -39,13 +35,13 @@ fi
 
 # Start the node
 bun run scripts/localnet/start.ts &
-JEJU_PID=$!
-echo "  Started Jeju node (PID: $JEJU_PID)"
+ANVIL_PID=$!
+echo "  Started Anvil node (PID: $ANVIL_PID)"
 
 # Verify it started
 sleep 2
-if ! kill -0 $JEJU_PID 2>/dev/null; then
-  echo "❌ ERROR: Failed to start Jeju node"
+if ! kill -0 $ANVIL_PID 2>/dev/null; then
+  echo "❌ ERROR: Failed to start Anvil node"
   exit 1
 fi
 
@@ -53,19 +49,19 @@ cd vendor/otc-desk
 
 # Wait for RPC to be ready
 echo ""
-echo "⏳ Waiting for Jeju RPC to be ready..."
+echo "⏳ Waiting for Anvil RPC to be ready..."
 RETRIES=0
 MAX_RETRIES=30
 while [ $RETRIES -lt $MAX_RETRIES ]; do
   if curl -s -X POST -H "Content-Type: application/json" \
     --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-    $NEXT_PUBLIC_JEJU_RPC_URL > /dev/null 2>&1; then
-    echo "✅ Jeju RPC is ready!"
+    $NEXT_PUBLIC_RPC_URL > /dev/null 2>&1; then
+    echo "✅ Anvil RPC is ready!"
     break
   fi
   RETRIES=$((RETRIES+1))
   if [ $RETRIES -eq $MAX_RETRIES ]; then
-    echo "❌ Timeout waiting for Jeju RPC"
+    echo "❌ Timeout waiting for Anvil RPC"
     exit 1
   fi
   sleep 2
@@ -125,10 +121,9 @@ else
 fi
 
 echo ""
-echo "✅ Jeju Localnet is ready!"
+echo "✅ Anvil is ready!"
 echo ""
 echo "📍 Services:"
-echo "  - Jeju RPC:       http://127.0.0.1:9545"
 echo "  - Anvil RPC:      http://127.0.0.1:8545"
 echo "  - Solana RPC:     http://127.0.0.1:8899"
 echo "  - PostgreSQL:     localhost:5439"
@@ -138,7 +133,7 @@ echo ""
 echo "🔧 Next steps:"
 echo "  1. Run 'bun run dev' to start the frontend"
 echo "  2. Open http://localhost:5005 in your browser"
-echo "  3. Connect your wallet (Jeju Localnet chain ID: 1337)"
+echo "  3. Connect your wallet (Anvil chain ID: 31337)"
 echo ""
 echo "💡 To stop localnet: ./scripts/localnet-stop.sh"
 echo ""

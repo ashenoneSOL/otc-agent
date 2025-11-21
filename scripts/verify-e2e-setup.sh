@@ -113,10 +113,10 @@ if [ $ERRORS -eq 0 ]; then
   echo "✅ E2E Test Setup Complete"
   echo ""
   echo "Ready to run tests:"
-  echo "  npm run test:e2e"
+  echo "  bun run test:e2e"
   echo ""
   echo "Or start with a quick test:"
-  echo "  npm run test:e2e:pages"
+  echo "  bun run test:e2e:pages"
 else
   echo "❌ Setup Incomplete ($ERRORS errors)"
   echo ""

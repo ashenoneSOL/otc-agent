@@ -1,54 +1,11 @@
 /**
  * EVM Wallet Connection and Interaction Tests
- * Tests EVM wallet connection via MetaMask (supports Base, BSC, Jeju)
+ * Tests EVM wallet connection via MetaMask on Anvil
  */
 
-import { test as base, expect } from '@playwright/test';
-import { BrowserContext } from 'playwright-core';
-import { bootstrap, Dappwright, getWallet, MetaMaskWallet } from '@tenkeylabs/dappwright';
+import { test, expect } from './helpers/walletTest';
 
-base.setTimeout(600000);
-
-// Use Jeju Localnet for testing (default network)
-const JEJU_RPC = process.env.NEXT_PUBLIC_JEJU_RPC_URL || 'http://127.0.0.1:9545';
-const JEJU_CHAIN_ID = 1337;
-
-// Extend test with MetaMask wallet fixture
-export const test = base.extend<{ wallet: Dappwright }, { walletContext: BrowserContext }>({
-  walletContext: [
-    async ({}, use) => {
-      const [wallet, _, context] = await bootstrap('', {
-        wallet: 'metamask',
-        version: MetaMaskWallet.recommendedVersion,
-        seed: 'test test test test test test test test test test test junk',
-        headless: false,
-      });
-
-      // Add Jeju Localnet network (primary test network)
-      await wallet.addNetwork({
-        networkName: 'Jeju Localnet',
-        rpc: JEJU_RPC,
-        chainId: JEJU_CHAIN_ID,
-        symbol: 'ETH',
-      });
-
-      await wallet.switchNetwork('Jeju Localnet');
-
-      await use(context);
-      await context.close();
-    },
-    { scope: 'worker' },
-  ],
-  
-  context: async ({ walletContext }, use) => {
-    await use(walletContext);
-  },
-  
-  wallet: async ({ walletContext }, use) => {
-    const wallet = await getWallet('metamask', walletContext);
-    await use(wallet);
-  },
-});
+test.setTimeout(600000);
 
 test.describe('EVM Wallet Connection', () => {
   test('connect MetaMask from homepage', async ({ page, wallet }) => {
@@ -57,10 +14,10 @@ test.describe('EVM Wallet Connection', () => {
     // Click connect button
     await page.getByRole('button', { name: /connect/i }).first().click();
     
-    // Choose EVM, then Jeju
+    // Choose EVM, then Base
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /jeju/i }).click();
+    await page.getByRole('button', { name: /base/i }).click();
     await page.waitForTimeout(2000);
     
     // Approve in MetaMask
@@ -92,12 +49,12 @@ test.describe('EVM Wallet Connection', () => {
     
     // Click wallet menu
     const walletButton = page.locator('button:has-text("0x")').or(
-      page.locator('button').filter({ hasText: /EVM|Jeju/i })
+      page.locator('button').filter({ hasText: /EVM|Base/i })
     );
     await walletButton.first().click();
     
-    // Should show network info (Jeju or EVM)
-    await expect(page.getByText(/EVM|Jeju/i)).toBeVisible();
+    // Should show network info (Base or EVM)
+    await expect(page.getByText(/EVM|Base/i)).toBeVisible();
   });
 
   test('can disconnect wallet', async ({ page, wallet }) => {
@@ -114,7 +71,7 @@ test.describe('EVM Wallet Connection', () => {
     
     // Open wallet menu
     const walletButton = page.locator('button:has-text("0x")').or(
-      page.locator('button').filter({ hasText: /EVM|Jeju/i })
+      page.locator('button').filter({ hasText: /EVM|Base/i })
     );
     await walletButton.first().click();
     

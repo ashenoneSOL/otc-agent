@@ -1,52 +1,11 @@
 /**
  * Modal and Dialog Component Tests
- * Tests all modal interactions and dialog flows
+ * Tests all modal interactions and dialog flows on Anvil
  */
 
-import { test as base, expect } from '@playwright/test';
-import { BrowserContext } from 'playwright-core';
-import { bootstrap, Dappwright, getWallet, MetaMaskWallet } from '@tenkeylabs/dappwright';
+import { test, expect } from './helpers/walletTest';
 
-base.setTimeout(600000);
-// Use Jeju Localnet for testing (default network)
-const JEJU_RPC = process.env.NEXT_PUBLIC_JEJU_RPC_URL || 'http://127.0.0.1:9545';
-const JEJU_CHAIN_ID = 1337;
-
-
-export const test = base.extend<{ wallet: Dappwright }, { walletContext: BrowserContext }>({
-  walletContext: [
-    async ({}, use) => {
-      const [wallet, _, context] = await bootstrap('', {
-        wallet: 'metamask',
-        version: MetaMaskWallet.recommendedVersion,
-        seed: 'test test test test test test test test test test test junk',
-        headless: false,
-      });
-
-      await wallet.addNetwork({
-        networkName: 'Jeju Localnet',
-        rpc: JEJU_RPC,
-        chainId: JEJU_CHAIN_ID,
-        symbol: 'ETH',
-      });
-
-      await wallet.switchNetwork('Jeju Localnet');
-
-      await use(context);
-      await context.close();
-    },
-    { scope: 'worker' },
-  ],
-  
-  context: async ({ walletContext }, use) => {
-    await use(walletContext);
-  },
-  
-  wallet: async ({ walletContext }, use) => {
-    const wallet = await getWallet('metamask', walletContext);
-    await use(wallet);
-  },
-});
+test.setTimeout(600000);
 
 test.describe('Network Selection Modal', () => {
   test('opens when clicking connect', async ({ page }) => {
@@ -59,7 +18,7 @@ test.describe('Network Selection Modal', () => {
     // Should show network selection
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await expect(page.getByRole('button', { name: /jeju/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /base/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /solana/i })).toBeVisible();
   });
 
@@ -87,7 +46,7 @@ test.describe('Network Selection Modal', () => {
     
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    const baseButton = page.getByRole('button', { name: /jeju/i });
+    const baseButton = page.getByRole('button', { name: /base/i });
     
     // Should have blue/Base branding
     const bgColor = await baseButton.evaluate(el => 
@@ -127,7 +86,7 @@ test.describe('Accept Quote Modal Flow', () => {
     await page.getByRole('button', { name: /connect/i }).first().click();
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /jeju/i }).click();
+    await page.getByRole('button', { name: /base/i }).click();
     await page.waitForTimeout(2000);
     await wallet.approve();
     await page.waitForTimeout(4000);
@@ -167,7 +126,7 @@ test.describe('Wallet Menu Dropdown', () => {
     await page.getByRole('button', { name: /connect/i }).first().click();
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /jeju/i }).click();
+    await page.getByRole('button', { name: /base/i }).click();
     await page.waitForTimeout(2000);
     await wallet.approve();
     await page.waitForTimeout(4000);
@@ -193,7 +152,7 @@ test.describe('Wallet Menu Dropdown', () => {
     await page.getByRole('button', { name: /connect/i }).first().click();
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /jeju/i }).click();
+    await page.getByRole('button', { name: /base/i }).click();
     await page.waitForTimeout(2000);
     await wallet.approve();
     await page.waitForTimeout(4000);
@@ -238,7 +197,7 @@ test.describe('Clear Chat Modal', () => {
     await page.getByRole('button', { name: /connect/i }).first().click();
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /jeju/i }).click();
+    await page.getByRole('button', { name: /base/i }).click();
     await page.waitForTimeout(2000);
     await wallet.approve();
     await page.waitForTimeout(4000);
@@ -272,7 +231,7 @@ test.describe('Clear Chat Modal', () => {
     await page.getByRole('button', { name: /connect/i }).first().click();
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /jeju/i }).click();
+    await page.getByRole('button', { name: /base/i }).click();
     await page.waitForTimeout(2000);
     await wallet.approve();
     await page.waitForTimeout(4000);
@@ -323,7 +282,7 @@ test.describe('Dialog Component Behavior', () => {
     // Should be visible
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
-    await expect(page.getByRole('button', { name: /jeju/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /base/i })).toBeVisible();
     
     // Press Escape
     await page.keyboard.press('Escape');
@@ -361,7 +320,7 @@ test.describe('Dialog Component Behavior', () => {
     await page.getByRole('button', { name: /evm/i }).click();
     await page.waitForTimeout(1000);
     const modal = page.locator('[role="dialog"]').or(
-      page.getByRole('button', { name: /jeju/i }).locator('..')
+      page.getByRole('button', { name: /base/i }).locator('..')
     );
     
     if (await modal.first().isVisible({ timeout: 3000 }).catch(() => false)) {

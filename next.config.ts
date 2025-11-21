@@ -16,9 +16,9 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: process.env.NODE_ENV === 'development' 
     ? [
         // Common localhost patterns (works for all developers)
-        'localhost:5004',
-        '127.0.0.1:5004',
-        '0.0.0.0:5004',
+        'localhost:3000',
+        '127.0.0.1:3000',
+        '0.0.0.0:3000',
         
         // Cloudflare tunnel support (set TUNNEL_DOMAIN in .env.local)
         ...(process.env.TUNNEL_DOMAIN ? [process.env.TUNNEL_DOMAIN] : []),
@@ -158,7 +158,7 @@ const nextConfig: NextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https: blob:",
-              "connect-src 'self' https://*.solana.com wss://*.solana.com https://*.helius-rpc.com https://*.drpc.org https://eth.merkle.io https://api.neynar.com https://farcaster.xyz https://client.farcaster.xyz https://warpcast.com https://wrpcd.net https://*.wrpcd.net wss://relay.farcaster.xyz https://auth.privy.io https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://pulse.walletconnect.org https://api.web3modal.org https://*.metamask.io https://*.coinbase.com https://api.developer.coinbase.com",
+              "connect-src 'self' http://127.0.0.1:8545 http://localhost:8545 https://*.solana.com wss://*.solana.com https://*.helius-rpc.com https://*.drpc.org https://eth.merkle.io https://api.neynar.com https://farcaster.xyz https://client.farcaster.xyz https://warpcast.com https://wrpcd.net https://*.wrpcd.net wss://relay.farcaster.xyz https://auth.privy.io https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://pulse.walletconnect.org https://api.web3modal.org https://*.metamask.io https://*.coinbase.com https://api.developer.coinbase.com",
               "font-src 'self' data:",
               "object-src 'none'",
               "base-uri 'self'",

@@ -251,12 +251,12 @@ describe('EVM Contract Test Infrastructure', () => {
         results.contractsDeployed = true;
       } else {
         console.log('  ⚠️  Compilation skipped (requires Hardhat environment)');
-        console.log('  ℹ️  To compile: cd contracts && npm run compile\n');
+        console.log('  ℹ️  To compile: cd contracts && bun run compile\n');
         results.contractsDeployed = false;
       }
     } catch (error) {
       console.log('  ⚠️  Compilation skipped (requires Hardhat environment)');
-      console.log('  ℹ️  To compile: cd contracts && npm run compile\n');
+      console.log('  ℹ️  To compile: cd contracts && bun run compile\n');
       results.contractsDeployed = false;
     }
   }, TEST_TIMEOUT);
@@ -421,17 +421,17 @@ describe('Test Summary', () => {
     console.log('For EVM (Ethereum/Base):');
     console.log('  1. ./scripts/start-anvil.sh           # Start Anvil');
     console.log('  2. cd contracts && bun run deploy:eliza # Deploy contracts');
-    console.log('  3. npm run test:e2e                   # Run full E2E test');
+    console.log('  3. bun run test:e2e                   # Run full E2E test');
     console.log('');
     
     console.log('For Solana:');
-    console.log('  1. npm run sol:validator              # Start validator');
-    console.log('  2. npm run sol:deploy                 # Deploy program');
+    console.log('  1. bun run sol:validator              # Start validator');
+    console.log('  2. bun run sol:deploy                 # Deploy program');
     console.log('  3. cd solana/otc-program && npm test  # Run tests');
     console.log('');
     
     console.log('For Full Stack:');
-    console.log('  1. npm run dev                        # Starts everything');
+    console.log('  1. bun run dev                        # Starts everything');
     console.log('  2. Visit http://localhost:5005        # Test UI');
     console.log('  3. Connect wallet & create quote      # End-to-end flow');
     console.log('');
