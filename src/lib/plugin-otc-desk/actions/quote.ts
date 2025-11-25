@@ -172,13 +172,14 @@ async function negotiateTerms(
       minLockupDays = consignment.minLockupDays;
       maxLockupDays = consignment.maxLockupDays;
     } else {
-      const discountBps = consignment.fixedDiscountBps || 1000;
-      const lockupMonths = Math.round(consignment.fixedLockupDays / 30);
+      const discountBps = consignment.fixedDiscountBps ?? 1000;
+      const lockupDays = consignment.fixedLockupDays ?? 30;
+      const lockupMonths = Math.round(lockupDays / 30);
       return {
         lockupMonths,
         discountBps,
         paymentCurrency: request.paymentCurrency || "USDC",
-        reasoning: `This is a fixed-price deal: ${discountBps / 100}% discount with ${consignment.fixedLockupDays} days lockup.`,
+        reasoning: `This is a fixed-price deal: ${discountBps / 100}% discount with ${lockupDays} days lockup.`,
         consignmentId: consignment.id,
       };
     }
@@ -276,14 +277,10 @@ export const quoteAction: Action = {
     let tokenName = "Token";
     let tokenChain = undefined;
     if (tokenId) {
-      try {
-        const token = await TokenDB.getToken(tokenId);
-        tokenSymbol = token.symbol;
-        tokenName = token.name;
-        tokenChain = token.chain;
-      } catch {
-        console.warn("[CREATE_OTC_QUOTE] Failed to fetch token:", tokenId);
-      }
+      const token = await TokenDB.getToken(tokenId);
+      tokenSymbol = token.symbol;
+      tokenName = token.name;
+      tokenChain = token.chain;
     }
 
     let consignment: OTCConsignment | null = null;

@@ -29,9 +29,9 @@ export function useTokenCache(tokenId: string | null) {
 
     fetchedTokenId.current = tokenId;
 
-    async function loadToken() {
+    async function loadToken(id: string) {
       // Check cache first (synchronously)
-      const cached = globalTokenCache.get(tokenId);
+      const cached = globalTokenCache.get(id);
       const now = Date.now();
 
       if (cached && now - cached.fetchedAt < CACHE_DURATION) {
@@ -42,12 +42,12 @@ export function useTokenCache(tokenId: string | null) {
       }
 
       // Check if fetch is already in progress (critical section)
-      let fetchPromise = pendingFetches.get(tokenId);
+      let fetchPromise = pendingFetches.get(id);
 
       if (!fetchPromise) {
         // Start new fetch - only ONE component will enter this block
         fetchPromise = (async () => {
-          const response = await fetch(`/api/tokens/${tokenId}`);
+          const response = await fetch(`/api/tokens/${id}`);
           const data = await response.json();
 
           if (data.success) {
@@ -56,18 +56,18 @@ export function useTokenCache(tokenId: string | null) {
               marketData: data.marketData || null,
               fetchedAt: Date.now(),
             };
-            globalTokenCache.set(tokenId, entry);
+            globalTokenCache.set(id, entry);
             return entry;
           }
           return null;
         })();
 
         // Set pending IMMEDIATELY to block other components
-        pendingFetches.set(tokenId, fetchPromise);
+        pendingFetches.set(id, fetchPromise);
 
         // Clean up pending fetch after it completes
         fetchPromise.finally(() => {
-          pendingFetches.delete(tokenId);
+          pendingFetches.delete(id);
         });
       }
 
@@ -81,13 +81,16 @@ export function useTokenCache(tokenId: string | null) {
       setIsLoading(false);
     }
 
-    loadToken();
+    loadToken(tokenId);
   }, [tokenId]);
 
   return { token, marketData, isLoading };
 }
 
-const marketDataRefreshIntervals = new Map<string, NodeJS.Timeout>();
+const marketDataRefreshIntervals = new Map<
+  string,
+  ReturnType<typeof setInterval>
+>();
 const marketDataSubscribers = new Map<
   string,
   Set<(data: TokenMarketData) => void>
@@ -106,9 +109,12 @@ function subscribeToMarketData(
   if (!marketDataRefreshIntervals.has(tokenId)) {
     async function refreshMarketData() {
       const response = await fetch(`/api/market-data/${tokenId}`);
-      
+
       if (!response.ok) {
-        console.warn(`Failed to fetch market data for ${tokenId}:`, response.status);
+        console.warn(
+          `Failed to fetch market data for ${tokenId}:`,
+          response.status,
+        );
         return;
       }
 

@@ -23,6 +23,32 @@ export interface ParsedOffer {
 }
 
 /**
+ * Raw offer data as returned from viem contract read - can be array or object.
+ * Array format is the standard Solidity struct tuple return.
+ */
+export type RawOfferData =
+  | readonly [
+      bigint,
+      string,
+      string,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      number,
+      boolean,
+      boolean,
+      boolean,
+      boolean,
+      string,
+      bigint,
+    ]
+  | ParsedOffer;
+
+/**
  * Parse an Offer struct from viem contract read.
  * Viem may return structs as arrays or objects depending on version/config.
  *
@@ -45,7 +71,7 @@ export interface ParsedOffer {
  * 15. payer (address)
  * 16. amountPaid (uint256)
  */
-export function parseOfferStruct(offerRaw: any): ParsedOffer {
+export function parseOfferStruct(offerRaw: RawOfferData): ParsedOffer {
   if (Array.isArray(offerRaw)) {
     return {
       consignmentId: offerRaw[0],

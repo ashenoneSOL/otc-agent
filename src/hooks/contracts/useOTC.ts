@@ -12,8 +12,43 @@ import {
 } from "wagmi";
 import { keccak256, stringToBytes, decodeEventLog } from "viem";
 import type { Abi, Address } from "viem";
-import type { Offer, ConsignmentParams, ConsignmentCreationResult } from "@/types";
+import type {
+  Offer,
+  ConsignmentParams,
+  ConsignmentCreationResult,
+} from "@/types";
 import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
+
+// Configuration for contract reading with dynamic ABIs
+interface ReadContractConfig {
+  address: Address;
+  abi: Abi;
+  functionName: string;
+  args?: readonly unknown[];
+}
+
+// Log type for transaction receipts with topics
+interface TransactionLog {
+  address: Address;
+  data: `0x${string}`;
+  topics: readonly `0x${string}`[];
+  blockHash: `0x${string}`;
+  blockNumber: bigint;
+  logIndex: number;
+  transactionHash: `0x${string}`;
+  transactionIndex: number;
+  removed: boolean;
+}
+
+// Type-safe wrapper for readContract that handles wagmi client and dynamic ABIs
+// The client type is inferred, we only need to specify the return type
+async function readContractFromClient<T>(
+  client: { readContract: (params: ReadContractConfig) => Promise<unknown> },
+  params: ReadContractConfig,
+): Promise<T> {
+  const result = await client.readContract(params);
+  return result as T;
+}
 
 const erc20Abi = [
   {
@@ -76,7 +111,9 @@ export function useOTC(): {
   approveUsdc: (amount: bigint) => Promise<unknown>;
   emergencyRefund: (offerId: bigint) => Promise<unknown>;
   withdrawConsignment: (consignmentId: bigint) => Promise<unknown>;
-  createConsignmentOnChain: (params: ConsignmentParams) => Promise<ConsignmentCreationResult>;
+  createConsignmentOnChain: (
+    params: ConsignmentParams,
+  ) => Promise<ConsignmentCreationResult>;
   approveToken: (tokenAddress: Address, amount: bigint) => Promise<unknown>;
   getTokenAddress: (tokenId: string) => Promise<Address>;
   getRequiredGasDeposit: () => Promise<bigint>;
@@ -194,7 +231,9 @@ export function useOTC(): {
     chainId,
   }));
 
-  const myOffersRes = useReadContracts({
+  // Type assertion to avoid deep type instantiation with wagmi's complex generics
+  // wagmi's useReadContracts has deeply nested generics that cause TS2589
+  const myOffersConfig = {
     contracts: myOffersContracts,
     query: {
       enabled: enabled && myOfferIds.length > 0,
@@ -202,7 +241,9 @@ export function useOTC(): {
       staleTime: 0, // Always refetch - critical for showing latest paid/fulfilled state
       gcTime: 0, // Don't keep stale data
     },
-  } as any);
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const myOffersRes = useReadContracts(myOffersConfig as any);
 
   const openOfferIdsRes = useReadContract({
     address: otcAddress,
@@ -221,7 +262,8 @@ export function useOTC(): {
     chainId,
   }));
 
-  const openOffersRes = useReadContracts({
+  // Type assertion to avoid deep type instantiation with wagmi's complex generics
+  const openOffersConfig = {
     contracts: openOffersContracts,
     query: {
       enabled:
@@ -229,9 +271,22 @@ export function useOTC(): {
         Array.isArray(openOfferIdsRes.data) &&
         openOfferIds.length > 0,
     },
-  } as any);
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const openOffersRes = useReadContracts(openOffersConfig as any);
 
-  const { writeContractAsync, isPending } = useWriteContract();
+  const { writeContractAsync: writeContractAsyncBase, isPending } =
+    useWriteContract();
+
+  // Wrapper to handle writeContractAsync with dynamic ABIs
+  // wagmi's types require chain/account which are inferred from context
+  function writeContractAsync(
+    config: ReadContractConfig & { value?: bigint },
+  ): Promise<`0x${string}`> {
+    return writeContractAsyncBase(
+      config as unknown as Parameters<typeof writeContractAsyncBase>[0],
+    );
+  }
 
   async function claim(offerId: bigint) {
     if (!otcAddress) throw new Error("No OTC address");
@@ -241,7 +296,7 @@ export function useOTC(): {
       abi,
       functionName: "claim",
       args: [offerId],
-    } as any);
+    });
   }
 
   async function createOffer(params: {
@@ -262,7 +317,7 @@ export function useOTC(): {
         params.paymentCurrency,
         params.lockupSeconds ?? 0n,
       ],
-    } as any);
+    });
   }
 
   async function approveOffer(offerId: bigint) {
@@ -273,7 +328,7 @@ export function useOTC(): {
       abi,
       functionName: "approveOffer",
       args: [offerId],
-    } as any);
+    });
   }
 
   async function cancelOffer(offerId: bigint) {
@@ -284,7 +339,7 @@ export function useOTC(): {
       abi,
       functionName: "cancelOffer",
       args: [offerId],
-    } as any);
+    });
   }
 
   async function fulfillOffer(offerId: bigint, valueWei?: bigint) {
@@ -296,7 +351,7 @@ export function useOTC(): {
       functionName: "fulfillOffer",
       args: [offerId],
       value: valueWei,
-    } as any);
+    });
   }
 
   const usdcAddressRes = useReadContract({
@@ -329,7 +384,7 @@ export function useOTC(): {
       abi: erc20Abi,
       functionName: "approve",
       args: [otcAddress, amount],
-    } as any);
+    });
   }
 
   async function emergencyRefund(offerId: bigint) {
@@ -340,7 +395,7 @@ export function useOTC(): {
       abi,
       functionName: "emergencyRefund",
       args: [offerId],
-    } as any);
+    });
   }
 
   async function withdrawConsignment(consignmentId: bigint) {
@@ -351,13 +406,15 @@ export function useOTC(): {
       abi,
       functionName: "withdrawConsignment",
       args: [consignmentId],
-    } as any);
+    });
   }
 
-  async function createConsignmentOnChain(params: ConsignmentParams): Promise<ConsignmentCreationResult> {
+  async function createConsignmentOnChain(
+    params: ConsignmentParams,
+  ): Promise<ConsignmentCreationResult> {
     if (!otcAddress) throw new Error("No OTC address");
     if (!account) throw new Error("No wallet connected");
-    
+
     // Fetch token data to get the contract's tokenId (keccak256 hash)
     const tokenResponse = await fetch(`/api/tokens/${params.tokenId}`);
     if (!tokenResponse.ok) {
@@ -367,10 +424,10 @@ export function useOTC(): {
     if (!tokenData.success || !tokenData.token) {
       throw new Error(`Token ${params.tokenId} not found`);
     }
-    
+
     // Get the symbol and compute the contract tokenId (keccak256 of the symbol)
     const tokenIdBytes32 = keccak256(stringToBytes(tokenData.token.symbol));
-    
+
     const txHash = await writeContractAsync({
       address: otcAddress,
       abi,
@@ -393,27 +450,34 @@ export function useOTC(): {
         params.maxTimeToExecute,
       ],
       value: params.gasDeposit,
-    } as any);
+    });
 
     // Wait for transaction receipt and parse the consignmentId from the event
     console.log("[useOTC] Waiting for transaction receipt:", txHash);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+    if (!publicClient) {
+      throw new Error("Public client not available");
+    }
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: txHash as `0x${string}`,
+    });
     console.log("[useOTC] Receipt received, parsing ConsignmentCreated event");
     console.log("[useOTC] Receipt logs count:", receipt.logs.length);
     console.log("[useOTC] OTC contract address:", otcAddress);
-    
+
     // Find ConsignmentCreated event from the OTC contract
-    const consignmentCreatedEvent = receipt.logs.find((log: any) => {
+    // Cast logs to include topics which are present but not in the narrow type
+    const logs = receipt.logs as TransactionLog[];
+    const consignmentCreatedEvent = logs.find((log) => {
       // Check if log is from our OTC contract
       if (log.address.toLowerCase() !== otcAddress.toLowerCase()) {
         return false;
       }
-      
+
       try {
         const decoded = decodeEventLog({
           abi,
           data: log.data,
-          topics: log.topics,
+          topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
         });
         console.log("[useOTC] Decoded event:", decoded.eventName);
         return decoded.eventName === "ConsignmentCreated";
@@ -424,19 +488,31 @@ export function useOTC(): {
     });
 
     if (!consignmentCreatedEvent) {
-      console.error("[useOTC] No ConsignmentCreated event found. Receipt logs:", receipt.logs);
-      throw new Error("ConsignmentCreated event not found in transaction receipt");
+      console.error(
+        "[useOTC] No ConsignmentCreated event found. Receipt logs:",
+        receipt.logs,
+      );
+      throw new Error(
+        "ConsignmentCreated event not found in transaction receipt",
+      );
     }
 
     const decoded = decodeEventLog({
       abi,
-      data: (consignmentCreatedEvent as any).data,
-      topics: (consignmentCreatedEvent as any).topics,
+      data: consignmentCreatedEvent.data,
+      topics: consignmentCreatedEvent.topics as [
+        `0x${string}`,
+        ...`0x${string}`[],
+      ],
     });
 
-    const consignmentId = (decoded.args as any).consignmentId as bigint;
-    console.log("[useOTC] Consignment created with ID:", consignmentId.toString());
-    
+    const args = decoded.args as unknown as Record<string, unknown>;
+    const consignmentId = args.consignmentId as bigint;
+    console.log(
+      "[useOTC] Consignment created with ID:",
+      consignmentId.toString(),
+    );
+
     return { txHash: txHash as `0x${string}`, consignmentId };
   }
 
@@ -447,15 +523,15 @@ export function useOTC(): {
       abi: erc20Abi,
       functionName: "approve",
       args: [otcAddress, amount],
-    } as any);
+    });
   }
 
   // Helper to extract contract address from tokenId format: "token-{chain}-{address}"
   function extractContractAddress(tokenId: string): Address {
-    const parts = tokenId.split('-');
+    const parts = tokenId.split("-");
     if (parts.length >= 3) {
       // Format is: token-chain-address, so join everything after the second dash
-      return parts.slice(2).join('-') as Address;
+      return parts.slice(2).join("-") as Address;
     }
     // Fallback: assume it's already an address
     return tokenId as Address;
@@ -469,12 +545,12 @@ export function useOTC(): {
 
   async function getRequiredGasDeposit(): Promise<bigint> {
     if (!otcAddress) throw new Error("No OTC address");
-    const result = await publicClient.readContract({
+    if (!publicClient) throw new Error("Public client not available");
+    return readContractFromClient<bigint>(publicClient, {
       address: otcAddress,
       abi,
       functionName: "requiredGasDepositPerConsignment",
-    } as any);
-    return result as bigint;
+    });
   }
 
   // Helper to get exact required payment amount
@@ -485,15 +561,17 @@ export function useOTC(): {
     if (!otcAddress) {
       throw new Error("OTC address not configured");
     }
+    if (!publicClient) {
+      throw new Error("Public client not available");
+    }
     const functionName =
       currency === "ETH" ? "requiredEthWei" : "requiredUsdcAmount";
-    const result = await publicClient.readContract({
+    return readContractFromClient<bigint>(publicClient, {
       address: otcAddress,
       abi,
       functionName,
       args: [offerId],
-    } as any);
-    return result as bigint;
+    });
   }
 
   const agentAddr = (agentRes.data as Address | undefined) ?? undefined;
@@ -532,16 +610,19 @@ export function useOTC(): {
 
       console.log(`[useOTC] Offer ${id} raw result:`, rawResult);
 
-      // Contract returns array: [beneficiary, tokenAmount, discountBps, createdAt, unlockTime,
-      //   priceUsdPerToken, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]
+      // Contract returns array: [consignmentId, tokenId, beneficiary, tokenAmount, discountBps, createdAt, unlockTime,
+      //   priceUsdPerToken, maxPriceDeviation, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]
       if (Array.isArray(rawResult)) {
         const [
+          consignmentId,
+          tokenId,
           beneficiary,
           tokenAmount,
           discountBps,
           createdAt,
           unlockTime,
           priceUsdPerToken,
+          maxPriceDeviation,
           ethUsdPrice,
           currency,
           approved,
@@ -562,12 +643,15 @@ export function useOTC(): {
 
         return {
           id,
+          consignmentId,
+          tokenId,
           beneficiary,
           tokenAmount,
           discountBps,
           createdAt,
           unlockTime,
           priceUsdPerToken,
+          maxPriceDeviation,
           ethUsdPrice,
           currency,
           approved,

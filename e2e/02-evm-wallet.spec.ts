@@ -63,6 +63,14 @@ test.describe('EVM Wallet Connection', () => {
     await page.getByRole('button', { name: /jeju/i }).click();
     await page.waitForTimeout(2000);
     
+    // Privy Modal: Click MetaMask if visible
+    // Privy might auto-detect, but we usually need to click the wallet option
+    const metamaskButton = page.getByRole('button', { name: /metamask/i });
+    if (await metamaskButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await metamaskButton.click();
+    }
+    await page.waitForTimeout(2000);
+
     // Approve in MetaMask
     await wallet.approve();
     await page.waitForTimeout(3000);

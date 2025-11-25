@@ -6,17 +6,42 @@
  */
 
 import { createPublicClient, http, type Address, type Abi } from "viem";
-import type { Offer } from "@/types";
 import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
 import { QuoteDB } from "./database";
 import { getChain, getRpcUrl } from "@/lib/getChain";
 import { getContractAddress } from "@/lib/getContractAddress";
 
-// ContractOffer is same as Offer type
-type ContractOffer = Offer;
+// Minimal client interface to avoid viem's "excessively deep" type issues
+interface SimplePublicClient {
+  readContract: (params: {
+    address: Address;
+    abi: Abi;
+    functionName: string;
+    args: readonly unknown[];
+  }) => Promise<unknown>;
+  getBlockNumber: () => Promise<bigint>;
+}
+
+// OnChainOffer matches the struct returned by the OTC contract
+interface OnChainOffer {
+  beneficiary: Address;
+  tokenAmount: bigint;
+  discountBps: bigint;
+  createdAt: bigint;
+  unlockTime: bigint;
+  priceUsdPerToken: bigint;
+  ethUsdPrice: bigint;
+  currency: number;
+  approved: boolean;
+  paid: boolean;
+  fulfilled: boolean;
+  cancelled: boolean;
+  payer: Address;
+  amountPaid: bigint;
+}
 
 export class ReconciliationService {
-  private client: any; // PublicClient type causes "excessively deep" TypeScript error
+  private client: SimplePublicClient;
   private otcAddress: Address | undefined;
   private abi: Abi;
 
@@ -25,24 +50,29 @@ export class ReconciliationService {
     const chain = getChain();
     const rpcUrl = getRpcUrl();
 
-    // Create public client
+    // Create public client (cast to simple interface to avoid deep type issues)
     this.client = createPublicClient({
       chain,
       transport: http(rpcUrl),
-    });
+    }) as unknown as SimplePublicClient;
 
     // Use chain-specific contract address based on NETWORK env var
     try {
       this.otcAddress = getContractAddress();
-      console.log(`[ReconciliationService] Using contract address: ${this.otcAddress} for network: ${process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet"}`);
+      console.log(
+        `[ReconciliationService] Using contract address: ${this.otcAddress} for network: ${process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet"}`,
+      );
     } catch (error) {
-      console.error("[ReconciliationService] Failed to get contract address:", error);
+      console.error(
+        "[ReconciliationService] Failed to get contract address:",
+        error,
+      );
       throw error;
     }
     this.abi = otcArtifact.abi as Abi;
   }
 
-  async readContractOffer(offerId: string | number): Promise<ContractOffer> {
+  async readContractOffer(offerId: string | number): Promise<OnChainOffer> {
     if (!this.otcAddress) throw new Error("OTC address not configured");
 
     // Type cast needed - viem's readContract return type is too complex for TypeScript to infer
@@ -66,7 +96,7 @@ export class ReconciliationService {
       abi: this.abi,
       functionName: "offers",
       args: [BigInt(offerId)],
-    } as any)) as [
+    })) as [
       Address,
       bigint,
       bigint,
@@ -183,13 +213,12 @@ export class ReconciliationService {
     if (!this.otcAddress) throw new Error("OTC address not configured");
 
     const blockNumber = await this.client.getBlockNumber();
-    // Type cast needed - viem's readContract parameters are too complex
     await this.client.readContract({
       address: this.otcAddress,
       abi: this.abi,
       functionName: "nextOfferId",
       args: [],
-    } as any);
+    });
     return {
       blockNumber: Number(blockNumber),
       contractAddress: this.otcAddress,

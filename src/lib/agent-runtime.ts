@@ -12,11 +12,25 @@ import {
 } from "@elizaos/core";
 import agent from "./agent";
 
-const globalAny = globalThis as any;
-if (typeof globalAny.__elizaMigrationsRan === "undefined")
-  globalAny.__elizaMigrationsRan = false;
-if (typeof globalAny.__elizaManagerLogged === "undefined")
-  globalAny.__elizaManagerLogged = false;
+// Global state for serverless environment persistence
+interface GlobalElizaState {
+  __elizaMigrationsRan?: boolean;
+  __elizaManagerLogged?: boolean;
+  __elizaRuntime?: AgentRuntime | null;
+  logger?: {
+    log: typeof console.log;
+    info: typeof console.info;
+    warn: typeof console.warn;
+    error: typeof console.error;
+    debug: typeof console.debug;
+  };
+}
+
+const globalState = globalThis as unknown as GlobalElizaState;
+if (typeof globalState.__elizaMigrationsRan === "undefined")
+  globalState.__elizaMigrationsRan = false;
+if (typeof globalState.__elizaManagerLogged === "undefined")
+  globalState.__elizaManagerLogged = false;
 
 class AgentRuntimeManager {
   private static instance: AgentRuntimeManager;
@@ -31,13 +45,18 @@ class AgentRuntimeManager {
       elizaLogger.warn = console.warn.bind(console);
       elizaLogger.error = console.error.bind(console);
       elizaLogger.debug = console.debug.bind(console);
-      elizaLogger.success = (msg: string) => console.log(`✓ ${msg}`);
-      (elizaLogger as any).notice = console.info.bind(console);
+      elizaLogger.success = (msg: string | Record<string, unknown> | Error) =>
+        console.log(`✓ ${typeof msg === "string" ? msg : JSON.stringify(msg)}`);
+      // elizaLogger doesn't have notice in types but may be used at runtime
+      const logger = elizaLogger as typeof elizaLogger & {
+        notice?: typeof console.info;
+      };
+      logger.notice = console.info.bind(console);
     }
 
     // Also configure global console if needed
-    if (typeof globalThis !== "undefined" && !globalAny.logger) {
-      globalAny.logger = {
+    if (!globalState.logger) {
+      globalState.logger = {
         log: console.log.bind(console),
         info: console.info.bind(console),
         warn: console.warn.bind(console),
@@ -46,9 +65,9 @@ class AgentRuntimeManager {
       };
     }
 
-    if (!globalAny.__elizaManagerLogged) {
+    if (!globalState.__elizaManagerLogged) {
       // Silence noisy init log; keep flag to avoid repeated work
-      globalAny.__elizaManagerLogged = true;
+      globalState.__elizaManagerLogged = true;
     }
   }
 
@@ -71,14 +90,17 @@ class AgentRuntimeManager {
       console.log("[AgentRuntime] Creating fresh runtime instance");
 
       // Clear any cached runtime
-      (globalThis as any).__elizaRuntime = null;
+      globalState.__elizaRuntime = null;
 
       // Initialize runtime with database configuration for SQL plugin
       // In localnet mode, connects to Docker PostgreSQL on port 5439
       // In production (Vercel), uses Neon Storage integration variables
-      const dbPort = process.env.POSTGRES_DEV_PORT || process.env.VENDOR_OTC_DESK_DB_PORT || 5439;
+      const dbPort =
+        process.env.POSTGRES_DEV_PORT ||
+        process.env.VENDOR_OTC_DESK_DB_PORT ||
+        5439;
       const DEFAULT_POSTGRES_URL = `postgres://eliza:password@localhost:${dbPort}/eliza`;
-      
+
       // Check for Vercel Neon Storage variables first, then fallback to standard names
       // Log which env vars are present (without values) for debugging
       const dbEnvVars = {
@@ -88,53 +110,57 @@ class AgentRuntimeManager {
         POSTGRES_DATABASE_URL: !!process.env.POSTGRES_DATABASE_URL,
       };
       console.log("[AgentRuntime] Database env vars present:", dbEnvVars);
-      
-      const postgresUrl = 
-        process.env.DATABASE_POSTGRES_URL ||     // Vercel Neon Storage (pooled)
-        process.env.DATABASE_URL_UNPOOLED ||     // Vercel Neon Storage (unpooled)
-        process.env.POSTGRES_URL ||              // Standard
-        process.env.POSTGRES_DATABASE_URL ||     // Alternative standard
-        DEFAULT_POSTGRES_URL;                    // Local development
-      
+
+      const postgresUrl =
+        process.env.DATABASE_POSTGRES_URL || // Vercel Neon Storage (pooled)
+        process.env.DATABASE_URL_UNPOOLED || // Vercel Neon Storage (unpooled)
+        process.env.POSTGRES_URL || // Standard
+        process.env.POSTGRES_DATABASE_URL || // Alternative standard
+        DEFAULT_POSTGRES_URL; // Local development
+
       // Validate database URL format
       if (!postgresUrl || postgresUrl === DEFAULT_POSTGRES_URL) {
         const isProduction = process.env.NODE_ENV === "production";
         if (isProduction && postgresUrl === DEFAULT_POSTGRES_URL) {
-          console.error("[AgentRuntime] ERROR: No database URL found in production!");
-          console.error("[AgentRuntime] Expected one of: DATABASE_POSTGRES_URL, DATABASE_URL_UNPOOLED, POSTGRES_URL, POSTGRES_DATABASE_URL");
+          console.error(
+            "[AgentRuntime] ERROR: No database URL found in production!",
+          );
+          console.error(
+            "[AgentRuntime] Expected one of: DATABASE_POSTGRES_URL, DATABASE_URL_UNPOOLED, POSTGRES_URL, POSTGRES_DATABASE_URL",
+          );
           throw new Error(
             "Database connection failed: No database URL configured in production. " +
-            "Vercel Neon Storage should provide DATABASE_POSTGRES_URL automatically. " +
-            "Please check your Vercel project settings."
+              "Vercel Neon Storage should provide DATABASE_POSTGRES_URL automatically. " +
+              "Please check your Vercel project settings.",
           );
         }
       }
-      
+
       // Validate URL format (basic check)
-      if (postgresUrl && !postgresUrl.includes('localhost')) {
-        const isValidFormat = 
-          postgresUrl.startsWith('postgres://') || 
-          postgresUrl.startsWith('postgresql://');
+      if (postgresUrl && !postgresUrl.includes("localhost")) {
+        const isValidFormat =
+          postgresUrl.startsWith("postgres://") ||
+          postgresUrl.startsWith("postgresql://");
         if (!isValidFormat) {
-          console.warn("[AgentRuntime] WARNING: Database URL doesn't start with postgres:// or postgresql://");
+          console.warn(
+            "[AgentRuntime] WARNING: Database URL doesn't start with postgres:// or postgresql://",
+          );
         }
         // Check for hostname (basic validation)
-        try {
-          const url = new URL(postgresUrl.replace(/^postgres(ql)?:\/\//, 'http://'));
-          if (!url.hostname || url.hostname === '') {
-            console.error("[AgentRuntime] ERROR: Database URL missing hostname");
-            throw new Error("Database connection failed: Invalid database URL format (missing hostname)");
-          }
-        } catch (error) {
-          if (error instanceof Error && error.message.includes("Invalid database URL")) {
-            throw error;
-          }
-          console.warn("[AgentRuntime] Could not parse database URL for validation (may be valid)");
+        const url = new URL(
+          postgresUrl.replace(/^postgres(ql)?:\/\//, "http://"),
+        );
+        if (!url.hostname || url.hostname === "") {
+          throw new Error(
+            "Database connection failed: Invalid database URL format (missing hostname)",
+          );
         }
       }
-      
-      console.log(`[AgentRuntime] Database config: ${postgresUrl.includes('localhost') ? 'localhost:' + dbPort : 'remote (Vercel/Neon)'}`);
-      
+
+      console.log(
+        `[AgentRuntime] Database config: ${postgresUrl.includes("localhost") ? "localhost:" + dbPort : "remote (Vercel/Neon)"}`,
+      );
+
       // Use the existing agent ID from DB (b850bc30-45f8-0041-a00a-83df46d8555d)
       const RUNTIME_AGENT_ID = "b850bc30-45f8-0041-a00a-83df46d8555d" as UUID;
       this.runtime = new AgentRuntime({
@@ -151,7 +177,7 @@ class AgentRuntimeManager {
       } as any);
 
       // Cache globally for reuse in warm container
-      (globalThis as any).__elizaRuntime = this.runtime;
+      globalState.__elizaRuntime = this.runtime;
 
       // Ensure runtime has a logger with all required methods
       if (!this.runtime.logger || !this.runtime.logger.log) {
@@ -181,11 +207,10 @@ class AgentRuntimeManager {
   }
 
   private async ensureBuiltInTables(): Promise<void> {
-    if (this.hasRunMigrations || (globalThis as any).__elizaMigrationsRan)
-      return;
+    if (this.hasRunMigrations || globalState.__elizaMigrationsRan) return;
 
     this.hasRunMigrations = true;
-    (globalThis as any).__elizaMigrationsRan = true;
+    globalState.__elizaMigrationsRan = true;
 
     // Database adapter and migrations are handled by @elizaos/plugin-sql during runtime.initialize()
     // Quotes and user sessions are stored via runtime.getCache/setCache

@@ -83,8 +83,28 @@ export class MarketDataService {
   private async fetchSolanaData(
     tokenAddress: string,
   ): Promise<TokenMarketData> {
+    // In local development without Birdeye, return mock data
+    // The actual price comes from on-chain (desk.token_usd_price_8d)
     if (!this.birdeyeApiKey) {
-      throw new Error("BIRDEYE_API_KEY required for Solana token pricing");
+      const solanaRpc = process.env.NEXT_PUBLIC_SOLANA_RPC || "";
+      const isLocalnet =
+        solanaRpc.includes("127.0.0.1") || solanaRpc.includes("localhost");
+
+      if (isLocalnet) {
+        // Return placeholder data for localnet - actual price from on-chain
+        return {
+          tokenId: `token-solana-${tokenAddress.toLowerCase()}`,
+          priceUsd: 1.0, // Default $1, actual price set on-chain via set_prices
+          marketCap: 1000000,
+          volume24h: 10000,
+          priceChange24h: 0,
+          liquidity: 100000,
+          lastUpdated: Date.now(),
+        };
+      }
+      throw new Error(
+        "BIRDEYE_API_KEY required for Solana token pricing on devnet/mainnet",
+      );
     }
 
     const url = `https://public-api.birdeye.so/defi/price?address=${tokenAddress}`;

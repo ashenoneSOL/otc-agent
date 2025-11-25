@@ -7,11 +7,37 @@
 
 import { test, expect } from '@playwright/test';
 
+// Type definitions for Phantom wallet mock (matches @solana/wallet-adapter-phantom interface)
+interface MockPublicKey {
+  toBase58: () => string;
+  toString: () => string;
+}
+
+interface MockPhantomSolana {
+  isPhantom: boolean;
+  publicKey: MockPublicKey;
+  connect: () => Promise<{ publicKey: MockPublicKey }>;
+  disconnect: () => Promise<void>;
+  signTransaction: <T>(tx: T) => Promise<T>;
+  signAllTransactions: <T>(txs: T[]) => Promise<T[]>;
+}
+
+interface MockPhantom {
+  solana: MockPhantomSolana;
+}
+
+// Extend Window interface for Phantom
+declare global {
+  interface Window {
+    phantom?: MockPhantom;
+  }
+}
+
 test.describe('Solana Wallet UI', () => {
   test.beforeEach(async ({ page }) => {
     // Mock Phantom wallet installation
     await page.addInitScript(() => {
-      (window as any).phantom = {
+      window.phantom = {
         solana: {
           isPhantom: true,
           publicKey: {
@@ -25,8 +51,8 @@ test.describe('Solana Wallet UI', () => {
             },
           }),
           disconnect: async () => {},
-          signTransaction: async (tx: any) => tx,
-          signAllTransactions: async (txs: any[]) => txs,
+          signTransaction: async <T>(tx: T) => tx,
+          signAllTransactions: async <T>(txs: T[]) => txs,
         },
       };
     });
@@ -51,6 +77,12 @@ test.describe('Solana Wallet UI', () => {
     await page.waitForTimeout(1000);
     await page.getByRole('button', { name: /solana/i }).click();
     await page.waitForTimeout(3000);
+    
+    // Privy Modal: Click Phantom if visible
+    const phantomButton = page.getByRole('button', { name: /phantom/i });
+    if (await phantomButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await phantomButton.click();
+    }
     
     // Should attempt to connect (even if it fails in test environment)
     // The UI should show Solana-related elements

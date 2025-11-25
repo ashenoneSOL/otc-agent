@@ -1,12 +1,16 @@
+import type { Program, AnchorProvider as AnchorProviderType } from "@coral-xyz/anchor";
 import pkg from "@coral-xyz/anchor";
-const anchor: any = pkg as any;
 import { PublicKey, Keypair } from "@solana/web3.js";
 import * as fs from "fs";
+import type { Otc } from "../target/types/otc";
+
+// ESM/CJS compatibility: import as default then destructure
+const { AnchorProvider, setProvider, workspace } = pkg as typeof import("@coral-xyz/anchor");
 
 async function addApprover() {
-  const provider = anchor.AnchorProvider.env();
-  anchor.setProvider(provider);
-  const program = anchor.workspace.Otc as any;
+  const provider = AnchorProvider.env();
+  setProvider(provider);
+  const program = workspace.Otc as Program<Otc>;
   
   const ownerData = JSON.parse(fs.readFileSync("./id.json", "utf8"));
   const owner = Keypair.fromSecretKey(Uint8Array.from(ownerData));
@@ -18,7 +22,7 @@ async function addApprover() {
   
   const tx = await program.methods
     .setApprover(owner.publicKey, true)
-    .accounts({
+    .accountsPartial({
       desk,
       owner: owner.publicKey,
     })

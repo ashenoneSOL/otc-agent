@@ -1,32 +1,22 @@
 ---
 alwaysApply: true
-description: Enforce autonomous runtime E2E verification; always run real app and tests; self-serve follow-ups; continue until done.
+description: Autonomous execution with runtime E2E verification
 ---
 
-## Autonomous Execution and Runtime E2E Verification
+## Autonomous Execution
 
-- **Always run the real system after changes**
-  - Start services via [scripts/start-all.sh](mdc:scripts/start-all.sh)
-  - Run runtime E2E checks via [scripts/test-all.sh](mdc:scripts/test-all.sh) and [scripts/smoke-runtime.ts](mdc:scripts/smoke-runtime.ts)
-  - Prefer end-to-end runtime checks over unit tests; do not use mocks
+- **Run the real system after changes** - use `scripts/start-all.sh`, `scripts/test-all.sh`
+- **Operate autonomously** - do not ask follow-up questions; continue until done
+- **Stop only when strictly necessary** - missing secrets, destructive action needing confirmation, external outage
 
-- **Operate autonomously**
-  - Do not ask follow-up questions; perform all necessary follow-ups to finish the task
-  - Continue executing until all work is done; stop only if strictly necessary (e.g., missing secrets, destructive/irreversible action requiring confirmation, external outage)
+## Execution Conventions
 
-- **Execution conventions**
-  - Prefer absolute paths in tool and command arguments
-  - Use non-interactive flags for commands and run long-lived processes in the background
-  - Stream logs to files like [test-run.log](mdc:test-run.log) for later inspection
+- Use absolute paths in tool/command arguments
+- Use non-interactive flags; run long-lived processes in background
+- Stream logs to files for inspection
 
-- **Definition of done**
-  - App/service starts cleanly ([server/src/index.ts](mdc:server/src/index.ts))
-  - Runtime E2E tests pass ([agents/tests/e2e.test.ts](mdc:agents/tests/e2e.test.ts), [agents/tests/runner.ts](mdc:agents/tests/runner.ts))
-  - Smoke runtime passes ([scripts/smoke-runtime.ts](mdc:scripts/smoke-runtime.ts))
-  - Changes verified end-to-end without manual intervention
+## Definition of Done
 
-- **Safety gates**
-  - Ask for confirmation only for irreversible actions or when required secrets/credentials are missing
-  - Otherwise, self-serve by searching the codebase and running the necessary commands
-
-This aligns with the workspace policy: Runtime E2E testing only; no mocks; spin real server/agents/game.
+- App starts cleanly
+- Runtime E2E tests pass
+- Changes verified end-to-end without manual intervention

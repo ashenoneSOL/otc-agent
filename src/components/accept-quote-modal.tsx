@@ -8,8 +8,9 @@ import { EVMChainSelectorModal } from "@/components/evm-chain-selector-modal";
 import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
 import { useOTC } from "@/hooks/contracts/useOTC";
 import type { OTCQuote } from "@/utils/xml-parser";
-import type { Idl } from "@coral-xyz/anchor";
+import type { Idl, Wallet } from "@coral-xyz/anchor";
 import * as anchor from "@coral-xyz/anchor";
+import type { Transaction, VersionedTransaction } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import {
   Connection,
@@ -62,10 +63,14 @@ export function AcceptQuoteModal({
 
   // Validate chain compatibility
   const quoteChain = initialQuote?.tokenChain;
-  const isChainMismatch = quoteChain ? (
-    (quoteChain === "solana" && activeFamily !== "solana") ||
-    ((quoteChain === "base" || quoteChain === "bsc" || quoteChain === "jeju" || quoteChain === "ethereum") && activeFamily !== "evm")
-  ) : false;
+  const isChainMismatch = quoteChain
+    ? (quoteChain === "solana" && activeFamily !== "solana") ||
+      ((quoteChain === "base" ||
+        quoteChain === "bsc" ||
+        quoteChain === "jeju" ||
+        quoteChain === "ethereum") &&
+        activeFamily !== "evm")
+    : false;
   const router = useRouter();
   const {
     otcAddress,
@@ -92,7 +97,16 @@ export function AcceptQuoteModal({
 
   // Always use localhost chain for local RPC (Anvil/Jeju Localnet)
   const readChain = useMemo(
-    () => isLocalRpc ? { id: 31337, name: 'Localhost', network: 'localhost', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } } : base,
+    () =>
+      isLocalRpc
+        ? {
+            id: 31337,
+            name: "Localhost",
+            network: "localhost",
+            nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+            rpcUrls: { default: { http: [rpcUrl] } },
+          }
+        : base,
     [isLocalRpc, rpcUrl],
   );
 
@@ -135,7 +149,10 @@ export function AcceptQuoteModal({
 
   // Wallet balances for display and MAX calculation
   const ethBalance = useBalance({ address });
-  const usdcBalance = useBalance({ address, token: usdcAddress as any });
+  const usdcBalance = useBalance({
+    address,
+    token: usdcAddress as `0x${string}` | undefined,
+  });
 
   useEffect(() => {
     if (!isOpen) {
@@ -203,10 +220,10 @@ export function AcceptQuoteModal({
       // Read contract state
       const flag = (await publicClient.readContract({
         address: otcAddress as `0x${string}`,
-        abi,
+        abi: abi as Abi,
         functionName: "requireApproverToFulfill",
         args: [],
-      } as any)) as boolean;
+      })) as boolean;
       setRequireApprover(Boolean(flag));
     })();
   }, [isOpen, otcAddress, publicClient, abi, activeFamily, readChain]);
@@ -254,54 +271,38 @@ export function AcceptQuoteModal({
     if (!otcAddress) throw new Error("Missing OTC address");
     return (await publicClient.readContract({
       address: otcAddress as `0x${string}`,
-      abi,
+      abi: abi as Abi,
       functionName: "nextOfferId",
       args: [],
-    } as any)) as bigint;
+    })) as bigint;
   }
 
-  async function readOffer(
-    offerId: bigint,
-  ): Promise<
-    [
-      `0x${string}`,
-      bigint,
-      bigint,
-      bigint,
-      bigint,
-      bigint,
-      bigint,
-      number,
-      boolean,
-      boolean,
-      boolean,
-      boolean,
-      `0x${string}`,
-      bigint,
-    ]
-  > {
+  // Offer tuple type from the contract
+  type OfferTuple = readonly [
+    `0x${string}`,
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    bigint,
+    number,
+    boolean,
+    boolean,
+    boolean,
+    boolean,
+    `0x${string}`,
+    bigint,
+  ];
+
+  async function readOffer(offerId: bigint): Promise<OfferTuple> {
     if (!otcAddress) throw new Error("Missing OTC address");
     return (await publicClient.readContract({
       address: otcAddress as `0x${string}`,
-      abi,
+      abi: abi as Abi,
       functionName: "offers",
       args: [offerId],
-    } as any)) as [
-      `0x${string}`,
-      bigint,
-      bigint,
-      bigint,
-      bigint,
-      bigint,
-      bigint,
-      number,
-      boolean,
-      boolean,
-      boolean,
-      boolean,
-      `0x${string}`,
-      bigint,
-    ];
+    })) as OfferTuple;
   }
 
   async function wait(ms: number) {
@@ -400,7 +401,17 @@ export function AcceptQuoteModal({
     try {
       await executeTransaction();
     } catch (err) {
-      const errorMessage = handleTransactionError(err as Error);
+      const error = err instanceof Error ? err : new Error(String(err));
+      const txError = {
+        ...error,
+        message: error.message,
+        cause: error.cause as
+          | { reason?: string; code?: string | number }
+          | undefined,
+        details: (error as { details?: string }).details,
+        shortMessage: (error as { shortMessage?: string }).shortMessage,
+      };
+      const errorMessage = handleTransactionError(txError);
       setError(errorMessage);
       setIsProcessing(false);
       setStep("amount");
@@ -432,7 +443,7 @@ export function AcceptQuoteModal({
       const requiredChain = quoteChain === "solana" ? "Solana" : "EVM";
       const currentChain = activeFamily === "solana" ? "Solana" : "EVM";
       throw new Error(
-        `Chain mismatch: This quote requires ${requiredChain} but you're connected to ${currentChain}. Please switch networks.`
+        `Chain mismatch: This quote requires ${requiredChain} but you're connected to ${currentChain}. Please switch networks.`,
       );
     }
 
@@ -451,11 +462,16 @@ export function AcceptQuoteModal({
       }
 
       const connection = new Connection(SOLANA_RPC, "confirmed");
-      const provider = new anchor.AnchorProvider(
-        connection,
-        solanaWallet as any,
-        { commitment: "confirmed" },
-      );
+      // Adapt our wallet adapter to Anchor's Wallet interface
+      // Type assertion needed as anchor's Wallet type has changed across versions
+      const anchorWallet = {
+        publicKey: new SolPubkey(solanaWallet.publicKey!.toBase58()),
+        signTransaction: solanaWallet.signTransaction,
+        signAllTransactions: solanaWallet.signAllTransactions,
+      } as Wallet;
+      const provider = new anchor.AnchorProvider(connection, anchorWallet, {
+        commitment: "confirmed",
+      });
       console.log("Fetching IDL");
       const idl = await fetchSolanaIdl();
       console.log("Fetched IDL");
@@ -489,7 +505,14 @@ export function AcceptQuoteModal({
       console.log("Desk USDC treasury:", deskUsdcTreasury.toString());
 
       // Read nextOfferId from desk account
-      const deskAccount: any = await (program.account as any).desk.fetch(desk);
+      // The program.account namespace is dynamically generated from IDL
+      const deskAccount = await (
+        program.account as {
+          desk: {
+            fetch: (address: SolPubkey) => Promise<{ nextOfferId: anchor.BN }>;
+          };
+        }
+      ).desk.fetch(desk);
       const nextOfferId = new anchor.BN(deskAccount.nextOfferId.toString());
 
       console.log("Next offer ID:", nextOfferId.toString());
@@ -697,7 +720,7 @@ export function AcceptQuoteModal({
 
     // Validate beneficiary matches connected wallet
     if (
-      initialQuote.beneficiary &&
+      initialQuote?.beneficiary &&
       address &&
       initialQuote.beneficiary.toLowerCase() !== address.toLowerCase()
     ) {
@@ -760,35 +783,43 @@ export function AcceptQuoteModal({
       // Check if contract is misconfigured
       if (!requireApprover) {
         throw new Error(
-          "Contract is not configured for auto-fulfillment. Please contact support to enable requireApproverToFulfill."
+          "Contract is not configured for auto-fulfillment. Please contact support to enable requireApproverToFulfill.",
         );
       }
 
       // Check if offer was already paid
       const [, , , , , , , , , isPaid] = await readOffer(newOfferId);
       if (isPaid) {
-        console.log("[AcceptQuote] Offer was already paid by another transaction");
+        console.log(
+          "[AcceptQuote] Offer was already paid by another transaction",
+        );
         // Continue to verification - this is actually fine
       } else {
         // Something went wrong - offer is approved but not paid
-        console.error("[AcceptQuote] Backend approval succeeded but auto-fulfill failed:", {
-          approveData,
-          requireApprover,
-          offerId: newOfferId.toString(),
-        });
-        
+        console.error(
+          "[AcceptQuote] Backend approval succeeded but auto-fulfill failed:",
+          {
+            approveData,
+            requireApprover,
+            offerId: newOfferId.toString(),
+          },
+        );
+
         throw new Error(
-          `Backend approval succeeded but payment failed. Your offer (ID: ${newOfferId}) is approved but not paid. Please contact support with this offer ID.`
+          `Backend approval succeeded but payment failed. Your offer (ID: ${newOfferId}) is approved but not paid. Please contact support with this offer ID.`,
         );
       }
     }
 
-    const paymentTxHash = (approveData.fulfillTx || approveData.approvalTx) as `0x${string}`;
-    
+    const paymentTxHash = (approveData.fulfillTx ||
+      approveData.approvalTx) as `0x${string}`;
+
     if (approveData.fulfillTx) {
       console.log(`[AcceptQuote] ✅ Backend auto-fulfilled:`, paymentTxHash);
     } else {
-      console.log(`[AcceptQuote] ✅ Offer was already fulfilled, continuing...`);
+      console.log(
+        `[AcceptQuote] ✅ Offer was already fulfilled, continuing...`,
+      );
     }
 
     // Verify payment was actually made on-chain
@@ -930,360 +961,375 @@ export function AcceptQuoteModal({
 
   return (
     <>
-    <Dialog
-      open={isOpen}
-      onClose={onClose}
-      size="3xl"
-      data-testid="accept-quote-modal"
-    >
-      <div className="w-full max-w-[720px] mx-auto p-0 overflow-hidden rounded-2xl bg-zinc-950 text-white ring-1 ring-white/10">
-        {/* Chain Mismatch Warning */}
-        {isChainMismatch && (
-          <div className="bg-yellow-500/10 border-b border-yellow-500/20 p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
-                <span className="text-yellow-500 text-sm">⚠</span>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-semibold text-yellow-500 mb-1">
-                  Wrong Network
-                </h3>
-                <p className="text-xs text-zinc-300 mb-3">
-                  This quote is for a{" "}
-                  <span className="font-semibold">
-                    {quoteChain === "solana" ? "Solana" : "EVM"}
-                  </span>{" "}
-                  token, but you&apos;re connected to{" "}
-                  <span className="font-semibold">
-                    {activeFamily === "solana" ? "Solana" : "EVM"}
-                  </span>
-                  . Please switch networks to continue.
-                </p>
-                <div className="flex gap-2">
-                  {quoteChain === "solana" ? (
+      <Dialog
+        open={isOpen}
+        onClose={onClose}
+        size="3xl"
+        data-testid="accept-quote-modal"
+      >
+        <div className="w-full max-w-[720px] mx-auto p-0 overflow-hidden rounded-2xl bg-zinc-950 text-white ring-1 ring-white/10">
+          {/* Chain Mismatch Warning */}
+          {isChainMismatch && (
+            <div className="bg-yellow-500/10 border-b border-yellow-500/20 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                  <span className="text-yellow-500 text-sm">⚠</span>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-yellow-500 mb-1">
+                    Wrong Network
+                  </h3>
+                  <p className="text-xs text-zinc-300 mb-3">
+                    This quote is for a{" "}
+                    <span className="font-semibold">
+                      {quoteChain === "solana" ? "Solana" : "EVM"}
+                    </span>{" "}
+                    token, but you&apos;re connected to{" "}
+                    <span className="font-semibold">
+                      {activeFamily === "solana" ? "Solana" : "EVM"}
+                    </span>
+                    . Please switch networks to continue.
+                  </p>
+                  <div className="flex gap-2">
+                    {quoteChain === "solana" ? (
+                      <Button
+                        onClick={handleConnectSolana}
+                        className="!h-8 !px-3 !text-xs bg-gradient-to-br from-[#9945FF] to-[#14F195] hover:brightness-110"
+                      >
+                        <div className="flex items-center gap-2">
+                          <SolanaLogo className="w-4 h-4" />
+                          Switch to Solana
+                        </div>
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleConnectEvm}
+                        className="!h-8 !px-3 !text-xs bg-gradient-to-br from-blue-600 to-blue-800 hover:brightness-110"
+                      >
+                        <div className="flex items-center gap-2">
+                          <EVMLogo className="w-4 h-4" />
+                          Switch to EVM
+                        </div>
+                      </Button>
+                    )}
                     <Button
-                      onClick={handleConnectSolana}
-                      className="!h-8 !px-3 !text-xs bg-gradient-to-br from-[#9945FF] to-[#14F195] hover:brightness-110"
+                      onClick={onClose}
+                      className="!h-8 !px-3 !text-xs bg-zinc-800 hover:bg-zinc-700"
                     >
-                      <div className="flex items-center gap-2">
-                        <SolanaLogo className="w-4 h-4" />
-                        Switch to Solana
-                      </div>
+                      Cancel
                     </Button>
-                  ) : (
-                    <Button
-                      onClick={handleConnectEvm}
-                      className="!h-8 !px-3 !text-xs bg-gradient-to-br from-blue-600 to-blue-800 hover:brightness-110"
-                    >
-                      <div className="flex items-center gap-2">
-                        <EVMLogo className="w-4 h-4" />
-                        Switch to EVM
-                      </div>
-                    </Button>
-                  )}
-                  <Button
-                    onClick={onClose}
-                    className="!h-8 !px-3 !text-xs bg-zinc-800 hover:bg-zinc-700"
-                  >
-                    Cancel
-                  </Button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-3 sm:px-5 pt-4 sm:pt-5">
-          <div className="text-base sm:text-lg font-semibold tracking-wide">
-            Your Quote
-          </div>
-          <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
-            <button
-              type="button"
-              className={`px-2 py-1 rounded-md ${currency === "USDC" ? "bg-white text-black" : "text-zinc-300"}`}
-              onClick={() => setCurrency("USDC")}
-            >
-              USDC
-            </button>
-            <span className="text-zinc-600">|</span>
-            <button
-              type="button"
-              className={`px-2 py-1 rounded-md ${currency !== "USDC" ? "bg-white text-black" : "text-zinc-300"}`}
-              onClick={() =>
-                setCurrency(activeFamily === "solana" ? "SOL" : "ETH")
-              }
-            >
-              {activeFamily === "solana" ? "SOL" : "ETH"}
-            </button>
-          </div>
-          {/* Solana now supported */}
-        </div>
-
-        {/* Main amount card */}
-        <div className="m-3 sm:m-5 rounded-xl bg-zinc-900 ring-1 ring-white/10">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-3 sm:px-5 pt-3 sm:pt-4 gap-2">
-            <div className="text-xs sm:text-sm text-zinc-400">
-              Amount to Buy
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 sm:px-5 pt-4 sm:pt-5">
+            <div className="text-base sm:text-lg font-semibold tracking-wide">
+              Your Quote
             </div>
-            <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-zinc-400">
-              <span className="whitespace-nowrap">
-                Balance: {balanceDisplay}
-              </span>
+            <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
               <button
                 type="button"
-                className="text-orange-400 hover:text-orange-300 font-medium"
-                onClick={handleMaxClick}
+                className={`px-2 py-1 rounded-md ${currency === "USDC" ? "bg-white text-black" : "text-zinc-300"}`}
+                onClick={() => setCurrency("USDC")}
               >
-                MAX
+                USDC
+              </button>
+              <span className="text-zinc-600">|</span>
+              <button
+                type="button"
+                className={`px-2 py-1 rounded-md ${currency !== "USDC" ? "bg-white text-black" : "text-zinc-300"}`}
+                onClick={() =>
+                  setCurrency(activeFamily === "solana" ? "SOL" : "ETH")
+                }
+              >
+                {activeFamily === "solana" ? "SOL" : "ETH"}
               </button>
             </div>
+            {/* Solana now supported */}
           </div>
-          <div className="px-3 sm:px-5 pb-2">
-            <div className="flex items-center justify-between gap-2 sm:gap-3">
-              <input
-                data-testid="token-amount-input"
-                type="number"
-                value={tokenAmount}
-                onChange={(e) =>
-                  setTokenAmount(clampAmount(Number(e.target.value)))
-                }
-                min={MIN_TOKENS}
-                max={ONE_MILLION}
-                className="w-full bg-transparent border-none outline-none text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white"
-              />
-              <div className="flex items-center gap-2 text-right">
-                <div className="h-9 w-9 rounded-full bg-orange-500/10 flex items-center justify-center">
-                  <span className="text-orange-400 text-lg">₣</span>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-semibold">
-                    {initialQuote?.tokenSymbol ? `$${initialQuote.tokenSymbol}` : "Tokens"}
+
+          {/* Main amount card */}
+          <div className="m-3 sm:m-5 rounded-xl bg-zinc-900 ring-1 ring-white/10">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-3 sm:px-5 pt-3 sm:pt-4 gap-2">
+              <div className="text-xs sm:text-sm text-zinc-400">
+                Amount to Buy
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-zinc-400">
+                <span className="whitespace-nowrap">
+                  Balance: {balanceDisplay}
+                </span>
+                <button
+                  type="button"
+                  className="text-orange-400 hover:text-orange-300 font-medium"
+                  onClick={handleMaxClick}
+                >
+                  MAX
+                </button>
+              </div>
+            </div>
+            <div className="px-3 sm:px-5 pb-2">
+              <div className="flex items-center justify-between gap-2 sm:gap-3">
+                <input
+                  data-testid="token-amount-input"
+                  type="number"
+                  value={tokenAmount}
+                  onChange={(e) =>
+                    setTokenAmount(clampAmount(Number(e.target.value)))
+                  }
+                  min={MIN_TOKENS}
+                  max={ONE_MILLION}
+                  className="w-full bg-transparent border-none outline-none text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white"
+                />
+                <div className="flex items-center gap-2 text-right">
+                  <div className="h-9 w-9 rounded-full bg-orange-500/10 flex items-center justify-center">
+                    <span className="text-orange-400 text-lg">₣</span>
                   </div>
-                  <div className="text-xs text-zinc-500">{`Balance: ${balanceDisplay}`}</div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold">
+                      {initialQuote?.tokenSymbol
+                        ? `$${initialQuote.tokenSymbol}`
+                        : "Tokens"}
+                    </div>
+                    <div className="text-xs text-zinc-500">{`Balance: ${balanceDisplay}`}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2">
+                <input
+                  data-testid="token-amount-slider"
+                  type="range"
+                  min={MIN_TOKENS}
+                  max={ONE_MILLION}
+                  value={tokenAmount}
+                  onChange={(e) =>
+                    setTokenAmount(clampAmount(Number(e.target.value)))
+                  }
+                  className="w-full accent-orange-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div className="px-3 sm:px-5 pb-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 text-xs sm:text-sm">
+              <div>
+                <div className="text-zinc-500 text-xs">Your Discount</div>
+                <div className="text-base sm:text-lg font-semibold">
+                  {(discountBps / 100).toFixed(0)}%
+                </div>
+              </div>
+              <div>
+                <div className="text-zinc-500 text-xs">Maturity</div>
+                <div className="text-base sm:text-lg font-semibold">
+                  {Math.round(lockupDays / 30)} mo
+                </div>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <div className="text-zinc-500 text-xs">Maturity date</div>
+                <div className="text-base sm:text-lg font-semibold">
+                  {new Date(
+                    Date.now() + lockupDays * 24 * 60 * 60 * 1000,
+                  ).toLocaleDateString(undefined, {
+                    month: "2-digit",
+                    day: "2-digit",
+                    year: "2-digit",
+                  })}
                 </div>
               </div>
             </div>
-            <div className="mt-2">
-              <input
-                data-testid="token-amount-slider"
-                type="range"
-                min={MIN_TOKENS}
-                max={ONE_MILLION}
-                value={tokenAmount}
-                onChange={(e) =>
-                  setTokenAmount(clampAmount(Number(e.target.value)))
-                }
-                className="w-full accent-orange-500"
-              />
-            </div>
           </div>
-        </div>
 
-        {/* Stats row */}
-        <div className="px-3 sm:px-5 pb-1">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 text-xs sm:text-sm">
-            <div>
-              <div className="text-zinc-500 text-xs">Your Discount</div>
-              <div className="text-base sm:text-lg font-semibold">
-                {(discountBps / 100).toFixed(0)}%
-              </div>
+          {requireApprover && (
+            <div className="px-3 sm:px-5 pb-1 text-xs text-zinc-400">
+              Payment will be executed by the desk&apos;s whitelisted approver
+              wallet on your behalf after approval.
             </div>
-            <div>
-              <div className="text-zinc-500 text-xs">Maturity</div>
-              <div className="text-base sm:text-lg font-semibold">
-                {Math.round(lockupDays / 30)} mo
-              </div>
+          )}
+
+          {(error || validationError || insufficientFunds) && (
+            <div className="px-3 sm:px-5 pt-2 text-xs text-red-400">
+              {error ||
+                validationError ||
+                (insufficientFunds
+                  ? `Insufficient ${currency} balance for this purchase.`
+                  : null)}
             </div>
-            <div className="col-span-2 sm:col-span-1">
-              <div className="text-zinc-500 text-xs">Maturity date</div>
-              <div className="text-base sm:text-lg font-semibold">
-                {new Date(
-                  Date.now() + lockupDays * 24 * 60 * 60 * 1000,
-                ).toLocaleDateString(undefined, {
-                  month: "2-digit",
-                  day: "2-digit",
-                  year: "2-digit",
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
+          )}
 
-        {requireApprover && (
-          <div className="px-3 sm:px-5 pb-1 text-xs text-zinc-400">
-            Payment will be executed by the desk&apos;s whitelisted approver
-            wallet on your behalf after approval.
-          </div>
-        )}
-
-        {(error || validationError || insufficientFunds) && (
-          <div className="px-3 sm:px-5 pt-2 text-xs text-red-400">
-            {error ||
-              validationError ||
-              (insufficientFunds
-                ? `Insufficient ${currency} balance for this purchase.`
-                : null)}
-          </div>
-        )}
-
-        {/* Actions / Connect state */}
-        {!walletConnected ? (
-          <div className="px-3 sm:px-5 pb-4 sm:pb-5">
-            <div className="rounded-xl overflow-hidden ring-1 ring-white/10 bg-zinc-900">
-              <div className="relative">
-                <div className="relative aspect-[16/9] w-full bg-gradient-to-br from-zinc-900 to-zinc-800">
-                  <div
-                    aria-hidden
-                    className="absolute inset-0 opacity-30 bg-no-repeat bg-right-bottom"
-                    style={{
-                      backgroundImage: "url('/business.png')",
-                      backgroundSize: "contain",
-                    }}
-                  />
-                  <div className="relative z-10 h-full w-full flex flex-col items-center justify-center text-center px-4 sm:px-6">
-                    <h3 className="text-lg sm:text-xl font-semibold text-white tracking-tight mb-2">
-                      Choose a network
-                    </h3>
-                    <p className="text-zinc-300 text-sm sm:text-md mb-4">
-                      Let&apos;s deal, anon.
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-md">
-                      <button
-                        type="button"
-                        onClick={handleConnectEvm}
-                        className="group rounded-xl p-6 sm:p-8 text-center transition-all duration-200 cursor-pointer text-white bg-[#0052ff] border-2 border-[#0047e5] hover:border-[#0052ff] hover:brightness-110 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#0052ff] focus:ring-offset-2 focus:ring-offset-zinc-900"
-                      >
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
-                        <EVMLogo className="w-8 h-8 sm:w-10 sm:h-10" />
-                      </div>
-                      <div className="text-xl sm:text-2xl font-bold">EVM</div>
-                      <div className="text-xs text-white/70">Base, BSC, Jeju</div>
-                    </div>
-                  </button>
-                      <button
-                        type="button"
-                        onClick={handleConnectSolana}
-                        className="group rounded-xl p-6 sm:p-8 text-center transition-all duration-200 cursor-pointer text-white bg-gradient-to-br from-[#9945FF] via-[#8752F3] to-[#14F195] border-2 border-[#9945FF]/50 hover:border-[#14F195]/50 hover:brightness-110 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#9945FF] focus:ring-offset-2 focus:ring-offset-zinc-900"
-                      >
-                        <div className="flex flex-col items-center gap-3">
-                          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
-                            <SolanaLogo className="w-8 h-8 sm:w-10 sm:h-10" />
+          {/* Actions / Connect state */}
+          {!walletConnected ? (
+            <div className="px-3 sm:px-5 pb-4 sm:pb-5">
+              <div className="rounded-xl overflow-hidden ring-1 ring-white/10 bg-zinc-900">
+                <div className="relative">
+                  <div className="relative aspect-[16/9] w-full bg-gradient-to-br from-zinc-900 to-zinc-800">
+                    <div
+                      aria-hidden
+                      className="absolute inset-0 opacity-30 bg-no-repeat bg-right-bottom"
+                      style={{
+                        backgroundImage: "url('/business.png')",
+                        backgroundSize: "contain",
+                      }}
+                    />
+                    <div className="relative z-10 h-full w-full flex flex-col items-center justify-center text-center px-4 sm:px-6">
+                      <h3 className="text-lg sm:text-xl font-semibold text-white tracking-tight mb-2">
+                        Choose a network
+                      </h3>
+                      <p className="text-zinc-300 text-sm sm:text-md mb-4">
+                        Let&apos;s deal, anon.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-md">
+                        <button
+                          type="button"
+                          onClick={handleConnectEvm}
+                          className="group rounded-xl p-6 sm:p-8 text-center transition-all duration-200 cursor-pointer text-white bg-[#0052ff] border-2 border-[#0047e5] hover:border-[#0052ff] hover:brightness-110 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#0052ff] focus:ring-offset-2 focus:ring-offset-zinc-900"
+                        >
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+                              <EVMLogo className="w-8 h-8 sm:w-10 sm:h-10" />
+                            </div>
+                            <div className="text-xl sm:text-2xl font-bold">
+                              EVM
+                            </div>
+                            <div className="text-xs text-white/70">
+                              Base, BSC, Jeju
+                            </div>
                           </div>
-                          <div className="text-xl sm:text-2xl font-bold">Solana</div>
-                        </div>
-                      </button>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleConnectSolana}
+                          className="group rounded-xl p-6 sm:p-8 text-center transition-all duration-200 cursor-pointer text-white bg-gradient-to-br from-[#9945FF] via-[#8752F3] to-[#14F195] border-2 border-[#9945FF]/50 hover:border-[#14F195]/50 hover:brightness-110 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#9945FF] focus:ring-offset-2 focus:ring-offset-zinc-900"
+                        >
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+                              <SolanaLogo className="w-8 h-8 sm:w-10 sm:h-10" />
+                            </div>
+                            <div className="text-xl sm:text-2xl font-bold">
+                              Solana
+                            </div>
+                          </div>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
+                <div className="p-3 sm:p-4 text-xs text-zinc-400">
+                  Connect a wallet to continue and complete your purchase.
+                </div>
               </div>
-              <div className="p-3 sm:p-4 text-xs text-zinc-400">
-                Connect a wallet to continue and complete your purchase.
+              <div className="flex items-center justify-end gap-2 sm:gap-3 mt-3 sm:mt-4">
+                <Button
+                  onClick={onClose}
+                  color="dark"
+                  className="bg-zinc-800 text-white border-zinc-700"
+                >
+                  <div className="px-3 sm:px-4 py-2">Cancel</div>
+                </Button>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 sm:gap-3 mt-3 sm:mt-4">
+          ) : step !== "complete" ? (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 px-3 sm:px-5 py-4 sm:py-5">
               <Button
                 onClick={onClose}
                 color="dark"
-                className="bg-zinc-800 text-white border-zinc-700"
+                className="bg-zinc-800 text-white border-zinc-700 w-full sm:w-auto"
               >
-                <div className="px-3 sm:px-4 py-2">Cancel</div>
+                <div className="px-4 py-2">Cancel</div>
+              </Button>
+              <Button
+                data-testid="confirm-amount-button"
+                onClick={handleConfirm}
+                color="orange"
+                className="bg-orange-600 border-orange-700 hover:brightness-110 w-full sm:w-auto"
+                disabled={
+                  Boolean(validationError) ||
+                  insufficientFunds ||
+                  isProcessing ||
+                  isChainMismatch
+                }
+                title={
+                  isChainMismatch
+                    ? `Switch to ${quoteChain === "solana" ? "Solana" : "EVM"} first`
+                    : undefined
+                }
+              >
+                <div className="px-4 py-2">
+                  {isSolanaActive ? "Buy Now" : "Buy Now"}
+                </div>
               </Button>
             </div>
-          </div>
-        ) : step !== "complete" ? (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 px-3 sm:px-5 py-4 sm:py-5">
-            <Button
-              onClick={onClose}
-              color="dark"
-              className="bg-zinc-800 text-white border-zinc-700 w-full sm:w-auto"
-            >
-              <div className="px-4 py-2">Cancel</div>
-            </Button>
-            <Button
-              data-testid="confirm-amount-button"
-              onClick={handleConfirm}
-              color="orange"
-              className="bg-orange-600 border-orange-700 hover:brightness-110 w-full sm:w-auto"
-              disabled={
-                Boolean(validationError) || insufficientFunds || isProcessing || isChainMismatch
-              }
-              title={isChainMismatch ? `Switch to ${quoteChain === "solana" ? "Solana" : "EVM"} first` : undefined}
-            >
-              <div className="px-4 py-2">
-                {isSolanaActive ? "Buy Now" : "Buy Now"}
+          ) : null}
+
+          {/* Progress states */}
+          {step === "creating" && (
+            <div className="px-5 pb-6">
+              <div className="text-center py-6">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
+                <h3 className="font-semibold mb-2">Creating Offer</h3>
+                <p className="text-sm text-zinc-400">
+                  Confirm the transaction in your wallet to create your offer
+                  on-chain.
+                </p>
               </div>
-            </Button>
-          </div>
-        ) : null}
-
-        {/* Progress states */}
-        {step === "creating" && (
-          <div className="px-5 pb-6">
-            <div className="text-center py-6">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-              <h3 className="font-semibold mb-2">Creating Offer</h3>
-              <p className="text-sm text-zinc-400">
-                Confirm the transaction in your wallet to create your offer
-                on-chain.
-              </p>
             </div>
-          </div>
-        )}
+          )}
 
-        {step === "await_approval" && (
-          <div className="px-5 pb-6">
-            <div className="text-center py-6">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
-              <h3 className="font-semibold mb-2">Processing Deal</h3>
-              <p className="text-sm text-zinc-400">
-                Our desk is reviewing and completing your purchase. Payment will
-                be processed automatically.
-              </p>
-              <p className="text-xs text-zinc-500 mt-2">
-                This usually takes a few seconds...
-              </p>
-            </div>
-          </div>
-        )}
-
-        {step === "complete" && (
-          <div className="px-5 pb-6">
-            <div className="text-center py-6">
-              <div className="w-12 h-12 rounded-full bg-green-900/30 flex items-center justify-center mx-auto mb-4">
-                <svg
-                  className="w-6 h-6 text-green-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
+          {step === "await_approval" && (
+            <div className="px-5 pb-6">
+              <div className="text-center py-6">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
+                <h3 className="font-semibold mb-2">Processing Deal</h3>
+                <p className="text-sm text-zinc-400">
+                  Our desk is reviewing and completing your purchase. Payment
+                  will be processed automatically.
+                </p>
+                <p className="text-xs text-zinc-500 mt-2">
+                  This usually takes a few seconds...
+                </p>
               </div>
-              <h3 className="font-semibold mb-2">Deal Complete!</h3>
-              <p className="text-sm text-zinc-400">
-                Your purchase is complete. You&apos;ll receive your tokens at
-                maturity.
-              </p>
-              <p className="text-xs text-zinc-500 mt-3">
-                Redirecting to your deal page...
-              </p>
             </div>
-          </div>
-        )}
-      </div>
-    </Dialog>
-    
-    <EVMChainSelectorModal
-      isOpen={showEVMChainSelector}
-      onClose={() => setShowEVMChainSelector(false)}
-    />
+          )}
+
+          {step === "complete" && (
+            <div className="px-5 pb-6">
+              <div className="text-center py-6">
+                <div className="w-12 h-12 rounded-full bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+                  <svg
+                    className="w-6 h-6 text-green-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
+                <h3 className="font-semibold mb-2">Deal Complete!</h3>
+                <p className="text-sm text-zinc-400">
+                  Your purchase is complete. You&apos;ll receive your tokens at
+                  maturity.
+                </p>
+                <p className="text-xs text-zinc-500 mt-3">
+                  Redirecting to your deal page...
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </Dialog>
+
+      <EVMChainSelectorModal
+        isOpen={showEVMChainSelector}
+        onClose={() => setShowEVMChainSelector(false)}
+      />
     </>
   );
 }

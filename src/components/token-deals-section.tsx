@@ -30,13 +30,9 @@ export function TokenDealsSection({
     return num.toFixed(2);
   };
 
-  const priceChange = marketData?.priceChange24h || 0;
-  const priceChangeColor =
-    priceChange >= 0 ? "text-orange-600" : "text-red-600";
-
   const totalAvailable = consignments.reduce(
     (sum, c) => sum + BigInt(c.remainingAmount),
-    0n
+    0n,
   );
 
   return (
@@ -128,8 +124,8 @@ export function TokenDealsSection({
                   </div>
                   <div className="font-medium">
                     {consignment.isNegotiable
-                      ? `${consignment.minDiscountBps / 100}% - ${consignment.maxDiscountBps / 100}%`
-                      : `${consignment.fixedDiscountBps / 100}%`}
+                      ? `${(consignment.minDiscountBps ?? 0) / 100}% - ${(consignment.maxDiscountBps ?? 0) / 100}%`
+                      : `${(consignment.fixedDiscountBps ?? 0) / 100}%`}
                   </div>
                 </div>
                 <div>

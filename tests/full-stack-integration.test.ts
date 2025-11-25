@@ -71,41 +71,6 @@ describe('Multi-Approver Feature Verification', () => {
   });
 });
 
-describe('Oracle Fallback Feature Verification', () => {
-  it('should have oracle fallback code in contract', () => {
-    console.log('🔄 Verifying Oracle Fallback Implementation\n');
-    
-    const contractPath = path.join(process.cwd(), 'contracts/contracts/OTC.sol');
-    const contractCode = fs.readFileSync(contractPath, 'utf8');
-    
-    // Verify manual price storage
-    expect(contractCode).toContain('manualTokenPrice');
-    expect(contractCode).toContain('manualEthPrice');
-    expect(contractCode).toContain('useManualPrices');
-    console.log('  ✅ Manual price variables found');
-    
-    // Verify setter function
-    expect(contractCode).toContain('setManualPrices');
-    console.log('  ✅ setManualPrices function found');
-    
-    // Verify fallback logic (uses if-statement instead of try-catch)
-    expect(contractCode).toContain('if (useManualPrices)');
-    expect(contractCode).toContain('manualTokenPrice');
-    expect(contractCode).toContain('manualEthPrice');
-    expect(contractCode).toContain('latestRoundData()');
-    console.log('  ✅ Manual price fallback logic found');
-    
-    // Verify staleness check on manual
-    expect(contractCode).toContain('manual price too old');
-    console.log('  ✅ Manual price staleness check found');
-    
-    console.log('\n╔══════════════════════════════════════════════════════════╗');
-    console.log('║  Oracle Fallback: CODE VERIFIED ✅                       ║');
-    console.log('║  Runtime test: Requires mock oracle failure scenario   ║');
-    console.log('╚══════════════════════════════════════════════════════════╝\n');
-  });
-});
-
 describe('Solana Pyth Integration Verification', () => {
   it('should have Pyth oracle code in Solana program', () => {
     console.log('🔷 Verifying Solana Pyth Oracle Integration\n');
@@ -260,7 +225,7 @@ describe('FINAL ASSESSMENT', () => {
     console.log('  ✓ Real USDC transfers verified');
     console.log('  ✓ Real token transfers verified');
     console.log('  ✓ Multi-approver code implemented');
-    console.log('  ✓ Oracle fallback code implemented');
+    console.log('  ✓ Oracle reliance enforced (fallback removed)');
     console.log('  ✓ Solana Pyth oracle code implemented');
     console.log('  ✓ Reconciliation service implemented');
     console.log('  ✓ NO MOCK CODE anywhere');
@@ -268,7 +233,6 @@ describe('FINAL ASSESSMENT', () => {
     
     console.log('⚠️  WHAT EXISTS BUT NEEDS RUNTIME TESTING:');
     console.log('  • Multi-approver (code ✅, runtime test ⏳)');
-    console.log('  • Oracle fallback (code ✅, failure scenario ⏳)');
     console.log('  • Pyth oracle (code ✅, devnet test ⏳)');
     console.log('  • Database reconciliation (service ✅, drift test ⏳)');
     console.log('  • Agent → Contract integration (partial)');
@@ -276,7 +240,6 @@ describe('FINAL ASSESSMENT', () => {
     
     console.log('❌ WHAT\'S NOT TESTED:');
     console.log('  • Full stack: UI → Agent → DB → Contract → DB');
-    console.log('  • Oracle fails → Manual mode switch');
     console.log('  • 3 approvers signing in sequence');
     console.log('  • Pyth price update on Solana');
     console.log('  • Database drift detection & correction');
@@ -288,7 +251,7 @@ describe('FINAL ASSESSMENT', () => {
     console.log('');
     console.log('EVM (Base): 9.8/10 ⭐⭐⭐⭐⭐');
     console.log('  Contract: 10/10 (tested with real tx)');
-    console.log('  Features: 10/10 (multi-sig, fallback, security)');
+    console.log('  Features: 10/10 (multi-sig, strict oracle)');
     console.log('  Testing: 9.5/10 (missing integration test)');
     console.log('  Audit: 0/10 (not done yet)');
     console.log('  Weighted: 9.8/10');
@@ -351,7 +314,7 @@ describe('Deployment Readiness', () => {
       console.log('  ✅ EVM contract artifacts');
       evmReady = true;
     } else {
-      console.log('  ⚠️  EVM artifacts not found (run: cd contracts && npm run compile)');
+      console.log('  ⚠️  EVM artifacts not found (run: cd contracts && bun run compile)');
     }
     
     // Solana artifacts (optional)
@@ -369,7 +332,7 @@ describe('Deployment Readiness', () => {
     // Deployment scripts (these should always exist)
     const evmDeployScript = path.join(
       process.cwd(),
-      'contracts/script/DeployElizaOTC.s.sol'
+      'contracts/scripts/DeployElizaOTC.s.sol'
     );
     expect(fs.existsSync(evmDeployScript)).toBe(true);
     console.log('  ✅ Foundry deployment script');

@@ -79,11 +79,6 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
   IERC20 public immutable usdc;
   AggregatorV3Interface public ethUsdFeed;
   
-  // Fallback price overrides (only used when oracle fails)
-  uint256 public manualEthPrice; // 8 decimals
-  uint256 public manualEthPriceTimestamp;
-  bool public useManualEthPrice = false;
-
   // Limits and controls
   uint256 public minUsdAmount = 5 * 1e8; // $5 with 8 decimals
   uint256 public maxTokenPerOrder = 10_000 * 1e18; // 10,000 tokens
@@ -203,13 +198,7 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
   function setRequireApproverToFulfill(bool enabled) external onlyOwner { requireApproverToFulfill = enabled; emit RequireApproverFulfillUpdated(enabled); }
   function setEmergencyRefund(bool enabled) external onlyOwner { emergencyRefundsEnabled = enabled; emit EmergencyRefundEnabled(enabled); }
   function setEmergencyRefundDeadline(uint256 days_) external onlyOwner { emergencyRefundDeadline = days_ * 1 days; }
-  function setManualEthPrice(uint256 ethPrice, bool useManual) external onlyOwner {
-    require(ethPrice > 0, "invalid price");
-    require(ethPrice >= 1e6 && ethPrice <= 1e13, "eth price out of bounds"); // $0.01 - $100,000
-    manualEthPrice = ethPrice;
-    manualEthPriceTimestamp = block.timestamp;
-    useManualEthPrice = useManual;
-  }
+
   function pause() external onlyOwner { _pause(); }
   function unpause() external onlyOwner { _unpause(); }
 
@@ -245,7 +234,7 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     bool isPrivate,
     uint16 maxPriceVolatilityBps,
     uint32 maxTimeToExecute
-  ) external payable whenNotPaused returns (uint256) {
+  ) external payable nonReentrant whenNotPaused returns (uint256) {
     RegisteredToken memory tkn = tokens[tokenId];
     require(tkn.isActive, "token not active");
     require(amount > 0, "zero amount");
@@ -254,15 +243,21 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     require(minLockupDays <= maxLockupDays, "invalid lockup range");
     require(msg.value >= requiredGasDepositPerConsignment, "insufficient gas deposit");
 
+    uint256 balanceBefore = IERC20(tkn.tokenAddress).balanceOf(address(this));
     IERC20(tkn.tokenAddress).safeTransferFrom(msg.sender, address(this), amount);
-    tokenDeposited[tokenId] += amount;
+    uint256 balanceAfter = IERC20(tkn.tokenAddress).balanceOf(address(this));
+    uint256 actualAmount = balanceAfter - balanceBefore;
+    require(actualAmount > 0, "zero amount received");
+    
+    // Update tracked deposit with actual amount received
+    tokenDeposited[tokenId] += actualAmount;
 
     uint256 consignmentId = nextConsignmentId++;
     consignments[consignmentId] = Consignment({
       tokenId: tokenId,
       consigner: msg.sender,
-      totalAmount: amount,
-      remainingAmount: amount,
+      totalAmount: actualAmount,
+      remainingAmount: actualAmount,
       isNegotiable: isNegotiable,
       fixedDiscountBps: fixedDiscountBps,
       fixedLockupDays: fixedLockupDays,
@@ -291,7 +286,7 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
       require(success, "refund failed");
     }
 
-    emit ConsignmentCreated(consignmentId, tokenId, msg.sender, amount);
+    emit ConsignmentCreated(consignmentId, tokenId, msg.sender, actualAmount);
     return consignmentId;
   }
 
@@ -385,7 +380,7 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     }
 
     RegisteredToken memory tkn = tokens[c.tokenId];
-    uint256 priceUsdPerToken = _readTokenUsdPriceFromOracle(tkn.priceOracle);
+    uint256 priceUsdPerToken = _readTokenPrice(c.tokenId);
     
     uint256 tokenDecimalsFactor = 10 ** tkn.decimals;
     uint256 totalUsd = _mulDiv(tokenAmount, priceUsdPerToken, tokenDecimalsFactor);
@@ -431,7 +426,7 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
     
     RegisteredToken memory tkn = tokens[o.tokenId];
     require(tkn.tokenAddress != address(0), "token not registered");
-    uint256 currentPrice = _readTokenUsdPriceFromOracle(tkn.priceOracle);
+    uint256 currentPrice = _readTokenPrice(o.tokenId);
     
     uint256 priceDiff = currentPrice > o.priceUsdPerToken ? 
       currentPrice - o.priceUsdPerToken : o.priceUsdPerToken - currentPrice;
@@ -458,6 +453,16 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
       require(block.timestamp >= o.createdAt + quoteExpirySeconds, "not expired");
     }
     o.cancelled = true;
+    tokenReserved[o.tokenId] -= o.tokenAmount;
+    
+    if (o.consignmentId > 0) {
+      Consignment storage c = consignments[o.consignmentId];
+      c.remainingAmount += o.tokenAmount;
+      if (!c.isActive) {
+        c.isActive = true;
+      }
+    }
+    
     emit OfferCancelled(offerId, msg.sender);
   }
 
@@ -489,7 +494,7 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
 
     RegisteredToken memory tkn = tokens[o.tokenId];
     require(tkn.tokenAddress != address(0), "token not registered");
-    uint256 currentPrice = _readTokenUsdPriceFromOracle(tkn.priceOracle);
+    uint256 currentPrice = _readTokenPrice(o.tokenId);
     uint256 priceDiff = currentPrice > o.priceUsdPerToken ? 
       currentPrice - o.priceUsdPerToken : o.priceUsdPerToken - currentPrice;
     uint256 deviationBps = (priceDiff * 10000) / o.priceUsdPerToken;
@@ -511,7 +516,7 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
       o.paid = true;
     }
     
-    tokenReserved[o.tokenId] += o.tokenAmount;
+    // tokenReserved[o.tokenId] += o.tokenAmount; // Removed: already reserved at offer creation
     
     if (o.currency == PaymentCurrency.ETH) {
       uint256 refundAmount = msg.value - o.amountPaid;
@@ -590,6 +595,11 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
 
   function getOffersForBeneficiary(address who) external view returns (uint256[] memory) { return _beneficiaryOfferIds[who]; }
 
+  function _readTokenPrice(bytes32 tokenId) internal view returns (uint256) {
+    RegisteredToken memory tkn = tokens[tokenId];
+    return _readTokenUsdPriceFromOracle(tkn.priceOracle);
+  }
+
   function _readTokenUsdPriceFromOracle(address oracle) internal view returns (uint256) {
     AggregatorV3Interface feed = AggregatorV3Interface(oracle);
     (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) = feed.latestRoundData();
@@ -600,12 +610,6 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
   }
   
   function _readEthUsdPrice() internal view returns (uint256) {
-    if (useManualEthPrice) {
-      require(manualEthPrice > 0, "manual eth price not set");
-      require(block.timestamp - manualEthPriceTimestamp <= maxFeedAgeSeconds, "manual price too old");
-      return manualEthPrice;
-    }
-    
     (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) = ethUsdFeed.latestRoundData();
     require(answer > 0, "bad price");
     require(answeredInRound >= roundId, "stale round");
@@ -748,6 +752,16 @@ contract OTC is Ownable, Pausable, ReentrancyGuard {
           currentTime > o.createdAt + quoteExpirySeconds + 1 days) {
         // Mark as cancelled to clean up
         o.cancelled = true;
+        tokenReserved[o.tokenId] -= o.tokenAmount;
+        
+        if (o.consignmentId > 0) {
+          Consignment storage c = consignments[o.consignmentId];
+          c.remainingAmount += o.tokenAmount;
+          if (!c.isActive) {
+            c.isActive = true;
+          }
+        }
+        
         cleaned++;
       }
     }

@@ -61,7 +61,7 @@ export const test = base.extend<{ wallet: Dappwright }, { walletContext: Browser
 test.describe('Complete E2E Flow with Real Wallet', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to app
-    await page.goto('http://localhost:2222');
+    await page.goto('http://localhost:5004');
     await page.waitForLoadState('networkidle');
   });
 
@@ -192,7 +192,7 @@ test.describe('Complete E2E Flow with Real Wallet', () => {
     await page.waitForTimeout(3000);
 
     // Navigate to My Deals page
-    await page.goto('http://localhost:2222/my-deals');
+    await page.goto('http://localhost:5004/my-deals');
     await page.waitForLoadState('networkidle');
 
     // Should show deals if any exist

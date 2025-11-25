@@ -74,7 +74,13 @@ export const ChatMessage = memo(function ChatMessage({
       status: { component: () => null },
       message: { component: () => null },
       reference: {
-        component: ({ children, index }) => {
+        component: ({
+          children,
+          index,
+        }: {
+          children: React.ReactNode;
+          index: string | number;
+        }) => {
           const citationIndex = Number(index);
           const citation = citations?.find((c, i) => i === citationIndex);
 
@@ -127,13 +133,13 @@ export const ChatMessage = memo(function ChatMessage({
   let messageText = "";
   if (typeof safeMessage.text === "string") {
     messageText = safeMessage.text;
-  } else if ((safeMessage as any).content?.text) {
-    messageText = (safeMessage as any).content.text;
-  } else if ((safeMessage as any).content) {
+  } else if (safeMessage.content?.text) {
+    messageText = safeMessage.content.text;
+  } else if (safeMessage.content) {
     messageText =
-      typeof (safeMessage as any).content === "string"
-        ? (safeMessage as any).content
-        : JSON.stringify((safeMessage as any).content);
+      typeof safeMessage.content === "string"
+        ? safeMessage.content
+        : JSON.stringify(safeMessage.content);
   }
 
   // Clean up any XML artifacts or special formatting for agent messages
@@ -268,10 +274,10 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
 
       {/* Follow-up prompts outside bubble for breathing room */}
-      {!isUser && followUpPrompts?.length > 0 && (
+      {!isUser && followUpPrompts && followUpPrompts.length > 0 && (
         <div className="mt-2 ml-11 max-w-[72%] md:max-w-[60%]">
           <div className="flex flex-col gap-2">
-            {followUpPrompts.map((prompt, index) => (
+            {followUpPrompts.map((prompt: string, index: number) => (
               <button
                 key={index}
                 onClick={() => onFollowUpClick?.(prompt)}

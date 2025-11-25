@@ -3,25 +3,35 @@
  * Supports gas payments in elizaOS, CLANKER, VIRTUAL, CLANKERMON and other ERC-20 tokens
  */
 
-import { Address, createPublicClient, http, parseAbi, encodePacked } from 'viem';
-import { base, baseSepolia } from 'viem/chains';
+import {
+  type Address,
+  type PublicClient,
+  createPublicClient,
+  http,
+  parseAbi,
+  encodePacked,
+} from "viem";
+import { base, baseSepolia } from "viem/chains";
+import { safeReadContract } from "@/lib/viem-utils";
+import type { Abi } from "viem";
 
 // Paymaster Factory ABI
 const PAYMASTER_FACTORY_ABI = parseAbi([
-  'function getAllPaymasters() external view returns (address[] memory)',
-  'function getPaymasterByToken(address token) external view returns (address)',
-  'function paymasterStake(address paymaster) external view returns (uint256)',
+  "function getAllPaymasters() external view returns (address[] memory)",
+  "function getPaymasterByToken(address token) external view returns (address)",
+  "function paymasterStake(address paymaster) external view returns (uint256)",
 ]);
 
 // Paymaster ABI
 const PAYMASTER_ABI = parseAbi([
-  'function token() external view returns (address)',
-  'function getQuote(uint256 ethAmount) external view returns (uint256)',
+  "function token() external view returns (address)",
+  "function getQuote(uint256 ethAmount) external view returns (uint256)",
 ]);
 
 // Contract addresses
-const PAYMASTER_FACTORY_ADDRESS = (process.env.NEXT_PUBLIC_PAYMASTER_FACTORY_ADDRESS ||
-  '0x0000000000000000000000000000000000000000') as Address;
+const PAYMASTER_FACTORY_ADDRESS = (process.env
+  .NEXT_PUBLIC_PAYMASTER_FACTORY_ADDRESS ||
+  "0x0000000000000000000000000000000000000000") as Address;
 
 // Minimum ETH stake threshold for paymasters (10 ETH)
 const MIN_STAKE_THRESHOLD = BigInt(10) * BigInt(10 ** 18);
@@ -43,103 +53,111 @@ export interface PaymasterQuote {
 /**
  * Get public client for blockchain interactions
  */
-function getPublicClient() {
-  const network = process.env.NEXT_PUBLIC_NETWORK || 'base-sepolia';
-  const chain = network === 'base' ? base : baseSepolia;
-  
+function getPublicClient(): PublicClient {
+  const network = process.env.NEXT_PUBLIC_NETWORK || "base-sepolia";
+  const chain = network === "base" ? base : baseSepolia;
+
+  // Use unknown cast to avoid deep type instantiation
   return createPublicClient({
     chain,
     transport: http(process.env.NEXT_PUBLIC_RPC_URL),
-  });
+  }) as unknown as PublicClient;
 }
 
 /**
  * Get all available paymasters with sufficient stake
  */
-export async function getAvailablePaymasters(minStake: bigint = MIN_STAKE_THRESHOLD): Promise<PaymasterInfo[]> {
-  if (PAYMASTER_FACTORY_ADDRESS === '0x0000000000000000000000000000000000000000') {
-    console.warn('[Paymaster] Factory not configured, returning empty list');
+export async function getAvailablePaymasters(
+  minStake: bigint = MIN_STAKE_THRESHOLD,
+): Promise<PaymasterInfo[]> {
+  if (
+    PAYMASTER_FACTORY_ADDRESS === "0x0000000000000000000000000000000000000000"
+  ) {
+    console.warn("[Paymaster] Factory not configured, returning empty list");
     return [];
   }
 
   try {
     const client = getPublicClient();
-    
+
     // Get all paymasters from factory
-    const paymasters = await client.readContract({
+    const paymasters = await safeReadContract<Address[]>(client, {
       address: PAYMASTER_FACTORY_ADDRESS,
-      abi: PAYMASTER_FACTORY_ABI,
-      functionName: 'getAllPaymasters',
-      authorizationList: [],
-    }) as Address[];
+      abi: PAYMASTER_FACTORY_ABI as Abi,
+      functionName: "getAllPaymasters",
+    });
 
     // Get details for each paymaster
     const paymasterDetails = await Promise.all(
       paymasters.map(async (paymasterAddr) => {
         try {
           const [token, stake] = await Promise.all([
-            client.readContract({
+            safeReadContract<Address>(client, {
               address: paymasterAddr,
-              abi: PAYMASTER_ABI,
-              functionName: 'token',
-              authorizationList: [],
+              abi: PAYMASTER_ABI as Abi,
+              functionName: "token",
             }),
-            client.readContract({
+            safeReadContract<bigint>(client, {
               address: PAYMASTER_FACTORY_ADDRESS,
-              abi: PAYMASTER_FACTORY_ABI,
-              functionName: 'paymasterStake',
+              abi: PAYMASTER_FACTORY_ABI as Abi,
+              functionName: "paymasterStake",
               args: [paymasterAddr],
-              authorizationList: [],
             }),
           ]);
 
           return {
             address: paymasterAddr,
-            token: token as Address,
-            stake: stake as bigint,
-            available: (stake as bigint) >= minStake,
+            token,
+            stake,
+            available: stake >= minStake,
           };
         } catch (error) {
-          console.error(`[Paymaster] Error fetching details for ${paymasterAddr}:`, error);
+          console.error(
+            `[Paymaster] Error fetching details for ${paymasterAddr}:`,
+            error,
+          );
           return null;
         }
-      })
+      }),
     );
 
-    return paymasterDetails.filter((pm): pm is PaymasterInfo => pm !== null && pm.available);
+    return paymasterDetails.filter(
+      (pm): pm is PaymasterInfo => pm !== null && pm.available,
+    );
   } catch (error) {
-    console.error('[Paymaster] Error fetching paymasters:', error);
-    return [];
+    throw error;
   }
 }
 
 /**
  * Get paymaster for a specific token
  */
-export async function getPaymasterForToken(tokenAddress: Address): Promise<Address | null> {
-  if (PAYMASTER_FACTORY_ADDRESS === '0x0000000000000000000000000000000000000000') {
+export async function getPaymasterForToken(
+  tokenAddress: Address,
+): Promise<Address | null> {
+  if (
+    PAYMASTER_FACTORY_ADDRESS === "0x0000000000000000000000000000000000000000"
+  ) {
     return null;
   }
 
   try {
     const client = getPublicClient();
-    
-    const paymaster = await client.readContract({
+
+    const paymaster = await safeReadContract<Address>(client, {
       address: PAYMASTER_FACTORY_ADDRESS,
-      abi: PAYMASTER_FACTORY_ABI,
-      functionName: 'getPaymasterByToken',
+      abi: PAYMASTER_FACTORY_ABI as Abi,
+      functionName: "getPaymasterByToken",
       args: [tokenAddress],
-      authorizationList: [],
-    }) as Address;
+    });
 
     // Verify paymaster has sufficient stake
-    const stake = await client.readContract({
+    const stake = await safeReadContract<bigint>(client, {
       address: PAYMASTER_FACTORY_ADDRESS,
-      abi: PAYMASTER_FACTORY_ABI,
-      functionName: 'paymasterStake',
+      abi: PAYMASTER_FACTORY_ABI as Abi,
+      functionName: "paymasterStake",
       args: [paymaster],
-      authorizationList: [],
-    }) as bigint;
+    });
 
     if (stake >= MIN_STAKE_THRESHOLD) {
       return paymaster;
@@ -147,8 +165,7 @@ export async function getPaymasterForToken(tokenAddress: Address): Promise<Addre
 
     return null;
   } catch (error) {
-    console.error(`[Paymaster] Error getting paymaster for token ${tokenAddress}:`, error);
-    return null;
+    throw error;
   }
 }
 
@@ -157,36 +174,33 @@ export async function getPaymasterForToken(tokenAddress: Address): Promise<Addre
  */
 export async function getPaymasterQuote(
   paymasterAddress: Address,
-  ethAmount: bigint
+  ethAmount: bigint,
 ): Promise<PaymasterQuote | null> {
   try {
     const client = getPublicClient();
-    
+
     const [token, tokenAmount] = await Promise.all([
-      client.readContract({
+      safeReadContract<Address>(client, {
         address: paymasterAddress,
-        abi: PAYMASTER_ABI,
-        functionName: 'token',
-        authorizationList: [],
+        abi: PAYMASTER_ABI as Abi,
+        functionName: "token",
       }),
-      client.readContract({
+      safeReadContract<bigint>(client, {
         address: paymasterAddress,
-        abi: PAYMASTER_ABI,
-        functionName: 'getQuote',
+        abi: PAYMASTER_ABI as Abi,
+        functionName: "getQuote",
         args: [ethAmount],
-        authorizationList: [],
       }),
     ]);
 
     return {
       paymaster: paymasterAddress,
-      token: token as Address,
+      token,
       ethAmount,
-      tokenAmount: tokenAmount as bigint,
+      tokenAmount,
     };
   } catch (error) {
-    console.error('[Paymaster] Error getting quote:', error);
-    return null;
+    throw error;
   }
 }
 
@@ -197,11 +211,11 @@ export async function getPaymasterQuote(
 export function generatePaymasterData(
   paymasterAddress: Address,
   verificationGasLimit: bigint = BigInt(100000),
-  postOpGasLimit: bigint = BigInt(50000)
+  postOpGasLimit: bigint = BigInt(50000),
 ): `0x${string}` {
   return encodePacked(
-    ['address', 'uint128', 'uint128'],
-    [paymasterAddress, BigInt(verificationGasLimit), BigInt(postOpGasLimit)]
+    ["address", "uint128", "uint128"],
+    [paymasterAddress, BigInt(verificationGasLimit), BigInt(postOpGasLimit)],
   );
 }
 
@@ -211,7 +225,7 @@ export function generatePaymasterData(
 export async function estimateTokenCost(
   tokenAddress: Address,
   gasLimit: bigint,
-  gasPrice: bigint
+  gasPrice: bigint,
 ): Promise<bigint | null> {
   const paymaster = await getPaymasterForToken(tokenAddress);
   if (!paymaster) {
@@ -220,7 +234,7 @@ export async function estimateTokenCost(
 
   const ethCost = gasLimit * gasPrice;
   const quote = await getPaymasterQuote(paymaster, ethCost);
-  
+
   return quote?.tokenAmount || null;
 }
 
@@ -230,23 +244,23 @@ export async function estimateTokenCost(
 export async function canPayGasWithToken(
   userAddress: Address,
   tokenAddress: Address,
-  requiredAmount: bigint
+  requiredAmount: bigint,
 ): Promise<boolean> {
   try {
     const client = getPublicClient();
-    
-    const balance = await client.readContract({
+
+    const balance = await safeReadContract<bigint>(client, {
       address: tokenAddress,
-      abi: parseAbi(['function balanceOf(address) view returns (uint256)']),
-      functionName: 'balanceOf',
+      abi: parseAbi([
+        "function balanceOf(address) view returns (uint256)",
+      ]) as Abi,
+      functionName: "balanceOf",
       args: [userAddress],
-      authorizationList: [],
-    }) as bigint;
+    });
 
     return balance >= requiredAmount;
   } catch (error) {
-    console.error('[Paymaster] Error checking balance:', error);
-    return false;
+    throw error;
   }
 }
 

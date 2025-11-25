@@ -1,4 +1,4 @@
-name: E2E Tests
+name: Tests
 
 on:
   pull_request:
@@ -7,12 +7,73 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  NODE_ENV: test
+  NEXT_PUBLIC_E2E_TEST: '1'
+
 jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run typecheck
+        run: tsc --noEmit
+
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check formatting
+        run: bun run lint
+
+  unit-tests:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run vitest
+        run: bun run test:unit
+
   playwright:
     name: Playwright E2E Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    
+    timeout-minutes: 30
+    needs: [typecheck, lint]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -21,22 +82,56 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
+
+      - name: Ensure deployment configs exist
+        run: ./scripts/ensure-deployments.sh
 
       - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
+        run: bunx playwright install chromium --with-deps
 
-      - name: Run E2E tests
-        run: npm run test:e2e
+      - name: Build application
+        run: bun run build:next-only
         env:
           NEXT_PUBLIC_E2E_TEST: '1'
-          NODE_ENV: 'development'
-          CI: 'true'
 
-      - name: Upload test report
+      - name: Start server and run tests
+        run: |
+          # Start the production server in background
+          bun run start &
+          SERVER_PID=$!
+          
+          # Wait for server to be ready
+          echo "Waiting for server to start..."
+          for i in {1..60}; do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:5004/ | grep -q "200"; then
+              echo "Server is ready"
+              break
+            fi
+            echo "Attempt $i: Server not ready yet..."
+            sleep 2
+          done
+          
+          # Run Playwright tests
+          CI=true bunx playwright test --reporter=github
+          TEST_EXIT=$?
+          
+          # Cleanup
+          kill $SERVER_PID 2>/dev/null || true
+          
+          exit $TEST_EXIT
+        env:
+          CI: 'true'
+          NEXT_PUBLIC_E2E_TEST: '1'
+
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -52,34 +147,127 @@ jobs:
           path: test-results/
           retention-days: 30
 
-      - name: Comment PR with results
-        if: github.event_name == 'pull_request' && always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            
-            let summary = '## 🎭 E2E Test Results\n\n';
-            
-            // Check if tests passed
-            const exitCode = process.env.TEST_EXIT_CODE || '0';
-            
-            if (exitCode === '0') {
-              summary += '✅ All E2E tests passed!\n\n';
-              summary += '- All pages load correctly\n';
-              summary += '- Wallet connections work\n';
-              summary += '- User flows verified\n';
-            } else {
-              summary += '❌ Some E2E tests failed\n\n';
-              summary += 'Check the [test report](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.\n';
-            }
-            
-            summary += '\n[View Full Report](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})';
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: summary
-            });
+  synpress:
+    name: Synpress Wallet Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [typecheck, lint]
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Ensure deployment configs exist
+        run: ./scripts/ensure-deployments.sh
+
+      - name: Install Playwright browsers
+        run: bunx playwright install chromium --with-deps
+
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Build Synpress wallet cache
+        run: |
+          # Build the MetaMask wallet cache with xvfb
+          xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' \
+            bunx synpress --force
+        env:
+          WALLET_PASSWORD: 'Tester@1234'
+          SEED_PHRASE: 'test test test test test test test test test test test junk'
+
+      - name: Build application
+        run: bun run build:next-only
+        env:
+          NEXT_PUBLIC_E2E_TEST: '1'
+
+      - name: Run Synpress tests
+        run: |
+          # Start server
+          bun run start &
+          SERVER_PID=$!
+          
+          # Wait for server
+          echo "Waiting for server..."
+          for i in {1..30}; do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:5004/ | grep -q "200"; then
+              echo "Server is ready"
+              break
+            fi
+            sleep 2
+          done
+          
+          # Run synpress tests with xvfb
+          xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' \
+            bunx playwright test --config=synpress.config.ts --reporter=github
+          TEST_EXIT=$?
+          
+          kill $SERVER_PID 2>/dev/null || true
+          exit $TEST_EXIT
+        env:
+          CI: 'true'
+          WALLET_PASSWORD: 'Tester@1234'
+          NEXT_PUBLIC_E2E_TEST: '1'
+
+      - name: Upload Synpress report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synpress-report
+          path: playwright-report/
+          retention-days: 30
+
+  contract-tests:
+    name: Smart Contract Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [typecheck]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Run Forge tests
+        run: |
+          cd contracts
+          forge test -vvv
+
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [typecheck, lint, unit-tests, playwright, contract-tests]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Typecheck | ${{ needs.typecheck.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.lint.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ needs.unit-tests.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Playwright E2E | ${{ needs.playwright.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract Tests | ${{ needs.contract-tests.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any required job failed
+        if: needs.typecheck.result != 'success' || needs.lint.result != 'success' || needs.unit-tests.result != 'success' || needs.playwright.result != 'success' || needs.contract-tests.result != 'success'
+        run: exit 1

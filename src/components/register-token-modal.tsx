@@ -3,14 +3,39 @@
 import { useState, useEffect } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useMultiWallet } from "@/components/multiwallet";
-import { useWriteContract, usePublicClient } from "wagmi";
-import { parseEther } from "viem";
+import { useWriteContract, usePublicClient, useChainId } from "wagmi";
+import { parseEther, type PublicClient } from "viem";
+import Image from "next/image";
+import type {
+  Wallet as AnchorWallet,
+  Idl as AnchorIdl,
+} from "@coral-xyz/anchor";
 import { Dialog, DialogTitle, DialogBody } from "@/components/dialog";
 import { Button } from "@/components/button";
-import { scanWalletTokens, type ScannedToken } from "@/utils/wallet-token-scanner";
-import { findBestPool, validatePoolLiquidity, formatPoolInfo, type PoolInfo } from "@/utils/pool-finder-base";
-import { findSolanaOracle, validateSolanaOracle, formatOracleInfo, getSolanaRegistrationCost, type SolanaOracleInfo } from "@/utils/oracle-finder-solana";
+import {
+  scanWalletTokens,
+  type ScannedToken,
+} from "@/utils/wallet-token-scanner";
+import {
+  findBestPool,
+  validatePoolLiquidity,
+  formatPoolInfo,
+  type PoolInfo,
+} from "@/utils/pool-finder-base";
+import {
+  findBestSolanaPool,
+  type SolanaPoolInfo,
+} from "@/utils/pool-finder-solana";
+import {
+  findSolanaOracle,
+  validateSolanaOracle,
+  formatOracleInfo,
+  getSolanaRegistrationCost,
+  type SolanaOracleInfo,
+} from "@/utils/oracle-finder-solana";
+import { checkPriceDivergence } from "@/utils/price-validator";
 import type { Chain } from "@/config/chains";
+import { useConnection } from "@solana/wallet-adapter-react";
 
 interface RegisterTokenModalProps {
   open: boolean;
@@ -19,7 +44,14 @@ interface RegisterTokenModalProps {
   defaultChain?: Chain;
 }
 
-type Step = "scan" | "select" | "oracle" | "confirm" | "register" | "syncing" | "success";
+type Step =
+  | "scan"
+  | "select"
+  | "oracle"
+  | "confirm"
+  | "register"
+  | "syncing"
+  | "success";
 
 export function RegisterTokenModal({
   open,
@@ -31,22 +63,33 @@ export function RegisterTokenModal({
   const { solanaWallet } = useMultiWallet();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
-  
+  const chainId = useChainId();
+  const { connection } = useConnection();
+
   const [step, setStep] = useState<Step>("scan");
   const [selectedChain, setSelectedChain] = useState<Chain>(defaultChain);
   const [tokens, setTokens] = useState<ScannedToken[]>([]);
   const [selectedToken, setSelectedToken] = useState<ScannedToken | null>(null);
   const [poolInfo, setPoolInfo] = useState<PoolInfo | null>(null);
+  const [solanaPoolInfo, setSolanaPoolInfo] = useState<SolanaPoolInfo | null>(
+    null,
+  );
   const [oracleInfo, setOracleInfo] = useState<SolanaOracleInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string>("");
 
   // Get wallet addresses
   const evmAddress = user?.wallet?.address;
-  const solanaAccount = user?.linkedAccounts?.find((acc: any) => acc.type === "solana");
-  const solanaAddress = solanaAccount && 'address' in solanaAccount ? solanaAccount.address : undefined;
+  const solanaAccount = user?.linkedAccounts?.find(
+    (acc: any) => acc.type === "solana",
+  );
+  const solanaAddress =
+    solanaAccount && "address" in solanaAccount
+      ? solanaAccount.address
+      : undefined;
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -57,6 +100,7 @@ export function RegisterTokenModal({
       setPoolInfo(null);
       setOracleInfo(null);
       setError(null);
+      setWarning(null);
     }
   }, [open]);
 
@@ -67,7 +111,7 @@ export function RegisterTokenModal({
 
     try {
       const address = selectedChain === "solana" ? solanaAddress : evmAddress;
-      
+
       if (!address) {
         throw new Error(`No ${selectedChain} wallet connected`);
       }
@@ -78,19 +122,27 @@ export function RegisterTokenModal({
         // Create publicClient for Base
         const { createPublicClient, http } = await import("viem");
         const { base } = await import("viem/chains");
-        
+
         const publicClient = createPublicClient({
           chain: base,
-          transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org"),
+          transport: http(
+            process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org",
+          ),
         });
 
-        scannedTokens = await scanWalletTokens(address, selectedChain, publicClient as any);
+        scannedTokens = await scanWalletTokens(
+          address,
+          selectedChain,
+          publicClient as PublicClient,
+        );
       } else {
         scannedTokens = await scanWalletTokens(address, selectedChain);
       }
-      
+
       if (scannedTokens.length === 0) {
-        setError("No tokens found in your wallet. Try adding a token manually below.");
+        setError(
+          "No tokens found in your wallet. Try adding a token manually below.",
+        );
         setStep("select");
         return;
       }
@@ -109,15 +161,21 @@ export function RegisterTokenModal({
     setSelectedToken(token);
     setLoading(true);
     setError(null);
+    setWarning(null);
     setStep("oracle");
 
     try {
       if (selectedChain === "base") {
-        // Find Uniswap V3 pool
-        const pool = await findBestPool(token.address);
-        
+        // Find best pool on current chain (or default to mainnet if not connected to base)
+        // Use the actual connected chain ID if we are on Base/Base Sepolia, otherwise default to Mainnet
+        const targetChainId =
+          chainId === 8453 || chainId === 84532 ? chainId : 8453;
+        const pool = await findBestPool(token.address, targetChainId);
+
         if (!pool) {
-          throw new Error("No Uniswap V3 pool found for this token");
+          throw new Error(
+            "No Uniswap V3 or Aerodrome pool found for this token",
+          );
         }
 
         const validation = await validatePoolLiquidity(pool);
@@ -126,20 +184,62 @@ export function RegisterTokenModal({
         }
 
         setPoolInfo(pool);
+
+        // Check price divergence
+        const priceCheck = await checkPriceDivergence(
+          token.address,
+          "base",
+          pool.priceUsd || 0,
+        );
+        if (!priceCheck.valid && priceCheck.warning) {
+          setWarning(priceCheck.warning);
+        }
       } else if (selectedChain === "solana") {
-        // Find Solana oracle
-        const oracle = await findSolanaOracle(token.address);
-        
-        if (!oracle) {
-          throw new Error("No oracle found for this token");
-        }
+        // Detect cluster from connection endpoint
+        // This is a bit heuristic but works for standard RPCs
+        const cluster = connection.rpcEndpoint.includes("devnet")
+          ? "devnet"
+          : "mainnet";
 
-        const validation = await validateSolanaOracle(oracle);
-        if (!validation.valid) {
-          throw new Error(validation.message || "Oracle validation failed");
-        }
+        // Find best on-chain pool first
+        const bestPool = await findBestSolanaPool(token.address, cluster);
+        if (bestPool) {
+          setSolanaPoolInfo(bestPool);
+          // We can construct a compatible OracleInfo from this
+          setOracleInfo({
+            // Map AMM pools (Raydium, PumpSwap) to "raydium" type since they both use pool addresses
+            type:
+              bestPool.protocol === "Raydium" ||
+              bestPool.protocol === "PumpSwap"
+                ? "raydium"
+                : "jupiter",
+            address: bestPool.address,
+            poolAddress: bestPool.address,
+            liquidity: bestPool.tvlUsd, // Use full TVL as the liquidity metric for validation
+            valid: true,
+            warning: bestPool.tvlUsd < 10000 ? "Low Liquidity" : undefined,
+          });
 
-        setOracleInfo(oracle);
+          // Check price divergence
+          const priceCheck = await checkPriceDivergence(
+            token.address,
+            "solana",
+            bestPool.priceUsd || 0,
+          );
+          if (!priceCheck.valid && priceCheck.warning) {
+            setWarning(priceCheck.warning);
+          }
+        } else {
+          // Fallback to old method if no on-chain pool found (e.g. Pyth feed only)
+          const oracle = await findSolanaOracle(token.address);
+          if (oracle) {
+            const validation = await validateSolanaOracle(oracle);
+            if (!validation.valid) throw new Error(validation.message);
+            setOracleInfo(oracle);
+          } else {
+            throw new Error("No liquid pool or oracle found for this token");
+          }
+        }
       }
 
       setStep("confirm");
@@ -163,7 +263,7 @@ export function RegisterTokenModal({
 
     try {
       let hash: string;
-      
+
       if (selectedChain === "base") {
         hash = await registerBaseToken();
       } else if (selectedChain === "solana") {
@@ -173,11 +273,13 @@ export function RegisterTokenModal({
       }
 
       setTxHash(hash);
-      
+
       // Wait for transaction confirmation
       setSyncStatus("Waiting for transaction confirmation...");
       if (publicClient && hash) {
-        await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+        await publicClient.waitForTransactionReceipt({
+          hash: hash as `0x${string}`,
+        });
       }
 
       // Now sync to database immediately
@@ -224,12 +326,16 @@ export function RegisterTokenModal({
 
       while (attempts < maxAttempts) {
         const chain = selectedChain === "base" ? "base" : "solana";
-        const response = await fetch(`/api/tokens?chain=${chain}&isActive=true`);
+        const response = await fetch(
+          `/api/tokens?chain=${chain}&isActive=true`,
+        );
         const data = await response.json();
 
-        if (data.success && data.tokens) {
+        if (data.success && data.tokens && selectedToken) {
           const tokenFound = data.tokens.find(
-            (t: any) => t.contractAddress.toLowerCase() === selectedToken.address.toLowerCase()
+            (t: { contractAddress: string }) =>
+              t.contractAddress.toLowerCase() ===
+              selectedToken.address.toLowerCase(),
           );
 
           if (tokenFound) {
@@ -244,7 +350,9 @@ export function RegisterTokenModal({
 
       // If we get here, token didn't appear but sync might have succeeded
       // (could be a race condition or the token was already registered)
-      console.warn("Token did not appear in database after polling, but sync may have succeeded");
+      console.warn(
+        "Token did not appear in database after polling, but sync may have succeeded",
+      );
       setSyncStatus("Sync completed (token may already be registered)");
     } catch (err) {
       console.error("Sync error:", err);
@@ -255,11 +363,13 @@ export function RegisterTokenModal({
 
   // Register token on Base
   const registerBaseToken = async (): Promise<string> => {
-    if (!selectedToken || !poolInfo) throw new Error("Missing token or pool info");
+    if (!selectedToken || !poolInfo)
+      throw new Error("Missing token or pool info");
     if (!evmAddress) throw new Error("No EVM wallet connected");
     if (!writeContractAsync) throw new Error("Wallet not connected");
 
-    const registrationHelperAddress = process.env.NEXT_PUBLIC_REGISTRATION_HELPER_ADDRESS;
+    const registrationHelperAddress =
+      process.env.NEXT_PUBLIC_REGISTRATION_HELPER_ADDRESS;
     if (!registrationHelperAddress) {
       throw new Error("RegistrationHelper contract not configured");
     }
@@ -267,42 +377,56 @@ export function RegisterTokenModal({
     try {
       const registrationFee = parseEther("0.005"); // 0.005 ETH
 
-      const hash = await writeContractAsync({
+      const registrationAbi = [
+        {
+          name: "registerTokenWithPayment",
+          type: "function",
+          stateMutability: "payable",
+          inputs: [
+            { name: "tokenAddress", type: "address" },
+            { name: "poolAddress", type: "address" },
+          ],
+          outputs: [{ name: "oracle", type: "address" }],
+        },
+      ] as const;
+
+      // Type assertion needed as wagmi's writeContractAsync has complex generics
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const hash = await (writeContractAsync as any)({
         address: registrationHelperAddress as `0x${string}`,
-        abi: [
-          {
-            name: "registerTokenWithPayment",
-            type: "function",
-            stateMutability: "payable",
-            inputs: [
-              { name: "tokenAddress", type: "address" },
-              { name: "poolAddress", type: "address" },
-            ],
-            outputs: [{ name: "oracle", type: "address" }],
-          },
-        ],
+        abi: registrationAbi,
         functionName: "registerTokenWithPayment",
-        args: [selectedToken.address as `0x${string}`, poolInfo.address as `0x${string}`],
+        args: [
+          selectedToken.address as `0x${string}`,
+          poolInfo.address as `0x${string}`,
+        ],
         value: registrationFee,
-      } as any);
+      });
 
       console.log("Base token registration transaction sent:", hash);
       return hash;
     } catch (error) {
       console.error("Registration failed:", error);
-      throw new Error(`Registration failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      throw new Error(
+        `Registration failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     }
   };
 
   // Register token on Solana
   const registerSolanaToken = async () => {
-    if (!selectedToken || !oracleInfo) throw new Error("Missing token or oracle info");
-    if (!solanaAddress || !solanaWallet) throw new Error("No Solana wallet connected");
+    if (!selectedToken || !oracleInfo)
+      throw new Error("Missing token or oracle info");
+    if (!solanaAddress || !solanaWallet)
+      throw new Error("No Solana wallet connected");
 
     try {
       // Import Solana dependencies
-      const { Connection, PublicKey, SystemProgram } = await import("@solana/web3.js");
+      const { Connection, PublicKey, SystemProgram } = await import(
+        "@solana/web3.js"
+      );
       const { AnchorProvider, Program } = await import("@coral-xyz/anchor");
+      // Types are imported at module level
 
       // Get Solana program ID from environment
       const programId = process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID;
@@ -317,15 +441,18 @@ export function RegisterTokenModal({
       }
 
       // Get RPC URL
-      const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+      const rpcUrl =
+        process.env.NEXT_PUBLIC_SOLANA_RPC ||
+        "https://api.mainnet-beta.solana.com";
       const connection = new Connection(rpcUrl, "confirmed");
 
       // Create a proper wallet adapter for AnchorProvider
+      // Type assertion needed as anchor's Wallet type has changed across versions
       const anchorWallet = {
         publicKey: new PublicKey(solanaAddress),
         signTransaction: solanaWallet.signTransaction,
         signAllTransactions: solanaWallet.signAllTransactions,
-      };
+      } as AnchorWallet;
 
       // Create provider with the proper wallet adapter
       const provider = new AnchorProvider(connection, anchorWallet, {
@@ -334,46 +461,50 @@ export function RegisterTokenModal({
 
       // Load program IDL (in production, this would be loaded from the deployed program)
       // For now, we'll create a minimal interface based on the program structure
-      const program = new Program(
-        {
-          version: "0.1.0",
-          name: "otc",
-          instructions: [
-            {
-              name: "registerToken",
-              accounts: [
-                { name: "desk", isMut: false, isSigner: false },
-                { name: "owner", isMut: true, isSigner: true },
-                { name: "tokenMint", isMut: false, isSigner: false },
-                { name: "tokenRegistry", isMut: true, isSigner: false },
-                { name: "systemProgram", isMut: false, isSigner: false }
-              ],
-              args: [
-                { name: "priceFeedId", type: { array: ["u8", 32] } }
-              ]
-            }
-          ],
-          accounts: [],
-          types: [],
-          events: [],
-          errors: [],
-          metadata: {
-            address: programId,
+      // Type assertion needed as anchor IDL types vary between versions
+      const minimalIdl = {
+        version: "0.1.0",
+        name: "otc",
+        address: programId,
+        instructions: [
+          {
+            name: "registerToken",
+            accounts: [
+              { name: "desk", writable: false, signer: false },
+              { name: "owner", writable: true, signer: true },
+              { name: "tokenMint", writable: false, signer: false },
+              { name: "tokenRegistry", writable: true, signer: false },
+              { name: "systemProgram", writable: false, signer: false },
+            ],
+            args: [{ name: "priceFeedId", type: { array: ["u8", 32] } }],
           },
-        } as any,
-        provider
-      );
+        ],
+        accounts: [],
+        types: [],
+        events: [],
+        errors: [],
+        metadata: {
+          address: programId,
+        },
+      } as unknown as AnchorIdl;
+      const program = new Program(minimalIdl, provider);
 
       // Get price feed ID from oracle info
-      let priceFeedId: number[];
+      let priceFeedId: number[] = new Array(32).fill(0);
+      let poolAddressArg = new PublicKey("11111111111111111111111111111111"); // System program or null
+
       if (oracleInfo.type === "pyth" && oracleInfo.feedId) {
         // Convert Pyth feed ID to bytes
         const feedPubkey = new PublicKey(oracleInfo.feedId);
         priceFeedId = Array.from(feedPubkey.toBytes());
+      } else if (oracleInfo.type === "raydium" && oracleInfo.poolAddress) {
+        // For Raydium, we pass the pool address
+        poolAddressArg = new PublicKey(oracleInfo.poolAddress);
       } else {
-        // For other oracle types, we need a fallback price feed
-        // This would need to be implemented based on the specific oracle
-        throw new Error("Price feed ID mapping not implemented for this oracle type");
+        // Fallback or error
+        throw new Error(
+          `Unsupported oracle type for registration: ${oracleInfo.type}`,
+        );
       }
 
       // Create PDA for token registry
@@ -383,12 +514,12 @@ export function RegisterTokenModal({
           new PublicKey(deskAddress).toBuffer(),
           new PublicKey(selectedToken.address).toBuffer(),
         ],
-        new PublicKey(programId)
+        new PublicKey(programId),
       );
 
       // Call the registerToken instruction
       const txHash = await program.methods
-        .registerToken(priceFeedId)
+        .registerToken(priceFeedId, poolAddressArg)
         .accounts({
           desk: new PublicKey(deskAddress),
           owner: anchorWallet.publicKey,
@@ -401,13 +532,15 @@ export function RegisterTokenModal({
       console.log("Solana token registration successful:", {
         token: selectedToken.address,
         oracleType: oracleInfo.type,
-        txHash
+        txHash,
       });
 
       return txHash;
     } catch (error) {
       console.error("Solana registration failed:", error);
-      throw new Error(`Solana registration failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      throw new Error(
+        `Solana registration failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     }
   };
 
@@ -430,22 +563,42 @@ export function RegisterTokenModal({
           <DialogBody>
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium mb-2 block">Select Chain</label>
+                <label className="text-sm font-medium mb-2 block">
+                  Select Chain
+                </label>
                 <div className="flex gap-2">
-                  <Button
-                    {...(selectedChain !== "base" && { outline: true })}
-                    onClick={() => setSelectedChain("base")}
-                    disabled={!evmAddress}
-                  >
-                    Base {!evmAddress && "(Not Connected)"}
-                  </Button>
-                  <Button
-                    {...(selectedChain !== "solana" && { outline: true })}
-                    onClick={() => setSelectedChain("solana")}
-                    disabled={!solanaAddress}
-                  >
-                    Solana {!solanaAddress && "(Not Connected)"}
-                  </Button>
+                  {selectedChain === "base" ? (
+                    <Button
+                      onClick={() => setSelectedChain("base")}
+                      disabled={!evmAddress}
+                    >
+                      Base {!evmAddress && "(Not Connected)"}
+                    </Button>
+                  ) : (
+                    <Button
+                      outline
+                      onClick={() => setSelectedChain("base")}
+                      disabled={!evmAddress}
+                    >
+                      Base {!evmAddress && "(Not Connected)"}
+                    </Button>
+                  )}
+                  {selectedChain === "solana" ? (
+                    <Button
+                      onClick={() => setSelectedChain("solana")}
+                      disabled={!solanaAddress}
+                    >
+                      Solana {!solanaAddress && "(Not Connected)"}
+                    </Button>
+                  ) : (
+                    <Button
+                      outline
+                      onClick={() => setSelectedChain("solana")}
+                      disabled={!solanaAddress}
+                    >
+                      Solana {!solanaAddress && "(Not Connected)"}
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -489,21 +642,32 @@ export function RegisterTokenModal({
                           <div className="flex justify-between items-start">
                             <div className="flex-1">
                               <div className="font-medium">{token.symbol}</div>
-                              <div className="text-sm text-zinc-600 dark:text-zinc-400">{token.name}</div>
+                              <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                                {token.name}
+                              </div>
                               <div className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">
-                                Balance: {(BigInt(token.balance) / BigInt(10 ** token.decimals)).toString()}
+                                Balance:{" "}
+                                {(
+                                  BigInt(token.balance) /
+                                  BigInt(10 ** token.decimals)
+                                ).toString()}
                               </div>
                               <div className="text-xs font-mono text-zinc-500 dark:text-zinc-500 mt-1">
-                                {token.address.slice(0, 6)}...{token.address.slice(-4)}
+                                {token.address.slice(0, 6)}...
+                                {token.address.slice(-4)}
                               </div>
                             </div>
                             {token.logoUrl && (
-                              <img 
-                                src={token.logoUrl} 
-                                alt={token.symbol} 
-                                className="w-12 h-12 rounded-full ml-3" 
+                              <Image
+                                src={token.logoUrl}
+                                alt={token.symbol}
+                                className="rounded-full ml-3"
+                                width={48}
+                                height={48}
+                                unoptimized
                                 onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  (e.target as HTMLImageElement).style.display =
+                                    "none";
                                 }}
                               />
                             )}
@@ -515,7 +679,8 @@ export function RegisterTokenModal({
                   {tokens.filter((t) => t.isRegistered).length > 0 && (
                     <div className="pt-4 border-t dark:border-zinc-800">
                       <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
-                        Already registered ({tokens.filter((t) => t.isRegistered).length}):
+                        Already registered (
+                        {tokens.filter((t) => t.isRegistered).length}):
                       </div>
                       <div className="space-y-1">
                         {tokens
@@ -525,9 +690,15 @@ export function RegisterTokenModal({
                               key={token.address}
                               className="p-2 text-sm bg-zinc-100 dark:bg-zinc-800 rounded flex items-center gap-2"
                             >
-                              <span className="text-green-600 dark:text-green-400">✓</span>
-                              <span className="font-medium">{token.symbol}</span>
-                              <span className="text-zinc-600 dark:text-zinc-400">- {token.name}</span>
+                              <span className="text-green-600 dark:text-green-400">
+                                ✓
+                              </span>
+                              <span className="font-medium">
+                                {token.symbol}
+                              </span>
+                              <span className="text-zinc-600 dark:text-zinc-400">
+                                - {token.name}
+                              </span>
                             </div>
                           ))}
                       </div>
@@ -537,19 +708,25 @@ export function RegisterTokenModal({
               ) : (
                 <div className="text-center py-8 text-zinc-600 dark:text-zinc-400">
                   <p>No tokens found in your wallet</p>
-                  <p className="text-sm mt-1">You can still register a token manually below</p>
+                  <p className="text-sm mt-1">
+                    You can still register a token manually below
+                  </p>
                 </div>
               )}
 
               <div className="pt-4 border-t dark:border-zinc-800 space-y-2">
-                <div className="text-sm font-medium mb-2">Or enter token address manually:</div>
+                <div className="text-sm font-medium mb-2">
+                  Or enter token address manually:
+                </div>
                 <input
                   type="text"
                   placeholder={`Paste ${selectedChain} token address...`}
                   className="w-full px-3 py-2 border rounded-lg text-sm dark:bg-zinc-800 dark:border-zinc-700"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      const address = (e.target as HTMLInputElement).value.trim();
+                      const address = (
+                        e.target as HTMLInputElement
+                      ).value.trim();
                       if (address) {
                         handleSelectToken({
                           address,
@@ -569,7 +746,11 @@ export function RegisterTokenModal({
                 </p>
               </div>
 
-              <Button outline onClick={() => setStep("scan")} className="w-full">
+              <Button
+                outline
+                onClick={() => setStep("scan")}
+                className="w-full"
+              >
                 Back
               </Button>
             </div>
@@ -586,7 +767,7 @@ export function RegisterTokenModal({
                 <div className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
                   {selectedChain === "base"
                     ? "Searching Uniswap V3 pools"
-                    : "Checking Pyth, Jupiter, and Raydium"}
+                    : "Checking PumpSwap, Raydium, and other pools"}
                 </div>
               </div>
             </div>
@@ -609,14 +790,30 @@ export function RegisterTokenModal({
                 <div className="flex justify-between">
                   <span className="text-sm font-medium">Oracle:</span>
                   <span className="text-sm">
-                    {poolInfo ? formatPoolInfo(poolInfo) : oracleInfo ? formatOracleInfo(oracleInfo) : "N/A"}
+                    {selectedChain === "base" && poolInfo
+                      ? formatPoolInfo(poolInfo)
+                      : selectedChain === "solana" && solanaPoolInfo
+                        ? `${solanaPoolInfo.protocol} Pool (${solanaPoolInfo.baseToken}) - TVL: $${Math.floor(solanaPoolInfo.tvlUsd).toLocaleString()}`
+                        : oracleInfo
+                          ? formatOracleInfo(oracleInfo)
+                          : "N/A"}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm font-medium">Registration Cost:</span>
-                  <span className="text-sm font-mono">{getRegistrationCost()}</span>
+                  <span className="text-sm font-medium">
+                    Registration Cost:
+                  </span>
+                  <span className="text-sm font-mono">
+                    {getRegistrationCost()}
+                  </span>
                 </div>
               </div>
+
+              {warning && (
+                <div className="p-3 rounded bg-yellow-500/10 border border-yellow-500/20 text-yellow-600 dark:text-yellow-400 text-sm">
+                  ⚠️ {warning}
+                </div>
+              )}
 
               {error && (
                 <div className="p-3 rounded bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-sm">
@@ -625,10 +822,18 @@ export function RegisterTokenModal({
               )}
 
               <div className="flex gap-2">
-                <Button outline onClick={() => setStep("select")} className="flex-1">
+                <Button
+                  outline
+                  onClick={() => setStep("select")}
+                  className="flex-1"
+                >
                   Cancel
                 </Button>
-                <Button onClick={handleRegister} disabled={loading} className="flex-1">
+                <Button
+                  onClick={handleRegister}
+                  disabled={loading}
+                  className="flex-1"
+                >
                   {loading ? "Registering..." : "Pay & Register"}
                 </Button>
               </div>

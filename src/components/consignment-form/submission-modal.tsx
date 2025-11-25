@@ -39,24 +39,28 @@ export function SubmissionModal({
 }: SubmissionModalProps) {
   const router = useRouter();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [contractConsignmentId, setContractConsignmentId] = useState<string | null>(null);
+  const [contractConsignmentId, setContractConsignmentId] = useState<
+    string | null
+  >(null);
   const [isComplete, setIsComplete] = useState(false);
   const [hasStartedProcessing, setHasStartedProcessing] = useState(false);
   const [steps, setSteps] = useState<SubmissionStep[]>([
-    ...(activeFamily !== "solana" ? [
-      {
-        id: "approve",
-        label: "Approve Token Transfer",
-        status: "pending" as const,
-        canRetry: true,
-      },
-      {
-        id: "create-onchain",
-        label: "Create Consignment On-Chain",
-        status: "pending" as const,
-        canRetry: true,
-      },
-    ] : []),
+    ...(activeFamily !== "solana"
+      ? [
+          {
+            id: "approve",
+            label: "Approve Token Transfer",
+            status: "pending" as const,
+            canRetry: true,
+          },
+          {
+            id: "create-onchain",
+            label: "Create Consignment On-Chain",
+            status: "pending" as const,
+            canRetry: true,
+          },
+        ]
+      : []),
     {
       id: "save-db",
       label: "Save to Database",
@@ -76,7 +80,7 @@ export function SubmissionModal({
 
   const updateStep = (id: string, updates: Partial<SubmissionStep>) => {
     setSteps((prev) =>
-      prev.map((step) => (step.id === id ? { ...step, ...updates } : step))
+      prev.map((step) => (step.id === id ? { ...step, ...updates } : step)),
     );
   };
 
@@ -110,7 +114,8 @@ export function SubmissionModal({
         await handleComplete();
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       updateStep(currentStep.id, {
         status: "error",
         errorMessage,
@@ -124,7 +129,9 @@ export function SubmissionModal({
       updateStep("approve", { txHash });
     } catch (error) {
       if (error instanceof Error && error.message.includes("rejected")) {
-        throw new Error("Token approval was rejected. Click retry to try again.");
+        throw new Error(
+          "Token approval was rejected. Click retry to try again.",
+        );
       }
       throw error;
     }
@@ -137,7 +144,9 @@ export function SubmissionModal({
       updateStep("create-onchain", { txHash: result.txHash });
     } catch (error) {
       if (error instanceof Error && error.message.includes("rejected")) {
-        throw new Error("Consignment creation was rejected. Your token approval is still active. Click retry to try again.");
+        throw new Error(
+          "Consignment creation was rejected. Your token approval is still active. Click retry to try again.",
+        );
       }
       throw error;
     }
@@ -157,7 +166,9 @@ export function SubmissionModal({
       });
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({ error: "Unknown error" }));
+        const data = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
         throw new Error(data.error || "Failed to save to database");
       }
 
@@ -169,7 +180,7 @@ export function SubmissionModal({
     } catch (error) {
       if (contractConsignmentId) {
         throw new Error(
-          `Your consignment is on-chain (ID: ${contractConsignmentId}) but failed to save to our database. Click retry to try saving again.`
+          `Your consignment is on-chain (ID: ${contractConsignmentId}) but failed to save to our database. Click retry to try saving again.`,
         );
       }
       throw error;
@@ -196,11 +207,17 @@ export function SubmissionModal({
 
   const handleCancel = () => {
     const hasStartedOnchainWork = steps.some(
-      (step) => (step.id === "approve" || step.id === "create-onchain") && step.status === "complete"
+      (step) =>
+        (step.id === "approve" || step.id === "create-onchain") &&
+        step.status === "complete",
     );
 
     if (hasStartedOnchainWork && !isComplete) {
-      if (!confirm("You've already submitted transactions on-chain. Are you sure you want to close? You can retry later if needed.")) {
+      if (
+        !confirm(
+          "You've already submitted transactions on-chain. Are you sure you want to close? You can retry later if needed.",
+        )
+      ) {
         return;
       }
     }
@@ -313,7 +330,8 @@ export function SubmissionModal({
                     Success
                   </p>
                   <p className="text-sm text-green-700 dark:text-green-300">
-                    Your consignment has been created. Redirecting to your deals...
+                    Your consignment has been created. Redirecting to your
+                    deals...
                   </p>
                 </div>
               </div>
@@ -340,4 +358,3 @@ export function SubmissionModal({
     </div>
   );
 }
-

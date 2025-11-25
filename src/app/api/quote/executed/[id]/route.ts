@@ -50,7 +50,7 @@ export async function GET(
     transactionHash: quote.transactionHash,
     blockNumber: quote.blockNumber,
     // Optional chain hint for UI display ("evm" | "solana")
-    chain: (quote as any).chain,
+    chain: quote.chain,
   };
 
   return NextResponse.json({ success: true, quote: formattedQuote });

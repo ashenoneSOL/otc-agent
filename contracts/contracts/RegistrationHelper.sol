@@ -171,6 +171,11 @@ contract RegistrationHelper is Ownable {
             tokenAddress,
             ethUsdFeed
         );
+        
+        // Transfer ownership to the RegistrationHelper's owner (protocol admin)
+        // This allows the protocol to update TWAP intervals or the ETH feed if needed
+        poolOracle.transferOwnership(owner());
+        
         oracle = address(poolOracle);
         
         // Register token to OTC

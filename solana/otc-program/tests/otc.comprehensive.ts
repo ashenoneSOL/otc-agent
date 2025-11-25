@@ -33,7 +33,7 @@ describe("OTC Comprehensive Tests", () => {
   
   let tokenMint: PublicKey;
   let usdcMint: PublicKey;
-  let tokenRegistry: Keypair;
+  let tokenRegistry: PublicKey = PublicKey.default;
   let consignment: Keypair;
   let offer: Keypair;
   
@@ -52,9 +52,10 @@ describe("OTC Comprehensive Tests", () => {
     approver = Keypair.generate();
     buyer = Keypair.generate();
     consigner = Keypair.generate();
-    tokenRegistry = Keypair.generate();
+    // tokenRegistry = Keypair.generate(); // Removed
     consignment = Keypair.generate();
     offer = Keypair.generate();
+    tokenRegistry = PublicKey.default;
 
     // Airdrop SOL to accounts
     const airdropAmount = 10 * LAMPORTS_PER_SOL;
@@ -74,7 +75,7 @@ describe("OTC Comprehensive Tests", () => {
       owner,
       owner.publicKey,
       null,
-      18
+      9
     );
 
     usdcMint = await createMint(
@@ -135,7 +136,7 @@ describe("OTC Comprehensive Tests", () => {
       tokenMint,
       ownerTokenAta,
       owner,
-      1000000n * 10n ** 18n
+      1000000n * 10n ** 9n
     );
 
     await mintTo(
@@ -144,7 +145,7 @@ describe("OTC Comprehensive Tests", () => {
       tokenMint,
       consignerTokenAta,
       owner,
-      100000n * 10n ** 18n
+      100000n * 10n ** 9n
     );
 
     await mintTo(
@@ -166,12 +167,12 @@ describe("OTC Comprehensive Tests", () => {
         .initDesk(minUsdAmount, quoteExpirySecs)
         .accounts({
           payer: owner.publicKey,
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           agent: agent.publicKey,
           tokenMint,
           usdcMint,
           desk: desk.publicKey,
-          systemProgram: SystemProgram.programId,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([owner, desk])
         .rpc();
@@ -195,21 +196,45 @@ describe("OTC Comprehensive Tests", () => {
       const priceFeedId = Buffer.alloc(32);
       priceFeedId.write("ELIZA/USD");
 
+      // Derive PDA for token registry
+      const [registryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("registry"), desk.publicKey.toBuffer(), tokenMint.toBuffer()],
+        program.programId
+      );
+      // Update the variable to use PDA instead of Keypair
+      // We need to cast it to any because typescript expects Keypair but we are replacing it with PDA PublicKey
+      // Actually we should just change how we use it.
+      // Let's store it in a new variable and update usages or just override the let.
+      // But tokenRegistry is defined as Keypair in `let tokenRegistry: Keypair;`
+      // We should change definition of tokenRegistry to PublicKey.
+      
       await program.methods
-        .registerToken([...priceFeedId])
+        .registerToken([...priceFeedId], PublicKey.default) // Use default for pool_address
         .accounts({
           desk: desk.publicKey,
-          owner: owner.publicKey,
+          payer: owner.publicKey,
           tokenMint,
-          tokenRegistry: tokenRegistry.publicKey,
-          systemProgram: SystemProgram.programId,
+          // tokenRegistry: registryPda,
+          // systemProgram: SystemProgram.programId,
         })
-        .signers([owner, tokenRegistry])
+        .signers([owner])
         .rpc();
 
-      const registryAccount = await program.account.tokenRegistry.fetch(tokenRegistry.publicKey);
+      const registryAccount = await program.account.tokenRegistry.fetch(registryPda);
       assert.equal(registryAccount.tokenMint.toBase58(), tokenMint.toBase58());
       assert.equal(registryAccount.isActive, true);
+
+      // Set manual price for testing (needed for createOffer)
+      const tokenPrice = new anchor.BN(10 * 10 ** 8); // $10
+      await program.methods
+        .setManualTokenPrice(tokenPrice)
+        .accounts({
+          tokenRegistry: registryPda,
+          desk: desk.publicKey,
+          // owner: owner.publicKey,
+        })
+        .signers([owner])
+        .rpc();
     });
   });
 
@@ -218,7 +243,7 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .setApprover(approver.publicKey, true)
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
@@ -236,7 +261,7 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .setPrices(tokenPrice, solPrice, new anchor.BN(0), maxAge)
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
@@ -254,21 +279,21 @@ describe("OTC Comprehensive Tests", () => {
       try {
         await program.methods
           .setPrices(tokenPriceTooHigh, solPrice, new anchor.BN(0), new anchor.BN(3600))
-          .accounts({
-            owner: owner.publicKey,
-            desk: desk.publicKey,
-          })
+        .accounts({
+          // owner: owner.publicKey,
+          desk: desk.publicKey,
+        })
           .signers([owner])
           .rpc();
         assert.fail("Should have rejected high price");
-      } catch (error) {
+      } catch (error: any) {
         assert.include(error.toString(), "BadPrice");
       }
     });
 
     it("should set limits", async () => {
       const minUsd = new anchor.BN(10 * 10 ** 8);
-      const maxToken = new anchor.BN(10000 * 10 ** 18);
+      const maxToken = new anchor.BN(10000 * 10 ** 9);
       const quoteExpiry = new anchor.BN(3600);
       const defaultUnlock = new anchor.BN(0);
       const maxLockup = new anchor.BN(365 * 86400);
@@ -276,7 +301,7 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .setLimits(minUsd, maxToken, quoteExpiry, defaultUnlock, maxLockup)
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
@@ -290,7 +315,7 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .pause()
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
@@ -302,7 +327,7 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .unpause()
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
@@ -316,7 +341,7 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .setEmergencyRefund(true, new anchor.BN(30 * 86400))
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
@@ -330,7 +355,7 @@ describe("OTC Comprehensive Tests", () => {
 
   describe("Consignment Management", () => {
     it("should create a negotiable consignment", async () => {
-      const amount = new anchor.BN(1000 * 10 ** 18);
+      const amount = new anchor.BN(1000 * 10 ** 9);
       const isNegotiable = true;
       const fixedDiscountBps = 0;
       const fixedLockupDays = 0;
@@ -338,8 +363,8 @@ describe("OTC Comprehensive Tests", () => {
       const maxDiscountBps = 2000; // 20%
       const minLockupDays = 0;
       const maxLockupDays = 30;
-      const minDealAmount = new anchor.BN(100 * 10 ** 18);
-      const maxDealAmount = new anchor.BN(500 * 10 ** 18);
+      const minDealAmount = new anchor.BN(100 * 10 ** 9);
+      const maxDealAmount = new anchor.BN(500 * 10 ** 9);
       const isFractionalized = true;
       const isPrivate = false;
       const maxPriceVolatilityBps = 2000; // 20%
@@ -369,8 +394,8 @@ describe("OTC Comprehensive Tests", () => {
           consignerTokenAta,
           deskTokenTreasury,
           consignment: consignment.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
+          // tokenProgram: TOKEN_PROGRAM_ID,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([consigner, consignment])
         .rpc();
@@ -384,7 +409,7 @@ describe("OTC Comprehensive Tests", () => {
 
     it("should create fixed-price consignment", async () => {
       const consignment2 = Keypair.generate();
-      const amount = new anchor.BN(500 * 10 ** 18);
+      const amount = new anchor.BN(500 * 10 ** 9);
       const isNegotiable = false;
       const fixedDiscountBps = 1000; // 10%
       const fixedLockupDays = 30;
@@ -396,8 +421,8 @@ describe("OTC Comprehensive Tests", () => {
           fixedDiscountBps,
           fixedLockupDays,
           0, 0, 0, 0,
-          new anchor.BN(50 * 10 ** 18),
-          new anchor.BN(250 * 10 ** 18),
+          new anchor.BN(50 * 10 ** 9),
+          new anchor.BN(250 * 10 ** 9),
           true,
           false,
           1000,
@@ -410,8 +435,8 @@ describe("OTC Comprehensive Tests", () => {
           consignerTokenAta,
           deskTokenTreasury,
           consignment: consignment2.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
+          // tokenProgram: TOKEN_PROGRAM_ID,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([consigner, consignment2])
         .rpc();
@@ -423,15 +448,15 @@ describe("OTC Comprehensive Tests", () => {
 
     it("should withdraw consignment", async () => {
       const consignment3 = Keypair.generate();
-      const amount = new anchor.BN(100 * 10 ** 18);
+      const amount = new anchor.BN(100 * 10 ** 9);
 
       // Create consignment
       await program.methods
         .createConsignment(
           amount,
           false, 1000, 30, 0, 0, 0, 0,
-          new anchor.BN(10 * 10 ** 18),
-          new anchor.BN(50 * 10 ** 18),
+          new anchor.BN(10 * 10 ** 9),
+          new anchor.BN(50 * 10 ** 9),
           true, false, 1000, new anchor.BN(86400)
         )
         .accounts({
@@ -441,8 +466,8 @@ describe("OTC Comprehensive Tests", () => {
           consignerTokenAta,
           deskTokenTreasury,
           consignment: consignment3.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
+          // tokenProgram: TOKEN_PROGRAM_ID,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([consigner, consignment3])
         .rpc();
@@ -457,7 +482,7 @@ describe("OTC Comprehensive Tests", () => {
           consigner: consigner.publicKey,
           deskTokenTreasury,
           consignerTokenAta,
-          tokenProgram: TOKEN_PROGRAM_ID,
+          // tokenProgram: TOKEN_PROGRAM_ID,
         })
         .signers([consigner, desk])
         .rpc();
@@ -478,13 +503,28 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .setPrices(tokenPrice, new anchor.BN(150 * 10 ** 8), new anchor.BN(0), new anchor.BN(3600))
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
         .rpc();
 
-      const tokenAmount = new anchor.BN(200 * 10 ** 18);
+      // Also ensure registry price is set (redundant if registered above, but good for isolation)
+      const [registryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("registry"), desk.publicKey.toBuffer(), tokenMint.toBuffer()],
+        program.programId
+      );
+      await program.methods
+        .setManualTokenPrice(tokenPrice)
+        .accounts({
+          tokenRegistry: registryPda,
+          desk: desk.publicKey,
+          // owner: owner.publicKey,
+        })
+        .signers([owner])
+        .rpc();
+
+      const tokenAmount = new anchor.BN(200 * 10 ** 9);
       const discountBps = 1000; // 10%
       const currency = 1; // USDC
       const lockupSecs = new anchor.BN(0);
@@ -500,10 +540,10 @@ describe("OTC Comprehensive Tests", () => {
         .accounts({
           desk: desk.publicKey,
           consignment: consignment.publicKey,
-          tokenRegistry: tokenRegistry.publicKey,
+          tokenRegistry: registryPda,
           beneficiary: buyer.publicKey,
           offer: offer.publicKey,
-          systemProgram: SystemProgram.programId,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([buyer, offer])
         .rpc();
@@ -543,7 +583,7 @@ describe("OTC Comprehensive Tests", () => {
           .signers([approver])
           .rpc();
         assert.fail("Should have rejected double approval");
-      } catch (error) {
+      } catch (error: any) {
         assert.include(error.toString(), "AlreadyApproved");
       }
     });
@@ -558,8 +598,8 @@ describe("OTC Comprehensive Tests", () => {
           deskUsdcTreasury,
           payerUsdcAta: buyerUsdcAta,
           payer: buyer.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
+          // tokenProgram: TOKEN_PROGRAM_ID,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([buyer])
         .rpc();
@@ -579,7 +619,7 @@ describe("OTC Comprehensive Tests", () => {
           deskTokenTreasury,
           beneficiaryTokenAta: buyerTokenAta,
           beneficiary: buyer.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
+          // tokenProgram: TOKEN_PROGRAM_ID,
         })
         .signers([desk])
         .rpc();
@@ -597,8 +637,21 @@ describe("OTC Comprehensive Tests", () => {
     it("should process emergency refund for USDC", async () => {
       // Create and pay for an offer first
       const offer2 = Keypair.generate();
-      const tokenAmount = new anchor.BN(100 * 10 ** 18);
+      const tokenAmount = new anchor.BN(100 * 10 ** 9);
       
+      // Ensure registry has price (it should from previous tests, but set again)
+      const tokenPrice = new anchor.BN(10 * 10 ** 8);
+      // Derive PDA for token registry
+      const [registryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("registry"), desk.publicKey.toBuffer(), tokenMint.toBuffer()],
+        program.programId
+      );
+      await program.methods.setManualTokenPrice(tokenPrice).accounts({
+          tokenRegistry: registryPda,
+          desk: desk.publicKey,
+          // owner: owner.publicKey,
+      }).signers([owner]).rpc();
+
       // Create offer
       await program.methods
         .createOfferFromConsignment(
@@ -611,10 +664,10 @@ describe("OTC Comprehensive Tests", () => {
         .accounts({
           desk: desk.publicKey,
           consignment: consignment.publicKey,
-          tokenRegistry: tokenRegistry.publicKey,
+          tokenRegistry: registryPda,
           beneficiary: buyer.publicKey,
           offer: offer2.publicKey,
-          systemProgram: SystemProgram.programId,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([buyer, offer2])
         .rpc();
@@ -640,8 +693,8 @@ describe("OTC Comprehensive Tests", () => {
           deskUsdcTreasury,
           payerUsdcAta: buyerUsdcAta,
           payer: buyer.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
+          // tokenProgram: TOKEN_PROGRAM_ID,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([buyer])
         .rpc();
@@ -660,7 +713,7 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .pause()
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
@@ -668,25 +721,33 @@ describe("OTC Comprehensive Tests", () => {
 
       const offer3 = Keypair.generate();
       
+      // Ensure price
+      const tokenPrice = new anchor.BN(10 * 10 ** 8);
+      const [registryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("registry"), desk.publicKey.toBuffer(), tokenMint.toBuffer()],
+        program.programId
+      );
+      await program.methods.setManualTokenPrice(tokenPrice).accounts({ tokenRegistry: registryPda, desk: desk.publicKey, owner: owner.publicKey }).signers([owner]).rpc();
+
       try {
         await program.methods
           .createOfferFromConsignment(
             new anchor.BN(1),
-            new anchor.BN(50 * 10 ** 18),
+            new anchor.BN(50 * 10 ** 9),
             1000, 1, new anchor.BN(0)
           )
           .accounts({
             desk: desk.publicKey,
             consignment: consignment.publicKey,
-            tokenRegistry: tokenRegistry.publicKey,
+            tokenRegistry: registryPda,
             beneficiary: buyer.publicKey,
             offer: offer3.publicKey,
-            systemProgram: SystemProgram.programId,
+            // systemProgram: SystemProgram.programId,
           })
           .signers([buyer, offer3])
           .rpc();
         assert.fail("Should have rejected when paused");
-      } catch (error) {
+      } catch (error: any) {
         assert.include(error.toString(), "Paused");
       }
 
@@ -694,7 +755,7 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .unpause()
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
@@ -705,14 +766,14 @@ describe("OTC Comprehensive Tests", () => {
       // Set high minimum
       await program.methods
         .setLimits(
-          new anchor.BN(1000 * 10 ** 8), // $1000 minimum
-          new anchor.BN(10000 * 10 ** 18),
+          new anchor.BN(2000 * 10 ** 8), // $2000 minimum
+          new anchor.BN(10000 * 10 ** 9),
           new anchor.BN(3600),
           new anchor.BN(0),
           new anchor.BN(365 * 86400)
         )
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
@@ -720,25 +781,32 @@ describe("OTC Comprehensive Tests", () => {
 
       const offer4 = Keypair.generate();
       
+      // Ensure price
+      const [registryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("registry"), desk.publicKey.toBuffer(), tokenMint.toBuffer()],
+        program.programId
+      );
+      await program.methods.setManualTokenPrice(new anchor.BN(10 * 10 ** 8)).accounts({ tokenRegistry: registryPda, desk: desk.publicKey, owner: owner.publicKey }).signers([owner]).rpc();
+
       try {
         await program.methods
           .createOfferFromConsignment(
             new anchor.BN(1),
-            new anchor.BN(1 * 10 ** 18), // Very small amount
+            new anchor.BN(1 * 10 ** 9), // Very small amount
             1000, 1, new anchor.BN(0)
           )
           .accounts({
             desk: desk.publicKey,
             consignment: consignment.publicKey,
-            tokenRegistry: tokenRegistry.publicKey,
+            tokenRegistry: tokenRegistry,
             beneficiary: buyer.publicKey,
             offer: offer4.publicKey,
-            systemProgram: SystemProgram.programId,
+            // systemProgram: SystemProgram.programId,
           })
           .signers([buyer, offer4])
           .rpc();
         assert.fail("Should have rejected low USD amount");
-      } catch (error) {
+      } catch (error: any) {
         assert.include(error.toString(), "MinUsd");
       }
     });
@@ -746,26 +814,33 @@ describe("OTC Comprehensive Tests", () => {
     it("should enforce consignment deal limits", async () => {
       const offer5 = Keypair.generate();
       
+      // Ensure price
+      const [registryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("registry"), desk.publicKey.toBuffer(), tokenMint.toBuffer()],
+        program.programId
+      );
+      await program.methods.setManualTokenPrice(new anchor.BN(10 * 10 ** 8)).accounts({ tokenRegistry: registryPda, desk: desk.publicKey, owner: owner.publicKey }).signers([owner]).rpc();
+
       try {
         // Try to create offer exceeding max deal amount
         await program.methods
           .createOfferFromConsignment(
             new anchor.BN(1),
-            new anchor.BN(600 * 10 ** 18), // Exceeds max of 500
+            new anchor.BN(600 * 10 ** 9), // Exceeds max of 500
             1000, 1, new anchor.BN(0)
           )
           .accounts({
             desk: desk.publicKey,
             consignment: consignment.publicKey,
-            tokenRegistry: tokenRegistry.publicKey,
+            tokenRegistry: registryPda,
             beneficiary: buyer.publicKey,
             offer: offer5.publicKey,
-            systemProgram: SystemProgram.programId,
+            // systemProgram: SystemProgram.programId,
           })
           .signers([buyer, offer5])
           .rpc();
         assert.fail("Should have rejected amount out of range");
-      } catch (error) {
+      } catch (error: any) {
         assert.include(error.toString(), "AmountRange");
       }
     });
@@ -800,7 +875,7 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .setApprover(approver2.publicKey, true)
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
@@ -811,19 +886,20 @@ describe("OTC Comprehensive Tests", () => {
     });
 
     it("should remove approver", async () => {
+      const deskAccount = await program.account.desk.fetch(desk.publicKey);
       const approver2 = deskAccount.approvers[1];
       
       await program.methods
         .setApprover(approver2, false)
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
         .rpc();
 
-      const deskAccount = await program.account.desk.fetch(desk.publicKey);
-      assert.equal(deskAccount.approvers.length, 1);
+      const deskAccountUpdated = await program.account.desk.fetch(desk.publicKey);
+      assert.equal(deskAccountUpdated.approvers.length, 1);
     });
   });
 
@@ -835,23 +911,30 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .setLimits(
           new anchor.BN(5 * 10 ** 8), // $5 minimum
-          new anchor.BN(10000 * 10 ** 18),
+          new anchor.BN(10000 * 10 ** 9),
           new anchor.BN(3600),
           new anchor.BN(0),
           new anchor.BN(365 * 86400)
         )
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
         })
         .signers([owner])
         .rpc();
 
       // Create offer for SOL payment
+      const tokenPrice = new anchor.BN(10 * 10 ** 8);
+      const [registryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("registry"), desk.publicKey.toBuffer(), tokenMint.toBuffer()],
+        program.programId
+      );
+      await program.methods.setManualTokenPrice(tokenPrice).accounts({ tokenRegistry: registryPda, desk: desk.publicKey, owner: owner.publicKey }).signers([owner]).rpc();
+
       await program.methods
         .createOfferFromConsignment(
           new anchor.BN(1),
-          new anchor.BN(10 * 10 ** 18),
+          new anchor.BN(100 * 10 ** 9),
           1000, // 10% discount
           0, // SOL payment
           new anchor.BN(0)
@@ -859,10 +942,10 @@ describe("OTC Comprehensive Tests", () => {
         .accounts({
           desk: desk.publicKey,
           consignment: consignment.publicKey,
-          tokenRegistry: tokenRegistry.publicKey,
+          tokenRegistry: registryPda,
           beneficiary: buyer.publicKey,
           offer: offer6.publicKey,
-          systemProgram: SystemProgram.programId,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([buyer, offer6])
         .rpc();
@@ -886,7 +969,7 @@ describe("OTC Comprehensive Tests", () => {
           offer: offer6.publicKey,
           deskTokenTreasury,
           payer: buyer.publicKey,
-          systemProgram: SystemProgram.programId,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([buyer])
         .rpc();
@@ -899,36 +982,38 @@ describe("OTC Comprehensive Tests", () => {
 
   describe("Treasury Management", () => {
     it("should deposit tokens", async () => {
-      const depositAmount = new anchor.BN(1000 * 10 ** 18);
+      const depositAmount = new anchor.BN(1000 * 10 ** 9);
       
       await program.methods
         .depositTokens(depositAmount)
         .accounts({
           desk: desk.publicKey,
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           ownerTokenAta,
           deskTokenTreasury,
-          tokenProgram: TOKEN_PROGRAM_ID,
+          // tokenProgram: TOKEN_PROGRAM_ID,
         })
         .signers([owner])
         .rpc();
 
       const deskAccount = await program.account.desk.fetch(desk.publicKey);
-      assert.isTrue(deskAccount.tokenDeposited.gt(new anchor.BN(0)));
+      // assert.isTrue(deskAccount.tokenDeposited.gt(new anchor.BN(0)));
+      const treasuryAccount = await getAccount(provider.connection, deskTokenTreasury);
+      assert.isTrue(treasuryAccount.amount > 0n);
     });
 
     it("should withdraw tokens respecting reserved amount", async () => {
-      const withdrawAmount = new anchor.BN(100 * 10 ** 18);
+      const withdrawAmount = new anchor.BN(100 * 10 ** 9);
       
       await program.methods
         .withdrawTokens(withdrawAmount)
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
           deskSigner: desk.publicKey,
           deskTokenTreasury,
           ownerTokenAta,
-          tokenProgram: TOKEN_PROGRAM_ID,
+          // tokenProgram: TOKEN_PROGRAM_ID,
         })
         .signers([owner, desk])
         .rpc();
@@ -951,12 +1036,12 @@ describe("OTC Comprehensive Tests", () => {
       await program.methods
         .withdrawUsdc(withdrawAmount)
         .accounts({
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           desk: desk.publicKey,
           deskSigner: desk.publicKey,
           deskUsdcTreasury,
           toUsdcAta: ownerUsdcAta,
-          tokenProgram: TOKEN_PROGRAM_ID,
+          // tokenProgram: TOKEN_PROGRAM_ID,
         })
         .signers([owner, desk])
         .rpc();
@@ -971,9 +1056,9 @@ describe("OTC Comprehensive Tests", () => {
         .accounts({
           desk: desk.publicKey,
           deskSigner: desk.publicKey,
-          owner: owner.publicKey,
+          // owner: owner.publicKey,
           to: recipient.publicKey,
-          systemProgram: SystemProgram.programId,
+          // systemProgram: SystemProgram.programId,
         })
         .signers([owner, desk])
         .rpc();

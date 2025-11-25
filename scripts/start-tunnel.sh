@@ -42,7 +42,7 @@ fi
 PORT=${PORT:-5004}
 if ! lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1 ; then
     echo -e "${YELLOW}⚠️  Local server not detected on port $PORT${NC}"
-    echo -e "${YELLOW}Make sure to run 'npm run dev' in another terminal first${NC}"
+    echo -e "${YELLOW}Make sure to run 'bun run dev' in another terminal first${NC}"
     echo ""
     read -p "Continue anyway? (y/n) " -n 1 -r
     echo

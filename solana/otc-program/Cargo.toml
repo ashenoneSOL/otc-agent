@@ -8,5 +8,6 @@ resolver = "2"
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
-
-
+panic = "abort"
+strip = true
+opt-level = "z"

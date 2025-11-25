@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
+import type { Memory, UUID } from "@elizaos/core";
 import { agentRuntime } from "@/lib/agent-runtime";
 
+// Extended Memory type with optional createdAt
+interface MemoryWithTimestamp extends Memory {
+  createdAt?: number;
+}
+
+// Next.js route context type
+interface RouteContext {
+  params: Promise<{ roomId: string }>;
+}
+
 // POST /api/rooms/[roomId]/messages - Send a message
-export async function POST(request: Request, ctx: any) {
+export async function POST(request: Request, ctx: RouteContext) {
   const { roomId } = await ctx.params;
   const body = await request.json();
   const { entityId, text, attachments } = body;
@@ -30,10 +41,10 @@ export async function POST(request: Request, ctx: any) {
 
   // Handle the message - pass wallet address directly
   // The action handlers will convert to UUID for cache storage when needed
-  const message = await agentRuntime.handleMessage(roomId, entityId as any, {
+  const message = (await agentRuntime.handleMessage(roomId, entityId, {
     text,
     attachments: attachments || [],
-  });
+  })) as MemoryWithTimestamp;
 
   console.log(`[Messages API] Message sent successfully`, {
     roomId,
@@ -46,12 +57,8 @@ export async function POST(request: Request, ctx: any) {
     success: true,
     message: {
       id: message.id,
-      entityId:
-        (message as any).entityId ||
-        (message as any).userID ||
-        (message as any).user_id ||
-        "",
-      agentId: (message as any).agentId,
+      entityId: message.entityId || "",
+      agentId: message.agentId,
       content: message.content,
       createdAt: message.createdAt,
       roomId,
@@ -64,7 +71,7 @@ export async function POST(request: Request, ctx: any) {
 }
 
 // GET /api/rooms/[roomId]/messages - Get messages (for polling)
-export async function GET(request: Request, ctx: any) {
+export async function GET(request: Request, ctx: RouteContext) {
   const { roomId } = await ctx.params;
   const { searchParams } = new URL(request.url);
   const limit = searchParams.get("limit");
@@ -75,24 +82,24 @@ export async function GET(request: Request, ctx: any) {
   }
 
   const runtime = await agentRuntime.getRuntime();
-  const messages = await runtime.getMemories({
+  const messages = (await runtime.getMemories({
     tableName: "messages",
-    roomId: roomId as any,
+    roomId: roomId as UUID,
     count: limit ? parseInt(limit) : 100, // Higher count for polling to catch all new messages
     unique: false,
-  });
+  })) as MemoryWithTimestamp[];
 
   // Filter messages by timestamp if provided (for polling)
   const afterTimestampNum = afterTimestamp ? parseInt(afterTimestamp) : 0;
   const filteredMessages = afterTimestamp
     ? messages.filter((msg) => {
-        const msgTime = (msg as any).createdAt;
+        const msgTime = msg.createdAt ?? 0;
         return msgTime > afterTimestampNum;
       })
     : messages;
 
   const simple = filteredMessages.map((msg) => {
-    let parsedContent: any = msg.content;
+    let parsedContent = msg.content;
     if (typeof msg.content === "string") {
       parsedContent = JSON.parse(msg.content);
     }
@@ -101,7 +108,7 @@ export async function GET(request: Request, ctx: any) {
       entityId: msg.entityId,
       agentId: msg.agentId,
       content: parsedContent,
-      createdAt: (msg as any).createdAt,
+      createdAt: msg.createdAt ?? 0,
       isAgent: msg.entityId === msg.agentId,
     };
   });

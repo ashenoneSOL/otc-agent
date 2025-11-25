@@ -12,11 +12,6 @@ base.setTimeout(600000);
 const JEJU_RPC = process.env.NEXT_PUBLIC_JEJU_RPC_URL || 'http://127.0.0.1:9545';
 const JEJU_CHAIN_ID = 1337;
 
-
-// Use Jeju Localnet for testing (default network)
-const JEJU_RPC = process.env.NEXT_PUBLIC_JEJU_RPC_URL || 'http://127.0.0.1:9545';
-const JEJU_CHAIN_ID = 1337;
-
 // Extend test with MetaMask wallet fixture
 export const test = base.extend<{ wallet: Dappwright }, { walletContext: BrowserContext }>({
   walletContext: [
@@ -366,7 +361,7 @@ test.describe('Deal Cards', () => {
       await page.waitForTimeout(2000);
       
       // Should navigate somewhere (token page or chat)
-      expect(page.url()).not.toBe('http://localhost:2222/');
+      expect(page.url()).not.toBe('http://localhost:5004/');
     } else {
       // No deals - should show empty state
       await expect(page.getByText(/no.*deal|create listing/i)).toBeVisible();

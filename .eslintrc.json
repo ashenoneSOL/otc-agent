@@ -12,7 +12,7 @@
     "import/order": "off",
     "@typescript-eslint/no-unused-vars": "warn"
   },
-  "ignorePatterns": ["src/templates/files/**/*", "elizaos/**/*"],
+  "ignorePatterns": ["src/templates/files/**/*"],
   "plugins": ["path-alias"],
   "settings": {
     "import/resolver": {

@@ -21,7 +21,7 @@ const ibmPlexMono = IBM_Plex_Mono({
   variable: "--font-ibm-plex-mono",
 });
 
-const appUrl = process.env.NEXT_PUBLIC_URL || "http://localhost:2222";
+const appUrl = process.env.NEXT_PUBLIC_URL || "http://localhost:5004";
 
 // Farcaster Mini App frame configuration
 const frame = {
@@ -69,6 +69,8 @@ export const metadata: Metadata = {
   },
 };
 
+import { DeploymentValidator } from "@/components/deployment-validator";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -77,6 +79,7 @@ export default function RootLayout({
   return (
     <html suppressHydrationWarning lang="en" className={ibmPlexMono.className}>
       <body className="min-h-dvh antialiased bg-white text-black scheme-light dark:bg-black dark:text-white dark:scheme-dark selection:!bg-[#fff0dd] dark:selection:!bg-[#3d2b15] overscroll-none">
+        <DeploymentValidator />
         <Providers>
           <div className="flex h-dvh w-full flex-col overflow-hidden">
             <Header />

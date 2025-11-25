@@ -176,7 +176,7 @@ describe('EVM Contract Test Infrastructure', () => {
     
     const deployScript = path.join(
       process.cwd(),
-      'contracts/script/DeployElizaOTC.s.sol'
+      'contracts/scripts/DeployElizaOTC.s.sol'
     );
     expect(fs.existsSync(deployScript)).toBe(true);
     
@@ -240,7 +240,7 @@ describe('EVM Contract Test Infrastructure', () => {
     console.log('  ⚠️  Artifacts not found, attempting compilation...');
     try {
       const result = await runCommand(
-        'npm',
+        'bun',
         ['run', 'compile'],
         path.join(process.cwd(), 'contracts')
       );
@@ -250,13 +250,13 @@ describe('EVM Contract Test Infrastructure', () => {
         console.log('  ✅ Artifacts generated\n');
         results.contractsDeployed = true;
       } else {
-        console.log('  ⚠️  Compilation skipped (requires Hardhat environment)');
-        console.log('  ℹ️  To compile: cd contracts && npm run compile\n');
+        console.log('  ⚠️  Compilation skipped (check Forge setup)');
+        console.log('  ℹ️  To compile: cd contracts && bun run compile\n');
         results.contractsDeployed = false;
       }
     } catch (error) {
-      console.log('  ⚠️  Compilation skipped (requires Hardhat environment)');
-      console.log('  ℹ️  To compile: cd contracts && npm run compile\n');
+      console.log('  ⚠️  Compilation skipped (check Forge setup)');
+      console.log('  ℹ️  To compile: cd contracts && bun run compile\n');
       results.contractsDeployed = false;
     }
   }, TEST_TIMEOUT);
@@ -421,17 +421,17 @@ describe('Test Summary', () => {
     console.log('For EVM (Ethereum/Base):');
     console.log('  1. ./scripts/start-anvil.sh           # Start Anvil');
     console.log('  2. cd contracts && bun run deploy:eliza # Deploy contracts');
-    console.log('  3. npm run test:e2e                   # Run full E2E test');
+    console.log('  3. bun run test:e2e                   # Run full E2E test');
     console.log('');
     
     console.log('For Solana:');
-    console.log('  1. npm run sol:validator              # Start validator');
-    console.log('  2. npm run sol:deploy                 # Deploy program');
-    console.log('  3. cd solana/otc-program && npm test  # Run tests');
+    console.log('  1. bun run sol:validator              # Start validator');
+    console.log('  2. bun run sol:deploy                 # Deploy program');
+    console.log('  3. cd solana/otc-program && bun test  # Run tests');
     console.log('');
     
     console.log('For Full Stack:');
-    console.log('  1. npm run dev                        # Starts everything');
+    console.log('  1. bun run dev                        # Starts everything');
     console.log('  2. Visit http://localhost:5005        # Test UI');
     console.log('  3. Connect wallet & create quote      # End-to-end flow');
     console.log('');

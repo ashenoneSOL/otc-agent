@@ -5,15 +5,26 @@ import {
   http,
   type Abi,
   type Address,
+  type WalletClient,
+  type Account,
+  type Chain,
+  type Transport,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import type {
+  Transaction,
+  VersionedTransaction,
+  PublicKey as SolanaPublicKey,
+} from "@solana/web3.js";
 import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
 import { agentRuntime } from "@/lib/agent-runtime";
-import { parseOfferStruct } from "@/lib/otc-helpers";
+import { parseOfferStruct, type RawOfferData } from "@/lib/otc-helpers";
 import { getChain, getRpcUrl } from "@/lib/getChain";
 import { getContractAddress } from "@/lib/getContractAddress";
 import { promises as fs } from "fs";
 import path from "path";
+import type { QuoteService } from "@/lib/plugin-otc-desk/services/quoteService";
+import type { QuoteMemory } from "@/types";
 
 export async function POST(request: NextRequest) {
   // Resolve OTC address (chain-specific first, then devnet file fallback for local development)
@@ -21,7 +32,7 @@ export async function POST(request: NextRequest) {
     // Try to get chain-specific address first (production/configured networks)
     try {
       return getContractAddress();
-    } catch (error) {
+    } catch {
       // Fallback to devnet file for local development
       const deployed = path.join(
         process.cwd(),
@@ -39,10 +50,12 @@ export async function POST(request: NextRequest) {
           console.log(`[Approve API] Using devnet address: ${addr}`);
           return addr;
         }
-      } catch (fileError) {
+      } catch {
         // File doesn't exist or can't be read
       }
-      throw new Error("No OTC address configured. Set NETWORK and chain-specific NEXT_PUBLIC_*_OTC_ADDRESS env var.");
+      throw new Error(
+        "No OTC address configured. Set NETWORK and chain-specific NEXT_PUBLIC_*_OTC_ADDRESS env var.",
+      );
     }
   };
 
@@ -70,7 +83,10 @@ export async function POST(request: NextRequest) {
     chainType = body.chain;
     offerAddress = body.offerAddress;
   } else if (contentType.includes("application/x-www-form-urlencoded")) {
-    const form = await request.formData();
+    // Use type assertion for FormData as Next.js returns a compatible type
+    const form = (await request.formData()) as unknown as {
+      get: (name: string) => FormDataEntryValue | null;
+    };
     const v = form.get("offerId");
     if (!v) throw new Error("offerId required in form data");
     offerId = String(v);
@@ -114,31 +130,46 @@ export async function POST(request: NextRequest) {
     const approverKeypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
 
     // Create provider with the approver keypair
-    const wallet = {
+    // Wallet interface matches @coral-xyz/anchor's Wallet type
+    interface AnchorWallet {
+      publicKey: SolanaPublicKey;
+      signTransaction<T extends Transaction | VersionedTransaction>(
+        tx: T,
+      ): Promise<T>;
+      signAllTransactions<T extends Transaction | VersionedTransaction>(
+        txs: T[],
+      ): Promise<T[]>;
+    }
+
+    const wallet: AnchorWallet = {
       publicKey: approverKeypair.publicKey,
-      signTransaction: async (tx: any) => {
-        tx.partialSign(approverKeypair);
+      signTransaction: async <T extends Transaction | VersionedTransaction>(
+        tx: T,
+      ) => {
+        (tx as Transaction).partialSign(approverKeypair);
         return tx;
       },
-      signAllTransactions: async (txs: any[]) => {
-        txs.forEach((tx) => tx.partialSign(approverKeypair));
+      signAllTransactions: async <T extends Transaction | VersionedTransaction>(
+        txs: T[],
+      ) => {
+        txs.forEach((tx) => (tx as Transaction).partialSign(approverKeypair));
         return txs;
       },
     };
 
-    const provider = new anchor.AnchorProvider(connection, wallet as any, {
+    const provider = new anchor.AnchorProvider(connection, wallet, {
       commitment: "confirmed",
     });
     anchor.setProvider(provider);
 
-    const program = new (anchor as any).Program(idl, provider);
+    const program = new anchor.Program(idl, provider);
 
     // Approve the offer
     const desk = new PublicKey(SOLANA_DESK);
     const offer = new PublicKey(offerAddress);
 
     const approveTx = await program.methods
-      .approveOffer(new (anchor as any).BN(offerId))
+      .approveOffer(new anchor.BN(offerId))
       .accounts({
         desk,
         offer,
@@ -150,77 +181,76 @@ export async function POST(request: NextRequest) {
     console.log("[Approve API] ✅ Solana offer approved:", approveTx);
 
     // Fetch offer to get payment details
-    const offerData = await program.account.offer.fetch(offer);
+    // const offerData = await program.account.offer.fetch(offer);
 
     // Auto-fulfill (backend pays)
-    console.log("[Approve API] Auto-fulfilling Solana offer...");
-
-    const { getAssociatedTokenAddress } = await import("@solana/spl-token");
-    const deskData = await program.account.desk.fetch(desk);
-    const tokenMint = new PublicKey(deskData.tokenMint);
-    const deskTokenTreasury = await getAssociatedTokenAddress(
-      tokenMint,
-      desk,
-      true,
-    );
-
-    let fulfillTx: string;
-
-    if (offerData.currency === 0) {
-      // Pay with SOL
-      fulfillTx = await program.methods
-        .fulfillOfferSol(new (anchor as any).BN(offerId))
-        .accounts({
-          desk,
-          offer,
-          deskTokenTreasury,
-          payer: approverKeypair.publicKey,
-          systemProgram: new PublicKey("11111111111111111111111111111111"),
-        })
-        .signers([approverKeypair])
-        .rpc();
-      console.log("[Approve API] ✅ Paid with SOL:", fulfillTx);
-    } else {
-      // Pay with USDC
-      const usdcMint = new PublicKey(deskData.usdcMint);
-      const deskUsdcTreasury = await getAssociatedTokenAddress(
-        usdcMint,
-        desk,
-        true,
-      );
-      const payerUsdcAta = await getAssociatedTokenAddress(
-        usdcMint,
-        approverKeypair.publicKey,
-        false,
-      );
-
-      fulfillTx = await program.methods
-        .fulfillOfferUsdc(new (anchor as any).BN(offerId))
-        .accounts({
-          desk,
-          offer,
-          deskTokenTreasury,
-          deskUsdcTreasury,
-          payerUsdcAta,
-          payer: approverKeypair.publicKey,
-          tokenProgram: new PublicKey(
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          ),
-          systemProgram: new PublicKey("11111111111111111111111111111111"),
-        })
-        .signers([approverKeypair])
-        .rpc();
-      console.log("[Approve API] ✅ Paid with USDC:", fulfillTx);
-    }
+    // console.log("[Approve API] Auto-fulfilling Solana offer...");
+    //
+    // const { getAssociatedTokenAddress } = await import("@solana/spl-token");
+    // const deskData = await program.account.desk.fetch(desk);
+    // const tokenMint = new PublicKey(deskData.tokenMint);
+    // const deskTokenTreasury = await getAssociatedTokenAddress(
+    //   tokenMint,
+    //   desk,
+    //   true,
+    // );
+    //
+    // let fulfillTx: string;
+    //
+    // if (offerData.currency === 0) {
+    //   // Pay with SOL
+    //   fulfillTx = await program.methods
+    //     .fulfillOfferSol(new (anchor as any).BN(offerId))
+    //     .accounts({
+    //       desk,
+    //       offer,
+    //       deskTokenTreasury,
+    //       payer: approverKeypair.publicKey,
+    //       systemProgram: new PublicKey("11111111111111111111111111111111"),
+    //     })
+    //     .signers([approverKeypair])
+    //     .rpc();
+    //   console.log("[Approve API] ✅ Paid with SOL:", fulfillTx);
+    // } else {
+    //   // Pay with USDC
+    //   const usdcMint = new PublicKey(deskData.usdcMint);
+    //   const deskUsdcTreasury = await getAssociatedTokenAddress(
+    //     usdcMint,
+    //     desk,
+    //     true,
+    //   );
+    //   const payerUsdcAta = await getAssociatedTokenAddress(
+    //     usdcMint,
+    //     approverKeypair.publicKey,
+    //     false,
+    //   );
+    //
+    //   fulfillTx = await program.methods
+    //     .fulfillOfferUsdc(new (anchor as any).BN(offerId))
+    //     .accounts({
+    //       desk,
+    //       offer,
+    //       deskTokenTreasury,
+    //       deskUsdcTreasury,
+    //       payerUsdcAta,
+    //       payer: approverKeypair.publicKey,
+    //       tokenProgram: new PublicKey(
+    //         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    //       ),
+    //       systemProgram: new PublicKey("11111111111111111111111111111111"),
+    //     })
+    //     .signers([approverKeypair])
+    //     .rpc();
+    //   console.log("[Approve API] ✅ Paid with USDC:", fulfillTx);
+    // }
 
     return NextResponse.json({
       success: true,
       approved: true,
-      autoFulfilled: true,
+      autoFulfilled: false,
       chain: "solana",
       offerAddress,
       approvalTx: approveTx,
-      fulfillTx,
     });
   }
 
@@ -230,8 +260,8 @@ export async function POST(request: NextRequest) {
   const abi = otcArtifact.abi as Abi;
 
   // Resolve approver account: prefer PK; else use testWalletPrivateKey from deployment; else impersonate
-  let account: any;
-  let walletClient: any;
+  let account: PrivateKeyAccount | Address;
+  let walletClient: WalletClient<Transport, Chain, Account>;
   let approverAddr: Address;
 
   if (APPROVER_PRIVATE_KEY) {
@@ -292,7 +322,7 @@ export async function POST(request: NextRequest) {
     abi,
     functionName: "requiredApprovals",
     args: [],
-  } as any)) as bigint;
+  })) as bigint;
 
   console.log(
     "[Approve API] Current required approvals:",
@@ -342,7 +372,7 @@ export async function POST(request: NextRequest) {
     abi,
     functionName: "offers",
     args: [BigInt(offerId)],
-  } as any)) as any;
+  })) as RawOfferData;
 
   const offer = parseOfferStruct(offerRaw);
 
@@ -361,8 +391,131 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // ============ PRICE VALIDATION ============
+  // Validate that the offer price hasn't diverged too much from market price
+  // This prevents abuse from stale quotes or manipulated pool prices
+  const MAX_PRICE_DIVERGENCE_BPS = 1000; // 10% maximum divergence
+
+  try {
+    const { checkPriceDivergence } = await import("@/utils/price-validator");
+    const { TokenDB, QuoteDB } = await import("@/services/database");
+
+    // Get token info from the offer
+    // offer.priceUsdPerToken is in 8 decimals (Chainlink format)
+    const offerPriceUsd = Number(offer.priceUsdPerToken) / 1e8;
+
+    // Find the specific token associated with this offer
+    // Primary method: Use the on-chain tokenId (keccak256 hash of symbol) to look up token
+    let tokenAddress: string | null = null;
+    let tokenChain: "base" | "solana" = "base";
+
+    // The offer.tokenId is a bytes32 (keccak256 of token symbol)
+    if (offer.tokenId) {
+      const token = await TokenDB.getTokenByOnChainId(offer.tokenId);
+      if (token) {
+        tokenAddress = token.contractAddress;
+        tokenChain = token.chain as "base" | "solana";
+        console.log("[Approve API] Found token via on-chain tokenId:", {
+          symbol: token.symbol,
+          address: tokenAddress,
+          chain: tokenChain,
+        });
+      }
+    }
+
+    // Fallback: Try to find via quote (if we have a matching quote by beneficiary)
+    if (!tokenAddress) {
+      const activeQuotes = await QuoteDB.getActiveQuotes();
+      const matchingQuote = activeQuotes.find(
+        (q: { beneficiary: string }) =>
+          q.beneficiary.toLowerCase() === offer.beneficiary.toLowerCase(),
+      );
+
+      if (matchingQuote && "tokenId" in matchingQuote) {
+        const token = await TokenDB.getToken(matchingQuote.tokenId as string);
+        if (token) {
+          tokenAddress = token.contractAddress;
+          tokenChain = token.chain as "base" | "solana";
+          console.log("[Approve API] Found token via quote:", {
+            symbol: token.symbol,
+            address: tokenAddress,
+            chain: tokenChain,
+          });
+        }
+      }
+    }
+
+    // Last resort fallback: Use first active Base token (for backwards compatibility)
+    if (!tokenAddress) {
+      console.warn(
+        "[Approve API] Could not find token via on-chain tokenId or quote, using fallback",
+      );
+      const tokens = await TokenDB.getAllTokens({ isActive: true });
+      const baseToken = tokens.find((t) => t.chain === "base");
+      if (baseToken) {
+        tokenAddress = baseToken.contractAddress;
+        tokenChain = "base";
+      }
+    }
+
+    if (tokenAddress && offerPriceUsd > 0) {
+      console.log("[Approve API] Validating price against market...", {
+        offerPriceUsd,
+        tokenAddress,
+        tokenChain,
+      });
+
+      const priceCheck = await checkPriceDivergence(
+        tokenAddress,
+        tokenChain,
+        offerPriceUsd,
+      );
+
+      if (!priceCheck.valid && priceCheck.divergencePercent !== undefined) {
+        console.log("[Approve API] Price divergence detected:", {
+          offerPrice: offerPriceUsd,
+          marketPrice: priceCheck.aggregatedPrice,
+          divergence: priceCheck.divergencePercent,
+          warning: priceCheck.warning,
+        });
+
+        // Reject if divergence exceeds threshold
+        if (priceCheck.divergencePercent > MAX_PRICE_DIVERGENCE_BPS / 100) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Price divergence too high",
+              details: {
+                offerPrice: offerPriceUsd,
+                marketPrice: priceCheck.aggregatedPrice,
+                divergencePercent: priceCheck.divergencePercent,
+                maxAllowedPercent: MAX_PRICE_DIVERGENCE_BPS / 100,
+                reason: priceCheck.warning,
+              },
+            },
+            { status: 400 },
+          );
+        }
+      } else {
+        console.log("[Approve API] Price validation passed:", {
+          divergence: priceCheck.divergencePercent,
+          valid: priceCheck.valid,
+        });
+      }
+    }
+  } catch (priceError) {
+    // Log but don't block - fail open for price validation errors
+    console.warn(
+      "[Approve API] Price validation failed (continuing):",
+      priceError,
+    );
+  }
+  // ============ END PRICE VALIDATION ============
+
   // Approve immediately
-  const accountAddr = (account.address || account) as Address;
+  const accountAddr = (
+    typeof account === "string" ? account : account.address
+  ) as Address;
 
   console.log("[Approve API] Simulating approval...", {
     offerId,
@@ -396,12 +549,12 @@ export async function POST(request: NextRequest) {
 
   // Update quote status and financial data if we can find it
   const runtime = await agentRuntime.getRuntime();
-  const quoteService = runtime.getService<any>("QuoteService");
+  const quoteService = runtime.getService<QuoteService>("QuoteService");
 
   if (quoteService && offer.beneficiary) {
     const activeQuotes = await quoteService.getActiveQuotes();
     const matchingQuote = activeQuotes.find(
-      (q: any) =>
+      (q: QuoteMemory) =>
         q.beneficiary.toLowerCase() === offer.beneficiary.toLowerCase(),
     );
 
@@ -482,7 +635,7 @@ export async function POST(request: NextRequest) {
     abi,
     functionName: "offers",
     args: [BigInt(offerId)],
-  } as any)) as any;
+  })) as RawOfferData;
 
   let approvedOffer = parseOfferStruct(approvedOfferRaw);
 
@@ -530,7 +683,7 @@ export async function POST(request: NextRequest) {
         abi,
         functionName: "offers",
         args: [BigInt(offerId)],
-      } as any)) as any;
+      })) as RawOfferData;
       approvedOffer = parseOfferStruct(approvedOfferRaw);
       if (approvedOffer.approved) break;
     }
@@ -544,7 +697,7 @@ export async function POST(request: NextRequest) {
     abi,
     functionName: "offers",
     args: [BigInt(offerId)],
-  } as any)) as any;
+  })) as RawOfferData;
 
   approvedOffer = parseOfferStruct(approvedOfferRaw);
 
@@ -570,7 +723,7 @@ export async function POST(request: NextRequest) {
     abi,
     functionName: "requireApproverToFulfill",
     args: [],
-  } as any)) as boolean;
+  })) as boolean;
 
   console.log(
     "[Approve API] requireApproverToFulfill:",
@@ -584,7 +737,9 @@ export async function POST(request: NextRequest) {
     console.log("[Approve API] Auto-fulfilling offer (approver-only mode)...");
 
     try {
-      const accountAddr = (account.address || account) as Address;
+      const accountAddr = (
+        typeof account === "string" ? account : account.address
+      ) as Address;
 
       // Calculate required payment
       const currency = approvedOffer.currency;
@@ -597,7 +752,7 @@ export async function POST(request: NextRequest) {
           abi,
           functionName: "requiredEthWei",
           args: [BigInt(offerId)],
-        } as any)) as bigint;
+        })) as bigint;
 
         valueWei = requiredEth;
         console.log("[Approve API] Required ETH:", requiredEth.toString());
@@ -608,14 +763,14 @@ export async function POST(request: NextRequest) {
           abi,
           functionName: "usdc",
           args: [],
-        } as any)) as Address;
+        })) as Address;
 
         const requiredUsdc = (await publicClient.readContract({
           address: OTC_ADDRESS,
           abi,
           functionName: "requiredUsdcAmount",
           args: [BigInt(offerId)],
-        } as any)) as bigint;
+        })) as bigint;
 
         console.log("[Approve API] Required USDC:", requiredUsdc.toString());
 
@@ -633,13 +788,15 @@ export async function POST(request: NextRequest) {
           },
         ] as Abi;
 
-        const { request: approveUsdcReq } = await publicClient.simulateContract({
-          address: usdcAddress,
-          abi: erc20Abi,
-          functionName: "approve",
-          args: [OTC_ADDRESS, requiredUsdc],
-          account: accountAddr,
-        });
+        const { request: approveUsdcReq } = await publicClient.simulateContract(
+          {
+            address: usdcAddress,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [OTC_ADDRESS, requiredUsdc],
+            account: accountAddr,
+          },
+        );
 
         await walletClient.writeContract(approveUsdcReq);
         console.log("[Approve API] USDC approved");
@@ -658,28 +815,32 @@ export async function POST(request: NextRequest) {
       fulfillTxHash = await walletClient.writeContract(fulfillReq);
       console.log("[Approve API] Fulfill tx sent:", fulfillTxHash);
 
-      await publicClient.waitForTransactionReceipt({ hash: fulfillTxHash });
+      if (fulfillTxHash) {
+        await publicClient.waitForTransactionReceipt({ hash: fulfillTxHash });
+      }
       console.log("[Approve API] ✅ Offer fulfilled automatically");
     } catch (fulfillError) {
       console.error("[Approve API] ❌ Auto-fulfill failed:", fulfillError);
-      
+
       // Check if offer got paid by another transaction during our attempt
       const recheckOffer = (await publicClient.readContract({
         address: OTC_ADDRESS,
         abi,
         functionName: "offers",
         args: [BigInt(offerId)],
-      } as any)) as any;
-      
+      })) as RawOfferData;
+
       const recheckParsed = parseOfferStruct(recheckOffer);
-      
+
       if (recheckParsed.paid) {
-        console.log("[Approve API] ✅ Offer was paid by another transaction, continuing...");
+        console.log(
+          "[Approve API] ✅ Offer was paid by another transaction, continuing...",
+        );
         fulfillTxHash = undefined; // No fulfillTx from us, but offer is paid
       } else {
         // Offer is approved but not paid - this is a real error
         throw new Error(
-          `Auto-fulfill failed: ${fulfillError instanceof Error ? fulfillError.message : String(fulfillError)}. Offer is approved but not paid.`
+          `Auto-fulfill failed: ${fulfillError instanceof Error ? fulfillError.message : String(fulfillError)}. Offer is approved but not paid.`,
         );
       }
     }

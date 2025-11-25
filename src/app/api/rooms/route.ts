@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { agentRuntime } from "@/lib/agent-runtime";
 import { v4 as uuidv4 } from "uuid";
 import { walletToEntityId } from "@/lib/entityId";
-import { stringToUuid } from "@elizaos/core";
+import { stringToUuid, type Memory, type UUID } from "@elizaos/core";
 
 // GET /api/rooms - Get user's rooms
 export async function GET(request: NextRequest) {
@@ -173,9 +173,9 @@ export async function POST(request: NextRequest) {
 </quote>
 <!-- XML_END -->`;
 
-  const agentMessage = {
-    id: uuidv4(),
-    roomId,
+  const agentMessage: Memory = {
+    id: uuidv4() as UUID,
+    roomId: roomId as UUID,
     entityId: runtime.agentId,
     agentId: runtime.agentId,
     content: {
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
       type: "agent",
     },
     createdAt: Date.now(),
-  } as any;
+  };
 
   await runtime.createMemory(agentMessage, "messages");
   console.log("[Rooms API] ✅ Initial welcome message created");

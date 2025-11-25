@@ -1,6 +1,5 @@
+import type { Program } from "@coral-xyz/anchor";
 import pkg from "@coral-xyz/anchor";
-const anchor: any = pkg as any;
-const { BN } = anchor;
 import { PublicKey, SystemProgram, Keypair } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
@@ -12,6 +11,10 @@ import {
 import * as fs from "fs";
 import { fileURLToPath } from "url";
 import * as path from "path";
+import type { Otc } from "../target/types/otc";
+
+// ESM/CJS compatibility: import as default then destructure
+const { AnchorProvider, setProvider, workspace, BN } = pkg as typeof import("@coral-xyz/anchor");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,9 +22,9 @@ const __dirname = path.dirname(__filename);
 async function main() {
   console.log("🚀 Quick Solana OTC Desk Setup\n");
 
-  const provider = anchor.AnchorProvider.env();
-  anchor.setProvider(provider);
-  const program = anchor.workspace.Otc as any;
+  const provider = AnchorProvider.env();
+  setProvider(provider);
+  const program = workspace.Otc as Program<Otc>;
 
   console.log("📋 Program ID:", program.programId.toString());
 
@@ -57,8 +60,6 @@ async function main() {
   // Create token mints
   console.log("\n🪙 Creating token mints...");
   console.log("⚠️  NOTE: Using 9 decimals for native Solana token (standard)");
-  console.log("    CCIP bridge to Base will preserve these decimals!");
-  console.log("    See CCIP-BRIDGE-CHECKLIST.md for production considerations.\n");
   
   const tokenMint = await createMint(
     provider.connection,
@@ -116,14 +117,13 @@ async function main() {
       new BN(500_000_000),
       new BN(1800)
     )
-    .accounts({
+    .accountsPartial({
       payer: owner.publicKey,
       owner: owner.publicKey,
       agent: agent.publicKey,
       tokenMint: tokenMint,
       usdcMint: usdcMint,
       desk: desk.publicKey,
-      systemProgram: SystemProgram.programId,
     })
     .signers([owner, desk]) // Both owner and desk sign
     .rpc();
@@ -139,7 +139,7 @@ async function main() {
       new BN(0),
       new BN(3600)
     )
-    .accounts({ desk: desk.publicKey, owner: owner.publicKey })
+    .accountsPartial({ desk: desk.publicKey, owner: owner.publicKey })
     .signers([owner])
     .rpc();
   console.log("✅ Prices set");
@@ -148,7 +148,7 @@ async function main() {
   console.log("\n👤 Adding owner as approver...");
   await program.methods
     .setApprover(owner.publicKey, true)
-    .accounts({ desk: desk.publicKey, owner: owner.publicKey })
+    .accountsPartial({ desk: desk.publicKey, owner: owner.publicKey })
     .signers([owner])
     .rpc();
   console.log("✅ Owner added as approver");
@@ -176,12 +176,11 @@ async function main() {
   console.log("\n📥 Depositing tokens to desk...");
   await program.methods
     .depositTokens(new BN("500000000000000"))
-    .accounts({
+    .accountsPartial({
       desk: desk.publicKey,
       owner: owner.publicKey,
       ownerTokenAta: ownerTokenAta.address,
       deskTokenTreasury: deskTokenAta,
-      tokenProgram: TOKEN_PROGRAM_ID,
     })
     .signers([owner])
     .rpc();
@@ -204,7 +203,13 @@ async function main() {
   console.log(`NEXT_PUBLIC_SOLANA_USDC_MINT=${usdcMint.toString()}`);
   console.log("=".repeat(80));
 
-  // Write to temp file
+  // Write to src config
+  const deploymentPath = path.join(__dirname, "../../../src/config/deployments/local-solana.json");
+  const deploymentDir = path.dirname(deploymentPath);
+  if (!fs.existsSync(deploymentDir)) {
+    fs.mkdirSync(deploymentDir, { recursive: true });
+  }
+
   const envData = {
     NEXT_PUBLIC_SOLANA_RPC: "http://127.0.0.1:8899",
     NEXT_PUBLIC_SOLANA_PROGRAM_ID: program.programId.toString(),
@@ -213,11 +218,34 @@ async function main() {
     NEXT_PUBLIC_SOLANA_TOKEN_MINT: tokenMint.toString(),
     NEXT_PUBLIC_SOLANA_USDC_MINT: usdcMint.toString(),
   };
+  
   fs.writeFileSync(
-    "/tmp/solana-otc-config.json",
+    deploymentPath,
     JSON.stringify(envData, null, 2)
   );
-  console.log("\n✅ Config saved to /tmp/solana-otc-config.json");
+  console.log(`\n✅ Config saved to ${deploymentPath}`);
+
+  // Update .env.local
+  const envLocalPath = path.join(__dirname, "../../../.env.local");
+  let envContent = "";
+  try {
+    envContent = fs.readFileSync(envLocalPath, "utf8");
+  } catch (e) {
+    // File might not exist
+  }
+
+  let newEnvContent = envContent;
+  for (const [key, value] of Object.entries(envData)) {
+    const regex = new RegExp(`^${key}=.*`, "m");
+    if (regex.test(newEnvContent)) {
+      newEnvContent = newEnvContent.replace(regex, `${key}=${value}`);
+    } else {
+      newEnvContent += `\n${key}=${value}`;
+    }
+  }
+
+  fs.writeFileSync(envLocalPath, newEnvContent);
+  console.log(`✅ Updated .env.local`);
 }
 
 main()

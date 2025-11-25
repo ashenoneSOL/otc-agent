@@ -42,10 +42,13 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
   const [showAcceptModal, setShowAcceptModal] = useState<boolean>(false);
   const [isOfferGlowing, setIsOfferGlowing] = useState<boolean>(false);
   const [showClearChatModal, setShowClearChatModal] = useState<boolean>(false);
-  const [showEVMChainSelector, setShowEVMChainSelector] = useState<boolean>(false);
+  const [showEVMChainSelector, setShowEVMChainSelector] =
+    useState<boolean>(false);
 
   // --- Refs ---
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
   const lastMessageTimestampRef = useRef<number>(0);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const previousQuoteIdRef = useRef<string | null>(null);
@@ -265,7 +268,7 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
           setMessages((prev) => {
             console.log(
               `[Polling] Received ${formattedMessages.length} new messages`,
-              formattedMessages.map((m) => ({
+              formattedMessages.map((m: ChatMessage) => ({
                 id: m.serverMessageId,
                 text: m.text?.substring(0, 50),
               })),
@@ -280,7 +283,7 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
               const key = m.serverMessageId || m.id;
               byServerId.set(key, m);
             });
-            formattedMessages.forEach((m) => {
+            formattedMessages.forEach((m: ChatMessage) => {
               byServerId.set(m.serverMessageId || m.id, m);
             });
 
@@ -634,15 +637,18 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
     connectSolanaWallet();
   }, [isPhantomInstalled, setActiveFamily, connectSolanaWallet]);
 
-  const handleSwitchChain = useCallback((targetChain: "evm" | "solana") => {
-    console.log(`[Chat] Switching to ${targetChain}...`);
-    
-    if (targetChain === "solana") {
-      handleConnectSolana();
-    } else {
-      setShowEVMChainSelector(true);
-    }
-  }, [handleConnectSolana]);
+  const handleSwitchChain = useCallback(
+    (targetChain: "evm" | "solana") => {
+      console.log(`[Chat] Switching to ${targetChain}...`);
+
+      if (targetChain === "solana") {
+        handleConnectSolana();
+      } else {
+        setShowEVMChainSelector(true);
+      }
+    },
+    [handleConnectSolana],
+  );
 
   return (
     <div className="flex flex-col w-full">
@@ -690,24 +696,24 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
             Clear Chat History?
           </h3>
           <div className="p-4">
-          <p className="text-zinc-600 dark:text-zinc-400 mb-6">
-            This will permanently delete all messages and reset the agent&apos;s
-            memory of your conversation. Your current quote will be reset to
-            default terms. This action cannot be undone.
-          </p>
-          <div className="flex gap-3 justify-end">
-            <Button
-              onClick={() => setShowClearChatModal(false)}
-              className="bg-zinc-200 dark:bg-zinc-800 rounded-lg"
-            >
-              <div className="px-4 py-2">Cancel</div>
-            </Button>
-            <Button onClick={handleClearChat} color="red">
-              <div className="px-4 py-2 bg-red-500 dark:bg-red-500 rounded-lg">
-                Reset
-              </div>
-            </Button>
-          </div>
+            <p className="text-zinc-600 dark:text-zinc-400 mb-6">
+              This will permanently delete all messages and reset the
+              agent&apos;s memory of your conversation. Your current quote will
+              be reset to default terms. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button
+                onClick={() => setShowClearChatModal(false)}
+                className="bg-zinc-200 dark:bg-zinc-800 rounded-lg"
+              >
+                <div className="px-4 py-2">Cancel</div>
+              </Button>
+              <Button onClick={handleClearChat} color="red">
+                <div className="px-4 py-2 bg-red-500 dark:bg-red-500 rounded-lg">
+                  Reset
+                </div>
+              </Button>
+            </div>
           </div>
         </div>
       </Dialog>
@@ -739,13 +745,20 @@ function ChatHeader({
   const currentQuote = apiQuote;
 
   // Determine if user needs to switch chains
-  const needsChainSwitch = currentQuote && currentQuote.tokenChain ? (
-    (currentQuote.tokenChain === "solana" && activeFamily !== "solana") ||
-    ((currentQuote.tokenChain === "base" || currentQuote.tokenChain === "bsc" || currentQuote.tokenChain === "jeju" || currentQuote.tokenChain === "ethereum") && activeFamily !== "evm")
-  ) : false;
+  const needsChainSwitch =
+    currentQuote && currentQuote.tokenChain
+      ? (currentQuote.tokenChain === "solana" && activeFamily !== "solana") ||
+        ((currentQuote.tokenChain === "base" ||
+          currentQuote.tokenChain === "bsc" ||
+          currentQuote.tokenChain === "jeju" ||
+          currentQuote.tokenChain === "ethereum") &&
+          activeFamily !== "evm")
+      : false;
 
-  const requiredChain = currentQuote?.tokenChain === "solana" ? "solana" : "evm";
-  const chainDisplayName = currentQuote?.tokenChain === "solana" ? "Solana" : "EVM";
+  const requiredChain =
+    currentQuote?.tokenChain === "solana" ? "solana" : "evm";
+  const chainDisplayName =
+    currentQuote?.tokenChain === "solana" ? "Solana" : "EVM";
 
   console.log("[ChatHeader] Chain check:", {
     quoteChain: currentQuote?.tokenChain,
@@ -792,20 +805,32 @@ function ChatHeader({
                 </span>
               </div>
               <Button
-                onClick={needsChainSwitch ? () => onSwitchChain(requiredChain) : onAcceptOffer}
+                onClick={
+                  needsChainSwitch
+                    ? () => onSwitchChain(requiredChain)
+                    : onAcceptOffer
+                }
                 className={`!h-8 !px-3 !text-xs transition-all duration-300 ${
-                  needsChainSwitch 
-                    ? "!bg-blue-500 hover:!bg-blue-600 !text-white !border-blue-600" 
+                  needsChainSwitch
+                    ? "!bg-blue-500 hover:!bg-blue-600 !text-white !border-blue-600"
                     : `!bg-orange-500 hover:!bg-orange-600 !text-white !border-orange-600 ${
                         isOfferGlowing
                           ? "shadow-lg shadow-orange-500/50 ring-2 ring-orange-400 animate-pulse"
                           : ""
                       }`
                 }`}
-                color={(needsChainSwitch ? "blue" : "orange") as "blue" | "orange"}
-                title={needsChainSwitch ? `Switch to ${chainDisplayName}` : `Accept Offer ${isOfferGlowing ? "(GLOWING)" : ""}`}
+                color={
+                  (needsChainSwitch ? "blue" : "orange") as "blue" | "orange"
+                }
+                title={
+                  needsChainSwitch
+                    ? `Switch to ${chainDisplayName}`
+                    : `Accept Offer ${isOfferGlowing ? "(GLOWING)" : ""}`
+                }
               >
-                {needsChainSwitch ? `Switch to ${chainDisplayName}` : "Accept Offer"}
+                {needsChainSwitch
+                  ? `Switch to ${chainDisplayName}`
+                  : "Accept Offer"}
               </Button>
             </div>
 
@@ -842,20 +867,32 @@ function ChatHeader({
               </div>
               <div className="flex gap-2">
                 <Button
-                  onClick={needsChainSwitch ? () => onSwitchChain(requiredChain) : onAcceptOffer}
+                  onClick={
+                    needsChainSwitch
+                      ? () => onSwitchChain(requiredChain)
+                      : onAcceptOffer
+                  }
                   className={`flex-1 !h-9 !px-3 !text-sm transition-all duration-300 ${
-                    needsChainSwitch 
-                      ? "!bg-blue-500 hover:!bg-blue-600 !text-white !border-blue-600" 
+                    needsChainSwitch
+                      ? "!bg-blue-500 hover:!bg-blue-600 !text-white !border-blue-600"
                       : `!bg-orange-500 hover:!bg-orange-600 !text-white !border-orange-600 ${
                           isOfferGlowing
                             ? "shadow-lg shadow-orange-500/50 ring-2 ring-orange-400 animate-pulse"
                             : ""
                         }`
                   }`}
-                  color={(needsChainSwitch ? "blue" : "orange") as "blue" | "orange"}
-                  title={needsChainSwitch ? `Switch to ${chainDisplayName}` : `Accept Offer ${isOfferGlowing ? "(GLOWING)" : ""}`}
+                  color={
+                    (needsChainSwitch ? "blue" : "orange") as "blue" | "orange"
+                  }
+                  title={
+                    needsChainSwitch
+                      ? `Switch to ${chainDisplayName}`
+                      : `Accept Offer ${isOfferGlowing ? "(GLOWING)" : ""}`
+                  }
                 >
-                  {needsChainSwitch ? `Switch to ${chainDisplayName}` : "Accept Offer"}
+                  {needsChainSwitch
+                    ? `Switch to ${chainDisplayName}`
+                    : "Accept Offer"}
                 </Button>
                 {!isLoadingHistory && (
                   <Button
@@ -921,8 +958,8 @@ function ChatBody({
   handleSubmit: (e: React.FormEvent) => void;
   inputDisabled: boolean;
   isConnected: boolean;
-  messagesContainerRef: React.RefObject<HTMLDivElement>;
-  textareaRef: React.RefObject<HTMLTextAreaElement>;
+  messagesContainerRef: React.RefObject<HTMLDivElement | null>;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   showConnectOverlay: boolean;
   setShowConnectOverlay: (v: boolean) => void;
   currentQuote: any;
@@ -974,7 +1011,9 @@ function ChatBody({
                         <EVMLogo className="w-8 h-8 sm:w-10 sm:h-10" />
                       </div>
                       <div className="text-xl sm:text-2xl font-bold">EVM</div>
-                      <div className="text-xs text-white/70">Base, BSC, Jeju</div>
+                      <div className="text-xs text-white/70">
+                        Base, BSC, Jeju
+                      </div>
                     </div>
                   </button>
                   <button
@@ -986,7 +1025,9 @@ function ChatBody({
                       <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
                         <SolanaLogo className="w-8 h-8 sm:w-10 sm:h-10" />
                       </div>
-                      <div className="text-xl sm:text-2xl font-bold">Solana</div>
+                      <div className="text-xl sm:text-2xl font-bold">
+                        Solana
+                      </div>
                     </div>
                   </button>
                 </div>
@@ -1095,7 +1136,7 @@ function ChatBody({
               isLoading={isAgentThinking || inputDisabled || !isConnected}
               placeholder={
                 isConnected
-                  ? currentQuote?.tokenSymbol 
+                  ? currentQuote?.tokenSymbol
                     ? `Negotiate a deal for $${currentQuote.tokenSymbol}!`
                     : "Ask about available tokens or request a quote!"
                   : "Connect wallet to chat"

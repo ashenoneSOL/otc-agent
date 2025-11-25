@@ -75,7 +75,9 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
     }
 
     if (!consignment.contractConsignmentId) {
-      setWithdrawError("Consignment was not deployed on-chain. Nothing to withdraw.");
+      setWithdrawError(
+        "Consignment was not deployed on-chain. Nothing to withdraw.",
+      );
       return;
     }
 
@@ -92,7 +94,10 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
       const contractConsignmentId = BigInt(consignment.contractConsignmentId);
 
       // Execute on-chain withdrawal (user pays gas)
-      console.log("[ConsignmentRow] Withdrawing consignment:", contractConsignmentId.toString());
+      console.log(
+        "[ConsignmentRow] Withdrawing consignment:",
+        contractConsignmentId.toString(),
+      );
       const txHash = await withdrawConsignment(contractConsignmentId);
       setWithdrawTxHash(txHash as string);
       console.log("[ConsignmentRow] Withdrawal tx submitted:", txHash);
@@ -103,8 +108,12 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
       });
 
       if (!response.ok) {
-        console.warn("[ConsignmentRow] Failed to update database, but withdrawal succeeded on-chain");
-        setWithdrawError("Withdrawal successful on-chain, but database update failed. Your tokens are in your wallet.");
+        console.warn(
+          "[ConsignmentRow] Failed to update database, but withdrawal succeeded on-chain",
+        );
+        setWithdrawError(
+          "Withdrawal successful on-chain, but database update failed. Your tokens are in your wallet.",
+        );
       }
 
       // Refresh parent component state
@@ -118,9 +127,13 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
       }, 5000);
     } catch (error: unknown) {
       console.error("[ConsignmentRow] Withdrawal failed:", error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      
-      if (errorMessage.includes("rejected") || errorMessage.includes("denied")) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+
+      if (
+        errorMessage.includes("rejected") ||
+        errorMessage.includes("denied")
+      ) {
         setWithdrawError("Transaction was rejected. No changes were made.");
       } else {
         setWithdrawError(`Withdrawal failed: ${errorMessage}`);
@@ -236,7 +249,9 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
                     d="M5 13l4 4L19 7"
                   />
                 </svg>
-                <span className="text-sm font-medium">Withdrawal Successful</span>
+                <span className="text-sm font-medium">
+                  Withdrawal Successful
+                </span>
               </div>
               <p className="text-xs text-green-700 dark:text-green-300 mt-1 break-all">
                 Tx: {withdrawTxHash}
@@ -259,7 +274,9 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
                     d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                <p className="text-sm text-red-800 dark:text-red-200">{withdrawError}</p>
+                <p className="text-sm text-red-800 dark:text-red-200">
+                  {withdrawError}
+                </p>
               </div>
             </div>
           )}

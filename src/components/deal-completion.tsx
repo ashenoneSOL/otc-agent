@@ -4,6 +4,19 @@ import { Button } from "@/components/button";
 import { createDealShareImage } from "@/utils/share-card";
 import { useEffect, useState } from "react";
 
+// Extended Navigator type for Web Share API with files support
+interface ShareData {
+  text?: string;
+  title?: string;
+  url?: string;
+  files?: File[];
+}
+
+interface NavigatorWithShare {
+  canShare?: (data?: ShareData) => boolean;
+  share?: (data?: ShareData) => Promise<void>;
+}
+
 interface DealCompletionProps {
   quote: {
     quoteId: string;
@@ -118,12 +131,13 @@ export function DealCompletion({ quote }: DealCompletionProps) {
 💎 ROI: ${roiText}`;
 
     // Try native share first
+    const nav = navigator as NavigatorWithShare;
     if (
       typeof navigator !== "undefined" &&
-      (navigator as any).canShare &&
-      (navigator as any).canShare({ files: [file] })
+      nav.canShare &&
+      nav.canShare({ files: [file] })
     ) {
-      await (navigator as any).share({ text, files: [file] });
+      await nav.share?.({ text, files: [file] });
     } else {
       // Fallback to Twitter intent
       const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(window.location.href)}`;

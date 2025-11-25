@@ -30,24 +30,25 @@ export function DealStructureStep({
     if (formData.isFractionalized) {
       updateFormData({ maxDealAmount: amount });
     } else {
-      updateFormData({ 
+      updateFormData({
         dealAmount: amount,
         minDealAmount: amount,
-        maxDealAmount: amount
+        maxDealAmount: amount,
       });
     }
   };
 
   const isValid = formData.isFractionalized
-    ? formData.minDealAmount && formData.maxDealAmount && 
-      parseFloat(formData.minDealAmount) > 0 && 
+    ? formData.minDealAmount &&
+      formData.maxDealAmount &&
+      parseFloat(formData.minDealAmount) > 0 &&
       parseFloat(formData.maxDealAmount) > 0 &&
       parseFloat(formData.minDealAmount) <= parseFloat(formData.maxDealAmount)
     : formData.dealAmount && parseFloat(formData.dealAmount) > 0;
 
   const renderPercentageButtons = () => {
     if (walletBalance <= 0) return null;
-    
+
     return (
       <div className="flex gap-2 mt-3">
         <button
@@ -104,7 +105,9 @@ export function DealStructureStep({
               <input
                 type="text"
                 value={formData.minDealAmount}
-                onChange={(e) => updateFormData({ minDealAmount: e.target.value })}
+                onChange={(e) =>
+                  updateFormData({ minDealAmount: e.target.value })
+                }
                 placeholder="e.g., 1000"
                 className="w-full px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800"
               />
@@ -116,7 +119,9 @@ export function DealStructureStep({
               <input
                 type="text"
                 value={formData.maxDealAmount}
-                onChange={(e) => updateFormData({ maxDealAmount: e.target.value })}
+                onChange={(e) =>
+                  updateFormData({ maxDealAmount: e.target.value })
+                }
                 placeholder="e.g., 100000"
                 className="w-full px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800"
               />
@@ -126,18 +131,16 @@ export function DealStructureStep({
         </>
       ) : (
         <div>
-          <label className="block text-sm font-medium mb-2">
-            Token Amount
-          </label>
+          <label className="block text-sm font-medium mb-2">Token Amount</label>
           <input
             type="text"
             value={formData.dealAmount || ""}
             onChange={(e) => {
               const amount = e.target.value;
-              updateFormData({ 
+              updateFormData({
                 dealAmount: amount,
                 minDealAmount: amount,
-                maxDealAmount: amount
+                maxDealAmount: amount,
               });
             }}
             placeholder="Enter amount"
@@ -184,16 +187,18 @@ export function DealStructureStep({
       )}
 
       <div className="flex gap-4">
-        <Button 
-          onClick={onBack} 
-          color="zinc" 
+        <Button
+          onClick={onBack}
+          color="zinc"
           className="flex-1 px-6 py-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700"
         >
           Back
         </Button>
         {formData.tokenId && requiredChain && !isConnectedToRequiredChain ? (
           <Button
-            onClick={requiredChain === "solana" ? onConnectSolana : onConnectEvm}
+            onClick={
+              requiredChain === "solana" ? onConnectSolana : onConnectEvm
+            }
             disabled={!isValid}
             className={`flex-1 px-6 py-3 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium transition-colors ${
               requiredChain === "solana"

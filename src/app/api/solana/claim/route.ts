@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as anchor from "@coral-xyz/anchor";
-import { Connection, PublicKey, Keypair } from "@solana/web3.js";
+import {
+  Connection,
+  PublicKey,
+  Keypair,
+  Transaction,
+  VersionedTransaction,
+} from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { promises as fs } from "fs";
 import path from "path";
+
+// Wallet interface for Anchor (matches @coral-xyz/anchor's Wallet type)
+interface AnchorWallet {
+  publicKey: PublicKey;
+  signTransaction<T extends Transaction | VersionedTransaction>(
+    tx: T,
+  ): Promise<T>;
+  signAllTransactions<T extends Transaction | VersionedTransaction>(
+    txs: T[],
+  ): Promise<T[]>;
+}
 
 export async function POST(request: NextRequest) {
   const { offerAddress, beneficiary } = await request.json();
@@ -43,28 +60,35 @@ export async function POST(request: NextRequest) {
 
   const connection = new Connection(SOLANA_RPC, "confirmed");
 
-  const wallet = {
+  const wallet: AnchorWallet = {
     publicKey: deskKeypair.publicKey,
-    signTransaction: async (tx: any) => {
-      tx.partialSign(deskKeypair);
+    signTransaction: async <T extends Transaction | VersionedTransaction>(
+      tx: T,
+    ) => {
+      (tx as Transaction).partialSign(deskKeypair);
       return tx;
     },
-    signAllTransactions: async (txs: any[]) => {
-      txs.forEach((tx) => tx.partialSign(deskKeypair));
+    signAllTransactions: async <T extends Transaction | VersionedTransaction>(
+      txs: T[],
+    ) => {
+      txs.forEach((tx) => (tx as Transaction).partialSign(deskKeypair));
       return txs;
     },
   };
 
-  const provider = new anchor.AnchorProvider(connection, wallet as any, {
+  const provider = new anchor.AnchorProvider(connection, wallet, {
     commitment: "confirmed",
   });
   anchor.setProvider(provider);
 
-  const program = new (anchor as any).Program(idl, provider);
+  const program = new anchor.Program(idl, provider);
 
   // Fetch offer
+  // Type assertion needed as anchor's account namespace types are dynamic
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const programAccounts = program.account as any;
   const offer = new PublicKey(offerAddress);
-  const offerData = await program.account.offer.fetch(offer);
+  const offerData = await programAccounts.offer.fetch(offer);
 
   if (offerData.fulfilled) {
     return NextResponse.json({
@@ -97,7 +121,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Get token accounts
-  const deskData = await program.account.desk.fetch(desk);
+  const deskData = await programAccounts.desk.fetch(desk);
   const tokenMint = new PublicKey(deskData.tokenMint);
   const deskTokenTreasury = await getAssociatedTokenAddress(
     tokenMint,
@@ -113,7 +137,7 @@ export async function POST(request: NextRequest) {
 
   // Claim tokens (desk signs because it holds the tokens)
   const tx = await program.methods
-    .claim(new (anchor as any).BN(offerData.id))
+    .claim(new anchor.BN(offerData.id))
     .accounts({
       desk,
       deskSigner: deskKeypair.publicKey,

@@ -8,7 +8,7 @@ export default defineConfig({
     testTimeout: 180000, // 3 minutes per test
     hookTimeout: 180000, // 3 minutes for setup/teardown
     include: ['tests/**/*.test.ts'],
-    exclude: ['node_modules', 'dist', '.next', 'src/**'],
+    exclude: ['node_modules', 'dist', '.next', 'src/**', 'tests/synpress/**'],
     reporters: ['verbose'],
     sequence: {
       hooks: 'stack',

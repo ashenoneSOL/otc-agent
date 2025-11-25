@@ -4,13 +4,12 @@ import { MultiWalletProvider } from "@/components/multiwallet";
 import { ChainResetMonitor } from "@/components/chain-reset-monitor";
 import { SolanaWalletProvider } from "@/components/solana-wallet-provider";
 import { MiniappProvider } from "@/components/miniapp-provider";
-import { config } from "@/lib/wagmi-client";
+import { config, chains } from "@/lib/wagmi-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { useEffect, useState } from "react";
 import { WagmiProvider } from "wagmi";
 import { PrivyProvider } from "@privy-io/react-auth";
-import { base, localhost, mainnet } from "wagmi/chains";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,7 +27,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
     setMounted(true);
   }, []);
 
-  const isDevelopment = process.env.NODE_ENV === "development";
   const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
   if (!privyAppId) {
@@ -64,33 +62,29 @@ export function Providers({ children }: { children: React.ReactNode }) {
           config={{
             // Farcaster + available wallets (auto-detect what's installed)
             loginMethods: ["farcaster", "wallet"],
-            // Support EVM wallets only (Solana handled by wallet-adapter)
+            // Support EVM and Solana wallets via Privy
             appearance: {
               theme: "light",
               accentColor: "#0052ff",
-              walletChainType: "ethereum-only", // EVM only - Solana uses wallet-adapter
+              walletChainType: "ethereum-and-solana",
               walletList: [
-                "detected_ethereum_wallets", // Detected wallets FIRST (MetaMask, Coinbase, etc.)
+                "detected_ethereum_wallets",
+                "detected_solana_wallets",
                 "wallet_connect",
+                "phantom",
               ],
-            },
-            // Explicitly disable Solana in Privy to prevent warnings
-            // Solana is handled separately by SolanaWalletProvider
-            externalWallets: {
-              solana: {
-                connectors: [], // Empty array to disable Solana in Privy
-              },
             },
             // Embedded wallets for users without external wallets
             embeddedWallets: {
               ethereum: {
                 createOnLogin: "users-without-wallets",
               },
+              solana: {
+                createOnLogin: "users-without-wallets",
+              },
             },
-            defaultChain: isDevelopment ? localhost : base,
-            supportedChains: isDevelopment
-              ? [localhost, base, mainnet]
-              : [base, mainnet],
+            defaultChain: chains[0],
+            supportedChains: chains,
           }}
         >
           <WagmiProvider config={config}>

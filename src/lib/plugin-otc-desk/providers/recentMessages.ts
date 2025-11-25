@@ -12,6 +12,26 @@ import {
   type UUID,
 } from "@elizaos/core";
 
+// Helper type for entity metadata from various sources
+interface EntitySourceMetadata {
+  username?: string;
+  name?: string;
+}
+
+// Helper function to safely get entity metadata
+function getEntityUsername(entity: Entity | undefined): string {
+  if (!entity?.metadata) return "unknown";
+  // Try common sources for username
+  for (const source of ["web", "discord", "telegram", "twitter"]) {
+    const sourceData = entity.metadata[source];
+    if (sourceData && typeof sourceData === "object") {
+      const meta = sourceData as EntitySourceMetadata;
+      if (meta.username) return meta.username;
+    }
+  }
+  return "unknown";
+}
+
 // Move getRecentInteractions outside the provider
 /**
  * Retrieves the recent interactions between two entities in a specific context.
@@ -369,9 +389,9 @@ export const recentMessagesProvider: Provider = {
         if (isSelf) {
           sender = runtime.character.name;
         } else {
-          sender =
-            (interactionEntityMap.get(message.entityId)?.metadata as any)
-              ?.username || "unknown";
+          sender = getEntityUsername(
+            interactionEntityMap.get(message.entityId),
+          );
         }
 
         return `${sender}: ${message.content.text}`;

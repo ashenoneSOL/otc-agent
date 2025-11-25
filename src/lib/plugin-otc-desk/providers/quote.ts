@@ -112,6 +112,7 @@ export async function setUserQuote(
     tokenAmount: string;
     discountBps: number;
     paymentCurrency: PaymentCurrency;
+    priceUsdPerToken?: number;
     totalUsd: number;
     discountedUsd: number;
     createdAt: number;
@@ -175,6 +176,7 @@ export async function setUserQuote(
     lockupMonths: quote.lockupMonths,
     lockupDays,
     paymentCurrency: quote.paymentCurrency,
+    priceUsdPerToken: quote.priceUsdPerToken || 0,
     totalUsd: quote.totalUsd,
     discountUsd: quote.totalUsd - quote.discountedUsd,
     discountedUsd: quote.discountedUsd,

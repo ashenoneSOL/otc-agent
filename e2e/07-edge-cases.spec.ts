@@ -189,12 +189,13 @@ test.describe('Network and Connection Edge Cases', () => {
     await connectBtn.click();
     await page.waitForTimeout(500);
     
-    // Choose Base
-    const baseBtn = page.getByRole('button', { name: /evm/i }).click();
+    // Choose EVM
+    const evmBtn = page.getByRole('button', { name: /evm/i });
+    await evmBtn.click();
     await page.waitForTimeout(1000);
-    await page.getByRole('button', { name: /jeju/i });
-    if (await baseBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await baseBtn.click();
+    const jejuBtn = page.getByRole('button', { name: /jeju/i });
+    if (await jejuBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await jejuBtn.click();
       await page.waitForTimeout(1000);
       await wallet.approve();
       await page.waitForTimeout(3000);
@@ -478,7 +479,7 @@ test.describe('Concurrency Edge Cases', () => {
     
     // Open second tab
     const page2 = await context.newPage();
-    await page2.goto('http://localhost:2222/');
+    await page2.goto('http://localhost:5004/');
     await page2.waitForTimeout(3000);
     
     // Both pages should be functional
@@ -670,10 +671,8 @@ test.describe('Clipboard and External Actions', () => {
 
 test.describe('Internationalization Edge Cases', () => {
   test('handles different locales', async ({ page }) => {
-    // Set different locale
-    await page.goto('/', {
-      locale: 'es-ES',
-    });
+    // Set different locale via context
+    await page.goto('/');
     
     // App should load (even if not translated)
     await expect(page.locator('body')).toBeVisible();

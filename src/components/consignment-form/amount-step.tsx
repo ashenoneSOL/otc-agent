@@ -43,12 +43,18 @@ export function AmountStep({
       </div>
 
       <div className="flex gap-4">
-        <Button onClick={onBack} color="zinc" className="flex-1 !py-2 bg-zinc-800 text-white border-zinc-700">
+        <Button
+          onClick={onBack}
+          color="zinc"
+          className="flex-1 !py-2 bg-zinc-800 text-white border-zinc-700"
+        >
           Back
         </Button>
         {formData.tokenId && requiredChain && !isConnectedToRequiredChain ? (
           <Button
-            onClick={requiredChain === "solana" ? onConnectSolana : onConnectEvm}
+            onClick={
+              requiredChain === "solana" ? onConnectSolana : onConnectEvm
+            }
             disabled={!formData.amount}
             className={`flex-1 !py-2 text-white rounded-lg ${
               requiredChain === "solana"

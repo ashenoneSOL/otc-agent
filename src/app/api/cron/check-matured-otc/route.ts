@@ -10,6 +10,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
 import { getChain, getRpcUrl } from "@/lib/getChain";
 import { getContractAddress } from "@/lib/getContractAddress";
+import type { RawOfferData } from "@/lib/otc-helpers";
 
 // This should be called daily via a cron job (e.g., Vercel Cron or external scheduler)
 // It checks for matured OTC and claims them on behalf of users
@@ -47,13 +48,15 @@ export async function GET(request: NextRequest) {
   let OTC_ADDRESS: Address;
   try {
     OTC_ADDRESS = getContractAddress();
-    console.log(`[Check Matured OTC] Using contract address: ${OTC_ADDRESS} for network: ${process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet"}`);
+    console.log(
+      `[Check Matured OTC] Using contract address: ${OTC_ADDRESS} for network: ${process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet"}`,
+    );
   } catch (error) {
     console.error("[Check Matured OTC] Failed to get contract address:", error);
     return NextResponse.json(
-      { 
+      {
         error: "Missing contract address configuration",
-        details: error instanceof Error ? error.message : "Unknown error"
+        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },
     );
@@ -70,27 +73,58 @@ export async function GET(request: NextRequest) {
     abi,
     functionName: "nextOfferId",
     args: [],
-  } as any)) as bigint;
+  })) as bigint;
 
   const now = Math.floor(Date.now() / 1000);
   const maturedOffers: bigint[] = [];
 
   for (let i = BigInt(1); i < nextOfferId; i++) {
-    const offer = (await publicClient.readContract({
+    const offerData = (await publicClient.readContract({
       address: OTC_ADDRESS,
       abi,
       functionName: "offers",
       args: [i],
-    } as any)) as any;
+    })) as RawOfferData;
+
+    // [consignmentId, tokenId, beneficiary, tokenAmount, discountBps, createdAt, unlockTime,
+    // priceUsdPerToken, maxPriceDeviation, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]
+
+    if (!Array.isArray(offerData)) continue;
+
+    const [
+      ,
+      ,
+      // consignmentId
+      // tokenId
+      beneficiary, // tokenAmount
+      ,
+      ,
+      ,
+      // discountBps
+      // createdAt
+      unlockTime, // priceUsdPerToken
+      ,
+      ,
+      ,
+      ,
+      ,
+      // maxPriceDeviation
+      // ethUsdPrice
+      // currency
+      // approved
+      paid,
+      fulfilled,
+      cancelled,
+    ] = offerData;
 
     // Matured = paid, not fulfilled, not cancelled, and unlockTime passed
     if (
-      offer?.beneficiary &&
-      offer.paid &&
-      !offer.fulfilled &&
-      !offer.cancelled &&
-      Number(offer.unlockTime) > 0 &&
-      Number(offer.unlockTime) <= now
+      beneficiary &&
+      paid &&
+      !fulfilled &&
+      !cancelled &&
+      Number(unlockTime) > 0 &&
+      Number(unlockTime) <= now
     ) {
       maturedOffers.push(i);
     }
@@ -142,7 +176,8 @@ export async function GET(request: NextRequest) {
         functionName: "autoClaim",
         args: [chunk],
         account,
-      } as any);
+        chain,
+      });
       // wait for 1 confirmation
       await publicClient.waitForTransactionReceipt({ hash });
       result.txHash = hash;

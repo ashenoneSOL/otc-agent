@@ -147,9 +147,10 @@ export class ConsignmentService {
       });
     }
 
-    if (filters?.minAmount) {
+    if (filters?.minAmount !== undefined) {
+      const minAmount = filters.minAmount;
       consignments = consignments.filter(
-        (c) => BigInt(c.remainingAmount) >= BigInt(filters.minAmount),
+        (c) => BigInt(c.remainingAmount) >= BigInt(minAmount),
       );
     }
 

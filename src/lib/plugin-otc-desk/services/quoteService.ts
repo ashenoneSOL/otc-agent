@@ -97,6 +97,7 @@ export class QuoteService extends Service {
     apr: number;
     lockupMonths: number;
     paymentCurrency: PaymentCurrency;
+    priceUsdPerToken?: number;
     totalUsd: number;
     discountUsd: number;
     discountedUsd: number;
@@ -134,6 +135,7 @@ export class QuoteService extends Service {
       lockupMonths: data.lockupMonths,
       lockupDays,
       paymentCurrency: data.paymentCurrency,
+      priceUsdPerToken: data.priceUsdPerToken || 0,
       totalUsd: data.totalUsd,
       discountUsd: data.discountUsd,
       discountedUsd: data.discountedUsd,
@@ -499,7 +501,7 @@ export class QuoteService extends Service {
 }
 
 // Helper to get service from runtime
-export function getQuoteService(runtime: IAgentRuntime): QuoteService {
+export function getQuoteService(runtime: IAgentRuntime): QuoteService | null {
   return runtime.getService<QuoteService>("QuoteService");
 }
 

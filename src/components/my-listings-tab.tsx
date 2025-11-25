@@ -5,7 +5,7 @@ import { ConsignmentRow } from "./consignment-row";
 import { Button } from "./button";
 import { useMultiWallet } from "./multiwallet";
 import { EVMChainSelectorModal } from "./evm-chain-selector-modal";
-import type { OTCConsignment } from "@/services/database";
+import type { OTCConsignment } from "@/types";
 
 interface MyListingsTabProps {
   listings: OTCConsignment[];

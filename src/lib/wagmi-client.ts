@@ -7,7 +7,8 @@ import { jejuMainnet, jejuTestnet, jejuLocalnet } from "@/lib/chains";
 // Custom RPC URLs
 const baseRpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL;
 const bscRpcUrl = process.env.NEXT_PUBLIC_BSC_RPC_URL;
-const jejuRpcUrl = process.env.NEXT_PUBLIC_JEJU_RPC_URL || "http://127.0.0.1:9545";
+const jejuRpcUrl =
+  process.env.NEXT_PUBLIC_JEJU_RPC_URL || "http://127.0.0.1:9545";
 const anvilRpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545";
 
 // Determine available chains based on configuration
@@ -51,7 +52,7 @@ function getTransports() {
   };
 
   const isDevelopment = process.env.NODE_ENV === "development";
-  
+
   if (isDevelopment) {
     transports[localhost.id] = http(anvilRpcUrl);
   }
@@ -73,7 +74,9 @@ function getTransports() {
   } else if (!isDevelopment) {
     // In production without custom RPC, use public RPCs
     transports[bsc.id] = http("https://bsc-dataseed1.binance.org");
-    transports[bscTestnet.id] = http("https://data-seed-prebsc-1-s1.binance.org:8545");
+    transports[bscTestnet.id] = http(
+      "https://data-seed-prebsc-1-s1.binance.org:8545",
+    );
   }
 
   return transports;

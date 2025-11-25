@@ -1,12 +1,12 @@
-import { Connection, PublicKey } from "@solana/web3.js";
-import { Program, AnchorProvider, Wallet } from "@coral-xyz/anchor";
-import { TokenRegistryService } from "./tokenRegistry";
-import { promises as fs } from "fs";
-import path from "path";
+import {
+  Connection,
+  PublicKey,
+  type Logs,
+  type VersionedTransactionResponse,
+} from "@solana/web3.js";
 
 let isListening = false;
 let connection: Connection | null = null;
-let program: Program | null = null;
 
 /**
  * Start listening for register_token events from Solana program
@@ -23,39 +23,21 @@ export async function startSolanaListener() {
     return;
   }
 
-  const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
   connection = new Connection(rpcUrl, "confirmed");
 
   try {
-    // Load IDL
-    const idlPath = path.join(process.cwd(), "solana/otc-program/target/idl/otc.json");
-    const idl = JSON.parse(await fs.readFile(idlPath, "utf8"));
-
-    // Create dummy wallet for reading (we don't need to sign)
-    const dummyWallet = {
-      publicKey: new PublicKey(programId),
-      signTransaction: async (tx: any) => tx,
-      signAllTransactions: async (txs: any[]) => txs,
-    };
-
-    const provider = new AnchorProvider(
-      connection,
-      dummyWallet as Wallet,
-      { commitment: "confirmed" }
-    );
-
-    program = new Program(idl, provider);
-
     console.log("[Solana Listener] Starting listener for program", programId);
     isListening = true;
 
     // Subscribe to program logs
     const subscriptionId = connection.onLogs(
       new PublicKey(programId),
-      async (logs, context) => {
+      async (logs: Logs) => {
         await handleProgramLogs(logs);
       },
-      "confirmed"
+      "confirmed",
     );
 
     // Handle graceful shutdown
@@ -85,58 +67,60 @@ export async function startSolanaListener() {
 /**
  * Handle program logs
  */
-async function handleProgramLogs(logs: any) {
-  try {
-    // Check if this is a register_token instruction
-    const logMessages = logs.logs;
-    
-    // Look for register_token instruction signature
-    const hasRegisterToken = logMessages.some((log: string) =>
-      log.includes("Instruction: RegisterToken") || log.includes("register_token")
-    );
+async function handleProgramLogs(logs: Logs) {
+  // Check if this is a register_token instruction
+  const logMessages = logs.logs;
 
-    if (!hasRegisterToken) {
-      return;
+  // Look for register_token instruction signature
+  const hasRegisterToken = logMessages.some(
+    (log: string) =>
+      log.includes("Instruction: RegisterToken") ||
+      log.includes("register_token"),
+  );
+
+  if (!hasRegisterToken) {
+    return;
+  }
+
+  console.log("[Solana Listener] Token registration detected:", logs.signature);
+
+  // Parse transaction to extract token details
+  if (connection) {
+    const tx = await connection.getTransaction(logs.signature, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+
+    if (tx && tx.meta && tx.meta.logMessages) {
+      await parseRegisterTokenTransaction(tx);
     }
-
-    console.log("[Solana Listener] Token registration detected:", logs.signature);
-
-    // Parse transaction to extract token details
-    if (connection) {
-      const tx = await connection.getTransaction(logs.signature, {
-        commitment: "confirmed",
-        maxSupportedTransactionVersion: 0,
-      });
-
-      if (tx && tx.meta && tx.meta.logMessages) {
-        await parseRegisterTokenTransaction(tx);
-      }
-    }
-  } catch (error) {
-    console.error("[Solana Listener] Failed to process logs:", error);
   }
 }
 
 /**
  * Parse register_token transaction
  */
-async function parseRegisterTokenTransaction(tx: any) {
-  try {
-    // Extract token mint and metadata from transaction
-    // This is simplified - actual implementation would parse instruction data
-    
-    // For now, log that we detected a registration
-    console.log("[Solana Listener] Detected token registration transaction:", tx.transaction.signatures[0]);
-    
-    // TODO: Parse instruction data to extract:
-    // - token_mint address
-    // - price_feed_id
-    // - Register token to database
-    
-    console.warn("[Solana Listener] ⚠️ Solana registration parsing not yet implemented");
-  } catch (error) {
-    console.error("[Solana Listener] Failed to parse transaction:", error);
-  }
+async function parseRegisterTokenTransaction(tx: VersionedTransactionResponse) {
+  // Extract token mint and metadata from transaction
+  // This is simplified - actual implementation would parse instruction data
+
+  // Get first signature from the transaction
+  const signature = tx.transaction.signatures[0];
+
+  // For now, log that we detected a registration
+  console.log(
+    "[Solana Listener] Detected token registration transaction:",
+    signature,
+  );
+
+  // TODO: Parse instruction data to extract:
+  // - token_mint address
+  // - price_feed_id
+  // - Register token to database
+
+  console.warn(
+    "[Solana Listener] Solana registration parsing not yet implemented",
+  );
 }
 
 /**
@@ -148,15 +132,23 @@ export async function backfillSolanaEvents(signatures?: string[]) {
     throw new Error("SOLANA_PROGRAM_ID not configured");
   }
 
-  const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
   const conn = new Connection(rpcUrl, "confirmed");
 
-  console.log("[Solana Backfill] Fetching recent transactions for program", programId);
+  console.log(
+    "[Solana Backfill] Fetching recent transactions for program",
+    programId,
+  );
 
   // Get recent signatures
-  const sigs = signatures || (
-    await conn.getSignaturesForAddress(new PublicKey(programId), { limit: 100 })
-  ).map(s => s.signature);
+  const sigs =
+    signatures ||
+    (
+      await conn.getSignaturesForAddress(new PublicKey(programId), {
+        limit: 100,
+      })
+    ).map((s) => s.signature);
 
   console.log(`[Solana Backfill] Found ${sigs.length} transactions`);
 
@@ -168,8 +160,10 @@ export async function backfillSolanaEvents(signatures?: string[]) {
       });
 
       if (tx && tx.meta && tx.meta.logMessages) {
-        const hasRegisterToken = tx.meta.logMessages.some(log =>
-          log.includes("Instruction: RegisterToken") || log.includes("register_token")
+        const hasRegisterToken = tx.meta.logMessages.some(
+          (log) =>
+            log.includes("Instruction: RegisterToken") ||
+            log.includes("register_token"),
         );
 
         if (hasRegisterToken) {
@@ -177,7 +171,10 @@ export async function backfillSolanaEvents(signatures?: string[]) {
         }
       }
     } catch (error) {
-      console.warn(`[Solana Backfill] Failed to process signature ${sig}:`, error);
+      console.warn(
+        `[Solana Backfill] Failed to process signature ${sig}:`,
+        error,
+      );
     }
   }
 
@@ -187,27 +184,26 @@ export async function backfillSolanaEvents(signatures?: string[]) {
 /**
  * Helper: Fetch SPL token metadata
  */
-async function fetchSPLTokenMetadata(mintAddress: string) {
-  if (!connection) {
-    throw new Error("Connection not initialized");
-  }
-
-  try {
-    const mint = new PublicKey(mintAddress);
-    const mintInfo = await connection.getParsedAccountInfo(mint);
-
-    if (mintInfo.value && "parsed" in mintInfo.value.data) {
-      const parsed = mintInfo.value.data.parsed;
-      return {
-        decimals: parsed.info.decimals,
-        supply: parsed.info.supply,
-      };
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Failed to fetch SPL token metadata:", error);
-    return null;
-  }
-}
-
+// async function fetchSPLTokenMetadata(mintAddress: string) {
+//   if (!connection) {
+//     throw new Error("Connection not initialized");
+//   }
+//
+//   try {
+//     const mint = new PublicKey(mintAddress);
+//     const mintInfo = await connection.getParsedAccountInfo(mint);
+//
+//     if (mintInfo.value && "parsed" in mintInfo.value.data) {
+//       const parsed = mintInfo.value.data.parsed;
+//       return {
+//         decimals: parsed.info.decimals,
+//         supply: parsed.info.supply,
+//       };
+//     }
+//
+//     return null;
+//   } catch (error) {
+//     console.error("Failed to fetch SPL token metadata:", error);
+//     return null;
+//   }
+// }

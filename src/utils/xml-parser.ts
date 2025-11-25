@@ -120,7 +120,9 @@ export function parseOTCQuoteXML(xmlString: string): OTCQuote | null {
     tokenAmount: getElementText("tokenAmount"),
     tokenAmountFormatted: getElementText("tokenAmountFormatted"),
     tokenSymbol: getElementText("tokenSymbol"),
-    tokenChain: tokenChain ? (tokenChain as "ethereum" | "base" | "bsc" | "jeju" | "solana") : undefined,
+    tokenChain: tokenChain
+      ? (tokenChain as "ethereum" | "base" | "bsc" | "jeju" | "solana")
+      : undefined,
     apr: getElementNumber("apr"),
     lockupMonths: getElementNumber("lockupMonths"),
     lockupDays: getElementNumber("lockupDays"),

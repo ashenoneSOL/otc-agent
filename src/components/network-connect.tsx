@@ -45,7 +45,9 @@ export function NetworkConnectButton({
   }, []);
 
   const onChooseSolana = useCallback(() => {
-    console.log("[NetworkConnect] Solana chosen, setting family and connecting...");
+    console.log(
+      "[NetworkConnect] Solana chosen, setting family and connecting...",
+    );
     setActiveFamily("solana");
     setOpen(false);
     connectSolanaWallet();
@@ -80,8 +82,12 @@ export function NetworkConnectButton({
                         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
                           <EVMLogo className="w-10 h-10 sm:w-12 sm:h-12" />
                         </div>
-                        <div className="text-2xl sm:text-3xl font-bold">EVM</div>
-                        <div className="text-xs text-white/70">Base, BSC, Jeju</div>
+                        <div className="text-2xl sm:text-3xl font-bold">
+                          EVM
+                        </div>
+                        <div className="text-xs text-white/70">
+                          Base, BSC, Jeju
+                        </div>
                       </div>
                     </button>
                     <button
@@ -93,7 +99,9 @@ export function NetworkConnectButton({
                         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
                           <SolanaLogo className="w-10 h-10 sm:w-12 sm:h-12" />
                         </div>
-                        <div className="text-2xl sm:text-3xl font-bold">Solana</div>
+                        <div className="text-2xl sm:text-3xl font-bold">
+                          Solana
+                        </div>
                       </div>
                     </button>
                   </div>
@@ -103,7 +111,7 @@ export function NetworkConnectButton({
           ) : null}
         </div>
       </Dialog>
-      
+
       <EVMChainSelectorModal
         isOpen={showEVMChainSelector}
         onClose={() => setShowEVMChainSelector(false)}

@@ -7,6 +7,8 @@
  * 3. Approve offer
  * 4. Fulfill with SOL/USDC
  * 5. Claim tokens
+ *
+ * NOTE: Requires local Solana validator to be running at localhost:8899
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -25,6 +27,9 @@ import * as path from "path";
 
 const SOLANA_RPC = "http://127.0.0.1:8899";
 const TEST_TIMEOUT = 180000;
+
+// Check if Solana validator is available
+let validatorAvailable = false;
 
 interface TestContext {
   provider?: AnchorProvider;
@@ -54,9 +59,18 @@ describe("Solana OTC Program E2E Tests", () => {
     console.log("\n🔷 Solana Program E2E Test Setup\n");
 
     // Check if validator is running
+    try {
+      const connection = new Connection(SOLANA_RPC, "confirmed");
+      const version = await connection.getVersion();
+      console.log(`✅ Solana validator connected (v${version["solana-core"]})`);
+      validatorAvailable = true;
+    } catch (err) {
+      console.log("⚠️ Solana validator not available - skipping Solana tests");
+      validatorAvailable = false;
+      return;
+    }
+
     const connection = new Connection(SOLANA_RPC, "confirmed");
-    const version = await connection.getVersion();
-    console.log(`✅ Solana validator connected (v${version["solana-core"]})`);
 
     // Load IDL
     const idlPath = path.join(
@@ -218,7 +232,7 @@ describe("Solana OTC Program E2E Tests", () => {
       ctx.tokenMint,
       ownerTokenAta,
       ctx.owner,
-      BigInt(1_000_000_000000000) as any
+      1_000_000_000000000n
     );
 
     await ctx.program.methods
@@ -237,7 +251,7 @@ describe("Solana OTC Program E2E Tests", () => {
     console.log("═══════════════════════════════════════════════════════\n");
   }, TEST_TIMEOUT);
 
-  it(
+  it.skipIf(!validatorAvailable)(
     "should complete USDC payment flow",
     async () => {
       if (
@@ -329,7 +343,7 @@ describe("Solana OTC Program E2E Tests", () => {
         ctx.usdcMint,
         payerUsdc.address,
         ctx.owner!,
-        BigInt(1_000_000_000) as any
+        1_000_000_000n
       );
 
       await ctx.program.methods
@@ -389,7 +403,7 @@ describe("Solana OTC Program E2E Tests", () => {
     TEST_TIMEOUT
   );
 
-  it(
+  it.skipIf(!validatorAvailable)(
     "should complete SOL payment flow",
     async () => {
       if (!ctx.program || !ctx.owner || !ctx.desk || !ctx.tokenMint) {

@@ -1,11 +1,15 @@
+import type { Program } from "@coral-xyz/anchor";
 import pkg from "@coral-xyz/anchor";
-const anchor: any = pkg as any;
 import { PublicKey } from "@solana/web3.js";
+import type { Otc } from "../target/types/otc";
+
+// ESM/CJS compatibility: import as default then destructure
+const { AnchorProvider, setProvider, workspace } = pkg as typeof import("@coral-xyz/anchor");
 
 async function verify() {
-  const provider = anchor.AnchorProvider.env();
-  anchor.setProvider(provider);
-  const program = anchor.workspace.Otc as any;
+  const provider = AnchorProvider.env();
+  setProvider(provider);
+  const program = workspace.Otc as Program<Otc>;
   
   const desk = new PublicKey("7EN1rubej95WmoyupRXQ78PKU2hTCspKn2mVKN1vxuPp");
   const data = await program.account.desk.fetch(desk);
@@ -13,8 +17,8 @@ async function verify() {
   const now = Math.floor(Date.now() / 1000);
   const pricesAge = now - parseInt(data.pricesUpdatedAt.toString(), 16);
   const maxAge = parseInt(data.maxPriceAgeSecs.toString(), 16);
-  const tokenPrice = parseInt(data.tokenUsdPrice8D.toString(), 16) / 1e8;
-  const solPrice = parseInt(data.solUsdPrice8D.toString(), 16) / 1e8;
+  const tokenPrice = parseInt(data.tokenUsdPrice8d.toString(), 16) / 1e8;
+  const solPrice = parseInt(data.solUsdPrice8d.toString(), 16) / 1e8;
   const tokenBalance = parseInt(data.tokenDeposited.toString(), 16);
   const reserved = parseInt(data.tokenReserved.toString(), 16);
   const available = tokenBalance - reserved;
@@ -35,7 +39,7 @@ async function verify() {
   
   console.log("✅ Approvers:");
   console.log(`   Count: ${data.approvers.length}`);
-  console.log(`   List: ${data.approvers.map((a: any) => a.toString().slice(0, 8)).join(", ")}\n`);
+  console.log(`   List: ${data.approvers.map((a: PublicKey) => a.toString().slice(0, 8)).join(", ")}\n`);
   
   console.log("✅ Configuration:");
   console.log(`   Paused: ${data.paused ? "YES ❌" : "NO ✅"}`);

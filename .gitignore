@@ -54,4 +54,6 @@ next-env.d.ts
 test-*.log
 dev-*.log
 solana/otc-program/test-ledger/
-solana/otc-program/target/
+solana/otc-program/target/src/config/deployments/local-*.json
+
+.cache-synpress/

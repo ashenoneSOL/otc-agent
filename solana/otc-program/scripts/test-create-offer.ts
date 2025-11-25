@@ -1,14 +1,17 @@
+import type { Program } from "@coral-xyz/anchor";
 import pkg from "@coral-xyz/anchor";
-const anchor: any = pkg as any;
-const { BN } = anchor;
 import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import * as fs from "fs";
+import type { Otc } from "../target/types/otc";
+
+// ESM/CJS compatibility: import as default then destructure
+const { AnchorProvider, setProvider, workspace, BN } = pkg as typeof import("@coral-xyz/anchor");
 
 async function test() {
-  const provider = anchor.AnchorProvider.env();
-  anchor.setProvider(provider);
-  const program = anchor.workspace.Otc as any;
+  const provider = AnchorProvider.env();
+  setProvider(provider);
+  const program = workspace.Otc as Program<Otc>;
 
   const ownerData = JSON.parse(fs.readFileSync("./id.json", "utf8"));
   const owner = Keypair.fromSecretKey(Uint8Array.from(ownerData));
@@ -34,12 +37,11 @@ async function test() {
       0, // SOL payment
       new BN(15552000) // 180 days
     )
-    .accounts({
+    .accountsPartial({
       desk,
       deskTokenTreasury,
       beneficiary: owner.publicKey,
       offer: offer.publicKey,
-      systemProgram: SystemProgram.programId,
     })
     .signers([offer])
     .rpc();

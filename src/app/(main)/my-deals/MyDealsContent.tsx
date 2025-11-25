@@ -8,6 +8,44 @@ import { MyListingsTab } from "@/components/my-listings-tab";
 import { useOTC } from "@/hooks/contracts/useOTC";
 import { resumeFreshAuth } from "@/utils/x-share";
 
+// Type for deals from the API
+interface DealFromAPI {
+  offerId: string;
+  beneficiary: string;
+  tokenAmount: string;
+  discountBps: number;
+  paymentCurrency: string;
+  paymentAmount: string;
+  payer: string;
+  createdAt: string;
+  lockupMonths?: number;
+  quoteId?: string;
+  status?: string;
+}
+
+// Import OTCConsignment type for listings
+import type { OTCConsignment } from "@/types";
+
+// Extended offer type with quoteId
+interface OfferWithQuoteId {
+  id: bigint;
+  beneficiary: string;
+  tokenAmount: bigint;
+  discountBps: bigint;
+  createdAt: bigint;
+  unlockTime: bigint;
+  priceUsdPerToken: bigint;
+  ethUsdPrice: bigint;
+  currency: number;
+  approved: boolean;
+  paid: boolean;
+  fulfilled: boolean;
+  cancelled: boolean;
+  payer: string;
+  amountPaid: bigint;
+  quoteId?: string;
+}
+
 function formatDate(tsSeconds: bigint): string {
   const d = new Date(Number(tsSeconds) * 1000);
   return d.toLocaleDateString(undefined, {
@@ -46,9 +84,9 @@ export function MyDealsContent() {
   );
   const [sortAsc] = useState(true);
   const [refunding, setRefunding] = useState<bigint | null>(null);
-  const [solanaDeals, setSolanaDeals] = useState<any[]>([]);
-  const [evmDeals, setEvmDeals] = useState<any[]>([]);
-  const [myListings, setMyListings] = useState<any[]>([]);
+  const [solanaDeals, setSolanaDeals] = useState<DealFromAPI[]>([]);
+  const [evmDeals, setEvmDeals] = useState<DealFromAPI[]>([]);
+  const [myListings, setMyListings] = useState<OTCConsignment[]>([]);
 
   const refreshListings = useCallback(async () => {
     const walletAddr =
@@ -103,7 +141,7 @@ export function MyDealsContent() {
 
       const solanaWalletAddress = solanaPublicKey?.toString() || "";
 
-      return solanaDeals.map((deal: any) => {
+      return solanaDeals.map((deal: DealFromAPI) => {
         const createdTs = deal.createdAt
           ? new Date(deal.createdAt).getTime() / 1000
           : Date.now() / 1000;
@@ -352,8 +390,9 @@ export function MyDealsContent() {
                 const matured = Number(o.unlockTime) <= now;
                 const discountPct = Number(o.discountBps ?? 0n) / 100;
                 const lockup = getLockupLabel(o.createdAt, o.unlockTime);
+                const offerWithQuote = o as OfferWithQuoteId;
                 const uniqueKey =
-                  (o as any).quoteId || o.id.toString() || `deal-${index}`;
+                  offerWithQuote.quoteId || o.id.toString() || `deal-${index}`;
 
                 return (
                   <div

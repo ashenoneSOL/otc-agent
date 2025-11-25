@@ -22,7 +22,6 @@ export function WalletMenu() {
     networkLabel,
     connectWallet,
     connectSolanaWallet,
-    switchSolanaWallet,
     disconnect,
   } = useMultiWallet();
 
@@ -88,24 +87,35 @@ export function WalletMenu() {
     setIsOpen(false);
     const targetFamily = activeFamily === "solana" ? "evm" : "solana";
 
-    console.log(`[WalletMenu] Switching from ${activeFamily} to ${targetFamily}`);
+    console.log(
+      `[WalletMenu] Switching from ${activeFamily} to ${targetFamily}`,
+    );
 
     // Then open appropriate connection modal for target network
     if (targetFamily === "evm") {
-      setShowEVMChainSelector(true);
+      // If not connected to EVM, we could trigger connect, but let's assume we want to select chain first if we have one
+      // Or if we are just toggling view.
+      // If evmConnected is false, we should probably connect.
+      if (!evmConnected) {
+        connectWallet();
+      }
+      // If connected or not, we show chain selector if we want to change chain,
+      // but "Switch to EVM" usually implies just switching the active view if already connected.
+      // If not connected, connectWallet() will handle it.
+      // But existing logic showed chain selector. Let's stick to "Switch view" primarily.
+      setActiveFamily(targetFamily);
     } else if (targetFamily === "solana") {
       setActiveFamily(targetFamily);
-      connectSolanaWallet();
+      if (!solanaConnected) {
+        connectSolanaWallet();
+      }
     }
   };
 
   const handleSwitchWallet = () => {
     setIsOpen(false);
-    if (activeFamily === "solana") {
-      switchSolanaWallet();
-    } else {
-      connectWallet();
-    }
+    // Unified connect/switch wallet via Privy
+    connectWallet();
   };
 
   const handleDisconnect = async () => {

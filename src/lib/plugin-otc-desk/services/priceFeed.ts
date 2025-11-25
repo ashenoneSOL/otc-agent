@@ -13,8 +13,6 @@ const DEFAULT_TOKEN_CONFIG = {
 } as const;
 
 const CACHE_TTL = 60 * 1000; // 60 seconds
-const FALLBACK_TOKEN_PRICE = 0.00005;
-const FALLBACK_ETH_PRICE = 3500;
 
 /**
  * Get cached price from runtime storage
@@ -38,7 +36,9 @@ async function setCachedPrice(key: string, value: PriceCache): Promise<void> {
  * Fetch token price from CoinGecko API by coingecko ID
  * For dynamic multi-token pricing, use MarketDataService instead
  */
-async function fetchTokenPriceFromCoinGecko(coingeckoId: string): Promise<number | null> {
+async function fetchTokenPriceFromCoinGecko(
+  coingeckoId: string,
+): Promise<number | null> {
   const response = await fetch(
     `https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoId}&vs_currencies=usd`,
     {
@@ -49,16 +49,76 @@ async function fetchTokenPriceFromCoinGecko(coingeckoId: string): Promise<number
   );
 
   if (!response.ok) {
-    console.warn(`CoinGecko API returned ${response.status} for ${coingeckoId}`);
-    return null;
+    throw new Error(
+      `CoinGecko API returned ${response.status} for ${coingeckoId}`,
+    );
   }
 
   const data = await response.json();
   const price = data[coingeckoId]?.usd;
 
   if (typeof price !== "number") {
-    console.warn(`Invalid price data for ${coingeckoId}:`, data);
-    return null;
+    throw new Error(
+      `Invalid price data for ${coingeckoId}: ${JSON.stringify(data)}`,
+    );
+  }
+
+  return price;
+}
+
+/**
+ * Fetch token price from DexScreener API by token address
+ * Returns the price in USD from the most liquid pair
+ */
+async function fetchTokenPriceFromDexScreener(
+  chainId: string,
+  tokenAddress: string,
+): Promise<number | null> {
+  const response = await fetch(
+    `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`,
+    {
+      headers: {
+        Accept: "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `DexScreener API returned ${response.status} for ${tokenAddress}`,
+    );
+  }
+
+  const data = await response.json();
+  const pairs = data.pairs || [];
+
+  if (pairs.length === 0) {
+    throw new Error(`No pairs found for ${tokenAddress} on DexScreener`);
+  }
+
+  // Filter by chainId if provided
+  const chainPairs = chainId
+    ? pairs.filter((p: any) => p.chainId === chainId)
+    : pairs;
+
+  if (chainPairs.length === 0) {
+    throw new Error(
+      `No pairs found for ${tokenAddress} on chain ${chainId} (found on ${pairs.map((p: any) => p.chainId).join(", ")})`,
+    );
+  }
+
+  // Sort by liquidity to find best price source
+  chainPairs.sort(
+    (a: any, b: any) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0),
+  );
+
+  const bestPair = chainPairs[0];
+  const price = parseFloat(bestPair.priceUsd);
+
+  if (isNaN(price)) {
+    throw new Error(
+      `Invalid price data for ${tokenAddress}: ${JSON.stringify(bestPair)}`,
+    );
   }
 
   return price;
@@ -78,10 +138,12 @@ export async function getElizaPriceUsd(): Promise<number> {
   }
 
   // Try to fetch from CoinGecko
-  const price = await fetchTokenPriceFromCoinGecko(DEFAULT_TOKEN_CONFIG.coingeckoId);
+  const price = await fetchTokenPriceFromCoinGecko(
+    DEFAULT_TOKEN_CONFIG.coingeckoId,
+  );
 
+  // Update runtime cache only if price is not null
   if (price !== null) {
-    // Update runtime cache
     await setCachedPrice(cacheKey, {
       price,
       timestamp: Date.now(),
@@ -89,9 +151,35 @@ export async function getElizaPriceUsd(): Promise<number> {
     return price;
   }
 
-  // Use fallback price
-  console.warn(`Using fallback price: $${FALLBACK_TOKEN_PRICE}`);
-  return FALLBACK_TOKEN_PRICE;
+  throw new Error(`Failed to fetch price for ${DEFAULT_TOKEN_CONFIG.symbol}`);
+}
+
+/**
+ * Get arbitrary token price from DexScreener with caching
+ */
+export async function getTokenPriceUsd(
+  chainId: string,
+  tokenAddress: string,
+): Promise<number | null> {
+  const cacheKey = `${chainId}:${tokenAddress}`;
+
+  // Check runtime cache first
+  const cached = await getCachedPrice(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.price;
+  }
+
+  // Fetch from DexScreener
+  const price = await fetchTokenPriceFromDexScreener(chainId, tokenAddress);
+
+  // Update runtime cache only if price is not null
+  if (price !== null) {
+    await setCachedPrice(cacheKey, {
+      price,
+      timestamp: Date.now(),
+    });
+  }
+  return price;
 }
 
 /**
@@ -129,9 +217,7 @@ export async function getEthPriceUsd(): Promise<number> {
     }
   }
 
-  // Fallback ETH price
-  console.warn(`Using fallback ETH price: $${FALLBACK_ETH_PRICE}`);
-  return FALLBACK_ETH_PRICE;
+  throw new Error("Failed to fetch ETH price");
 }
 
 /**

@@ -82,8 +82,8 @@ export function ConsignmentCard({ consignment }: ConsignmentCardProps) {
           </span>
           <span className="font-medium text-xs sm:text-sm text-right">
             {consignment.isNegotiable
-              ? `${consignment.minDiscountBps / 100}% - ${consignment.maxDiscountBps / 100}%`
-              : `${consignment.fixedDiscountBps / 100}%`}
+              ? `${(consignment.minDiscountBps ?? 0) / 100}% - ${(consignment.maxDiscountBps ?? 0) / 100}%`
+              : `${(consignment.fixedDiscountBps ?? 0) / 100}%`}
           </span>
         </div>
 

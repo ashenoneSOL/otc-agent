@@ -11,7 +11,7 @@
  * - Oracle discovery works
  */
 
-import { createPublicClient, http, parseAbi } from "viem";
+import { createPublicClient, http, parseAbi, type Abi } from "viem";
 import { base } from "viem/chains";
 import { Connection, PublicKey } from "@solana/web3.js";
 
@@ -55,9 +55,9 @@ async function verifyBaseDeployment() {
         const otcAbi = parseAbi(["function nextOfferId() view returns (uint256)"]);
         await client.readContract({
           address: OTC_ADDRESS as `0x${string}`,
-          abi: otcAbi,
+          abi: otcAbi as Abi,
           functionName: "nextOfferId",
-        } as any);
+        });
         console.log("✅ OTC contract responds to function calls (deployed and working)");
       } catch (funcError) {
         console.warn("⚠️  Function call also failed - contract may still be indexing");
@@ -81,9 +81,9 @@ async function verifyBaseDeployment() {
     try {
       const nextOfferId = await client.readContract({
         address: OTC_ADDRESS as `0x${string}`,
-        abi: otcAbi,
+        abi: otcAbi as Abi,
         functionName: "nextOfferId",
-      } as any) as bigint;
+      }) as bigint;
       console.log("  Next Offer ID:", nextOfferId.toString());
     } catch (error) {
       console.warn("⚠️  Could not read nextOfferId (contract deployed but may have ABI mismatch)");
@@ -92,34 +92,34 @@ async function verifyBaseDeployment() {
     try {
       const agent = await client.readContract({
         address: OTC_ADDRESS as `0x${string}`,
-        abi: otcAbi,
+        abi: otcAbi as Abi,
         functionName: "agent",
-      } as any) as string;
+      }) as string;
       console.log("  Agent:", agent);
     } catch (error) {
-      // Non-critical
+      throw error;
     }
 
     try {
       const usdc = await client.readContract({
         address: OTC_ADDRESS as `0x${string}`,
-        abi: otcAbi,
+        abi: otcAbi as Abi,
         functionName: "usdc",
-      } as any) as string;
+      }) as string;
       console.log("  USDC:", usdc);
     } catch (error) {
-      // Non-critical
+      throw error;
     }
 
     try {
       const owner = await client.readContract({
         address: OTC_ADDRESS as `0x${string}`,
-        abi: otcAbi,
+        abi: otcAbi as Abi,
         functionName: "owner",
-      } as any) as string;
+      }) as string;
       console.log("  Owner:", owner);
     } catch (error) {
-      // Non-critical
+      throw error;
     }
 
     // Check RegistrationHelper
@@ -133,9 +133,9 @@ async function verifyBaseDeployment() {
         const helperAbi = parseAbi(["function otc() view returns (address)"]);
         await client.readContract({
           address: REGISTRATION_HELPER_ADDRESS as `0x${string}`,
-          abi: helperAbi,
+          abi: helperAbi as Abi,
           functionName: "otc",
-        } as any);
+        });
         console.log("✅ RegistrationHelper responds to function calls (deployed and working)");
       } catch (funcError) {
         console.warn("⚠️  Function call also failed - contract may still be indexing");
@@ -158,9 +158,9 @@ async function verifyBaseDeployment() {
     try {
       const helperOtc = await client.readContract({
         address: REGISTRATION_HELPER_ADDRESS as `0x${string}`,
-        abi: helperAbi,
+        abi: helperAbi as Abi,
         functionName: "otc",
-      } as any) as string;
+      }) as string;
       console.log("  OTC Address:", helperOtc);
       
       // Verify RegistrationHelper points to correct OTC
@@ -175,23 +175,23 @@ async function verifyBaseDeployment() {
     try {
       const regFee = await client.readContract({
         address: REGISTRATION_HELPER_ADDRESS as `0x${string}`,
-        abi: helperAbi,
+        abi: helperAbi as Abi,
         functionName: "registrationFee",
-      } as any) as bigint;
+      }) as bigint;
       console.log("  Registration Fee:", (Number(regFee) / 1e18).toFixed(4), "ETH");
     } catch (error) {
-      // Non-critical
+      throw error;
     }
 
     try {
       const feeRecipient = await client.readContract({
         address: REGISTRATION_HELPER_ADDRESS as `0x${string}`,
-        abi: helperAbi,
+        abi: helperAbi as Abi,
         functionName: "feeRecipient",
-      } as any) as string;
+      }) as string;
       console.log("  Fee Recipient:", feeRecipient);
     } catch (error) {
-      // Non-critical
+      throw error;
     }
 
     console.log("\n✅ Base deployment verified successfully");

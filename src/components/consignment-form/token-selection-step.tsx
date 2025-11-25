@@ -90,7 +90,7 @@ export function TokenSelectionStep({
   useEffect(() => {
     setLoading(true);
     setHasLoadedOnce(false);
-    
+
     async function loadUserTokens() {
       if (!isConnected) {
         setLoading(false);
@@ -185,14 +185,14 @@ export function TokenSelectionStep({
       }),
     );
 
-    const balance = await publicClient.readContract({
+    const balance = (await publicClient.readContract({
       address: tokenAddress as Address,
-      abi: erc20Abi,
+      abi: erc20Abi as Abi,
       functionName: "balanceOf",
       args: [userAddress as Address],
-    } as any);
+    })) as bigint;
 
-    return (balance as bigint).toString();
+    return balance.toString();
   }
 
   const formatBalance = (balance: string, decimals: number) => {

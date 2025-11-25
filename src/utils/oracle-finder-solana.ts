@@ -1,4 +1,5 @@
-import { Connection, PublicKey } from "@solana/web3.js";
+// Connection type not currently used but kept for future RPC calls
+// import { Connection } from "@solana/web3.js";
 
 export interface SolanaOracleInfo {
   type: "pyth" | "jupiter" | "raydium";
@@ -18,7 +19,7 @@ const JUPITER_PROGRAM_ID = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
  * Priority: Pyth > Jupiter > Raydium
  */
 export async function findSolanaOracle(
-  tokenMint: string
+  tokenMint: string,
 ): Promise<SolanaOracleInfo | null> {
   // Try Pyth first (most reliable)
   const pythFeed = await findPythFeed(tokenMint);
@@ -45,126 +46,118 @@ export async function findSolanaOracle(
  * Check if token has a Pyth price feed
  * Pyth is the preferred oracle for Solana
  */
-async function findPythFeed(tokenMint: string): Promise<SolanaOracleInfo | null> {
-  try {
-    // Query Pyth API for price feed
-    const response = await fetch(
-      `https://hermes.pyth.network/api/latest_price_feeds?ids[]=${tokenMint}`
-    );
-    
-    if (!response.ok) {
-      return null;
-    }
+async function findPythFeed(
+  tokenMint: string,
+): Promise<SolanaOracleInfo | null> {
+  // Query Pyth API for price feed
+  const response = await fetch(
+    `https://hermes.pyth.network/api/latest_price_feeds?ids[]=${tokenMint}`,
+  );
 
-    const data = await response.json();
-    
-    if (data && data.length > 0) {
-      const feed = data[0];
-      return {
-        type: "pyth",
-        address: PYTH_PROGRAM_ID,
-        feedId: feed.id,
-        valid: true,
-      };
-    }
-
-    // Also try querying by symbol if mint doesn't work
-    // This requires additional metadata lookup
-    return null;
-  } catch (error) {
-    console.warn("Failed to query Pyth feed:", error);
+  if (!response.ok) {
     return null;
   }
+
+  const data = await response.json();
+
+  if (data && data.length > 0) {
+    const feed = data[0];
+    return {
+      type: "pyth",
+      address: PYTH_PROGRAM_ID,
+      feedId: feed.id,
+      valid: true,
+    };
+  }
+
+  // Also try querying by symbol if mint doesn't work
+  // This requires additional metadata lookup
+  return null;
 }
 
 /**
  * Find Jupiter aggregator pool for token
  */
-async function findJupiterPool(tokenMint: string): Promise<SolanaOracleInfo | null> {
-  try {
-    // Query Jupiter API for available routes
-    const response = await fetch(
-      `https://quote-api.jup.ag/v6/quote?inputMint=${tokenMint}&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000`
-    );
+async function findJupiterPool(
+  tokenMint: string,
+): Promise<SolanaOracleInfo | null> {
+  // Query Jupiter API for available routes
+  const response = await fetch(
+    `https://quote-api.jup.ag/v6/quote?inputMint=${tokenMint}&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000`,
+  );
 
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = await response.json();
-
-    if (data && data.routePlan && data.routePlan.length > 0) {
-      // Extract pool address from route
-      const firstRoute = data.routePlan[0];
-      
-      return {
-        type: "jupiter",
-        address: JUPITER_PROGRAM_ID,
-        poolAddress: firstRoute.swapInfo?.ammKey || "unknown",
-        valid: true,
-      };
-    }
-
-    return null;
-  } catch (error) {
-    console.warn("Failed to query Jupiter:", error);
+  if (!response.ok) {
     return null;
   }
+
+  const data = await response.json();
+
+  if (data && data.routePlan && data.routePlan.length > 0) {
+    // Extract pool address from route
+    const firstRoute = data.routePlan[0];
+
+    return {
+      type: "jupiter",
+      address: JUPITER_PROGRAM_ID,
+      poolAddress: firstRoute.swapInfo?.ammKey || "unknown",
+      valid: true,
+    };
+  }
+
+  return null;
 }
 
 /**
  * Find Raydium pool for token
  */
-async function findRaydiumPool(tokenMint: string): Promise<SolanaOracleInfo | null> {
-  try {
-    const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
-    const connection = new Connection(rpcUrl, "confirmed");
+async function findRaydiumPool(
+  tokenMint: string,
+): Promise<SolanaOracleInfo | null> {
+  // Query Raydium API for pools (RPC connection not needed for API calls)
+  const response = await fetch("https://api.raydium.io/v2/main/pairs");
 
-    // Query Raydium API for pools
-    const response = await fetch("https://api.raydium.io/v2/main/pairs");
-    
-    if (!response.ok) {
-      return null;
-    }
+  if (!response.ok) {
+    return null;
+  }
 
-    const pools = await response.json();
-    
-    // Find pool with this token
-    const pool = pools.find(
-      (p: any) =>
-        p.baseMint === tokenMint ||
-        p.quoteMint === tokenMint
-    );
+  interface RaydiumPool {
+    baseMint: string;
+    quoteMint: string;
+    ammId: string;
+    liquidity?: string;
+  }
+  const pools: RaydiumPool[] = await response.json();
 
-    if (pool) {
-      // Validate pool has liquidity
-      const liquidity = parseFloat(pool.liquidity || "0");
-      
-      if (liquidity < 50000) {
-        return {
-          type: "raydium",
-          address: pool.ammId,
-          poolAddress: pool.ammId,
-          liquidity,
-          valid: false,
-          warning: `Low liquidity: $${liquidity.toLocaleString()}. Minimum recommended: $50,000`,
-        };
-      }
+  // Find pool with this token
+  const pool = pools.find(
+    (p) => p.baseMint === tokenMint || p.quoteMint === tokenMint,
+  );
 
+  if (pool) {
+    // Validate pool has liquidity
+    const liquidity = parseFloat(pool.liquidity || "0");
+
+    if (liquidity < 50000) {
       return {
         type: "raydium",
         address: pool.ammId,
         poolAddress: pool.ammId,
         liquidity,
-        valid: true,
+        valid: false,
+        warning: `Low liquidity: $${liquidity.toLocaleString()}. Minimum recommended: $50,000`,
       };
     }
 
-    return null;
-  } catch (error) {
-    console.warn("Failed to query Raydium:", error);
-    return null;
+    return {
+      type: "raydium",
+      address: pool.ammId,
+      poolAddress: pool.ammId,
+      liquidity,
+      valid: true,
+    };
   }
+
+  return null;
 }
 
 /**
@@ -225,7 +218,9 @@ export function formatOracleInfo(oracle: SolanaOracleInfo): string {
     case "jupiter":
       return "Jupiter Aggregator";
     case "raydium":
-      const tvl = oracle.liquidity ? ` - TVL: $${oracle.liquidity.toLocaleString()}` : "";
+      const tvl = oracle.liquidity
+        ? ` - TVL: $${oracle.liquidity.toLocaleString()}`
+        : "";
       return `Raydium Pool${tvl}`;
     default:
       return "Unknown Oracle";
@@ -254,4 +249,3 @@ export function getSolanaRegistrationCost(): {
     },
   };
 }
-

@@ -20,6 +20,7 @@ export interface QuoteMemory {
   lockupMonths: number;
   lockupDays: number;
   paymentCurrency: PaymentCurrency;
+  priceUsdPerToken: number;
   totalUsd: number;
   discountUsd: number;
   discountedUsd: number;

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, parseAbi } from "viem";
 import { base } from "viem/chains";
 import { Connection } from "@solana/web3.js";
-import { TokenRegistryService } from '@/services/tokenRegistry';
+import { TokenRegistryService } from "@/services/tokenRegistry";
 
 const ERC20_ABI = parseAbi([
   "function symbol() view returns (string)",
@@ -21,29 +21,29 @@ export async function POST(request: NextRequest) {
 
     if (!chain || !transactionHash) {
       return NextResponse.json(
-        { success: false, error: 'Missing chain or transactionHash' },
-        { status: 400 }
+        { success: false, error: "Missing chain or transactionHash" },
+        { status: 400 },
       );
     }
 
-    if (chain === 'base' || chain === 'ethereum') {
+    if (chain === "base" || chain === "ethereum") {
       return await syncBaseToken(transactionHash, blockNumber);
-    } else if (chain === 'solana') {
+    } else if (chain === "solana") {
       return await syncSolanaToken(transactionHash);
     } else {
       return NextResponse.json(
-        { success: false, error: 'Unsupported chain' },
-        { status: 400 }
+        { success: false, error: "Unsupported chain" },
+        { status: 400 },
       );
     }
   } catch (error) {
-    console.error('[Sync API] Error:', error);
+    console.error("[Sync API] Error:", error);
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -52,15 +52,17 @@ export async function POST(request: NextRequest) {
  * Sync Base token registration immediately
  */
 async function syncBaseToken(transactionHash: string, blockNumber?: string) {
-  const registrationHelperAddress = process.env.NEXT_PUBLIC_REGISTRATION_HELPER_ADDRESS;
+  const registrationHelperAddress =
+    process.env.NEXT_PUBLIC_REGISTRATION_HELPER_ADDRESS;
   if (!registrationHelperAddress) {
     return NextResponse.json(
-      { success: false, error: 'REGISTRATION_HELPER_ADDRESS not configured' },
-      { status: 500 }
+      { success: false, error: "REGISTRATION_HELPER_ADDRESS not configured" },
+      { status: 500 },
     );
   }
 
-  const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
   const client = createPublicClient({
     chain: base,
     transport: http(rpcUrl),
@@ -68,11 +70,13 @@ async function syncBaseToken(transactionHash: string, blockNumber?: string) {
 
   try {
     // Get transaction receipt to find the block
-    const receipt = await client.getTransactionReceipt({ hash: transactionHash as `0x${string}` });
+    const receipt = await client.getTransactionReceipt({
+      hash: transactionHash as `0x${string}`,
+    });
     if (!receipt) {
       return NextResponse.json(
-        { success: false, error: 'Transaction not found' },
-        { status: 404 }
+        { success: false, error: "Transaction not found" },
+        { status: 404 },
       );
     }
 
@@ -80,7 +84,9 @@ async function syncBaseToken(transactionHash: string, blockNumber?: string) {
     const startBlock = blockNumber ? BigInt(blockNumber) : txBlock;
     const endBlock = txBlock;
 
-    console.log(`[Sync Base] Fetching events from block ${startBlock} to ${endBlock}`);
+    console.log(
+      `[Sync Base] Fetching events from block ${startBlock} to ${endBlock}`,
+    );
 
     // Get logs for this specific transaction
     const logs = await client.getLogs({
@@ -101,12 +107,17 @@ async function syncBaseToken(transactionHash: string, blockNumber?: string) {
     });
 
     // Filter logs to only this transaction
-    const txLogs = logs.filter(log => log.transactionHash === transactionHash);
+    const txLogs = logs.filter(
+      (log) => log.transactionHash === transactionHash,
+    );
 
     if (txLogs.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No TokenRegistered event found in transaction' },
-        { status: 404 }
+        {
+          success: false,
+          error: "No TokenRegistered event found in transaction",
+        },
+        { status: 404 },
       );
     }
 
@@ -122,7 +133,9 @@ async function syncBaseToken(transactionHash: string, blockNumber?: string) {
           registeredBy: string;
         };
 
-        console.log(`[Sync Base] Processing token registration: ${tokenAddress} by ${registeredBy}`);
+        console.log(
+          `[Sync Base] Processing token registration: ${tokenAddress} by ${registeredBy}`,
+        );
 
         // Fetch token metadata
         const [symbol, name, decimals] = await Promise.all([
@@ -130,17 +143,17 @@ async function syncBaseToken(transactionHash: string, blockNumber?: string) {
             address: tokenAddress as `0x${string}`,
             abi: ERC20_ABI,
             functionName: "symbol",
-          } as any),
+          }),
           client.readContract({
             address: tokenAddress as `0x${string}`,
             abi: ERC20_ABI,
             functionName: "name",
-          } as any),
+          }),
           client.readContract({
             address: tokenAddress as `0x${string}`,
             abi: ERC20_ABI,
             functionName: "decimals",
-          } as any),
+          }),
         ]);
 
         // Register to database
@@ -174,9 +187,9 @@ async function syncBaseToken(transactionHash: string, blockNumber?: string) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+        error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -188,12 +201,13 @@ async function syncSolanaToken(signature: string) {
   const programId = process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID;
   if (!programId) {
     return NextResponse.json(
-      { success: false, error: 'SOLANA_PROGRAM_ID not configured' },
-      { status: 500 }
+      { success: false, error: "SOLANA_PROGRAM_ID not configured" },
+      { status: 500 },
     );
   }
 
-  const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
   const connection = new Connection(rpcUrl, "confirmed");
 
   try {
@@ -206,26 +220,28 @@ async function syncSolanaToken(signature: string) {
 
     if (!tx) {
       return NextResponse.json(
-        { success: false, error: 'Transaction not found' },
-        { status: 404 }
+        { success: false, error: "Transaction not found" },
+        { status: 404 },
       );
     }
 
     if (!tx.meta || !tx.meta.logMessages) {
       return NextResponse.json(
-        { success: false, error: 'No log messages in transaction' },
-        { status: 404 }
+        { success: false, error: "No log messages in transaction" },
+        { status: 404 },
       );
     }
 
-    const hasRegisterToken = tx.meta.logMessages.some(log =>
-      log.includes("Instruction: RegisterToken") || log.includes("register_token")
+    const hasRegisterToken = tx.meta.logMessages.some(
+      (log) =>
+        log.includes("Instruction: RegisterToken") ||
+        log.includes("register_token"),
     );
 
     if (!hasRegisterToken) {
       return NextResponse.json(
-        { success: false, error: 'No register_token instruction found' },
-        { status: 404 }
+        { success: false, error: "No register_token instruction found" },
+        { status: 404 },
       );
     }
 
@@ -236,17 +252,16 @@ async function syncSolanaToken(signature: string) {
     return NextResponse.json({
       success: true,
       processed: 0, // Solana parsing not fully implemented yet
-      message: 'Token registration detected (Solana parsing pending)',
+      message: "Token registration detected (Solana parsing pending)",
     });
   } catch (error) {
     console.error("[Sync Solana] Error:", error);
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+        error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

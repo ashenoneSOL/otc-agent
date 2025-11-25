@@ -1,26 +1,46 @@
 import { defineWalletSetup } from '@synthetixio/synpress';
 import { MetaMask } from '@synthetixio/synpress/playwright';
 
+/**
+ * Basic MetaMask wallet setup for Synpress tests
+ * 
+ * Uses the standard Anvil test seed phrase which gives us:
+ * - Account 0: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 (10000 ETH)
+ * - Account 1: 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 (10000 ETH)
+ * etc.
+ * 
+ * Chain configuration:
+ * - Jeju/Anvil: chainId 31337 at http://localhost:8545
+ */
+
 const SEED_PHRASE = process.env.SEED_PHRASE || 'test test test test test test test test test test test junk';
 const PASSWORD = process.env.WALLET_PASSWORD || 'Tester@1234';
 
-export default defineWalletSetup(PASSWORD, async (context, walletPage) => {
+// Wallet setup function
+const setupWallet = defineWalletSetup(PASSWORD, async (context, walletPage) => {
   const metamask = new MetaMask(context, walletPage, PASSWORD);
+  
+  // Import wallet with test seed
   await metamask.importWallet(SEED_PHRASE);
 
-  const jejuChainId = parseInt(process.env.CHAIN_ID || '420691');
-  const jejuRpcUrl = process.env.JEJU_RPC_URL || 'http://localhost:8545';
+  // Add Jeju/Anvil network
+  // Anvil default chainId is 31337
+  const chainId = parseInt(process.env.CHAIN_ID || '31337');
+  const rpcUrl = process.env.JEJU_RPC_URL || process.env.NEXT_PUBLIC_RPC_URL || 'http://localhost:8545';
+  
+  await metamask.addNetwork({
+    name: 'Jeju Localnet',
+    rpcUrl: rpcUrl,
+    chainId: chainId,
+    symbol: 'ETH',
+  });
 
-  await walletPage.evaluate(async ([chainId, rpcUrl]) => {
-    await (window as any).ethereum.request({
-      method: 'wallet_addEthereumChain',
-      params: [{
-        chainId: `0x${chainId.toString(16)}`,
-        chainName: 'Jeju Network',
-        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-        rpcUrls: [rpcUrl]
-      }]
-    });
-  }, [jejuChainId, jejuRpcUrl]);
+  // Switch to Jeju network
+  await metamask.switchNetwork('Jeju Localnet');
 });
 
+// Export password for tests to use with MetaMask class
+export const walletPassword = PASSWORD;
+
+// Default export is the wallet setup
+export default setupWallet;

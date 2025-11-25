@@ -4,10 +4,15 @@
 cd "$(dirname "$0")/.."
 
 echo "Deploying with Forge..."
-forge script script/DeployElizaOTC.s.sol:DeployElizaOTC \
+forge script scripts/DeployElizaOTC.s.sol:DeployElizaOTC \
   --rpc-url http://127.0.0.1:8545 \
   --broadcast \
   --legacy
+
+# Copy deployment to src config
+mkdir -p ../src/config/deployments
+cp deployments/eliza-otc-deployment.json ../src/config/deployments/local-evm.json
+echo "✅ Copied deployment to src/config/deployments/local-evm.json"
 
 # Merge deployment env vars into .env.local
 if [ -f .env.deployment ]; then

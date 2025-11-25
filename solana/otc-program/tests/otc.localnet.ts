@@ -1,17 +1,18 @@
-import pkg from "@coral-xyz/anchor";
 import type { Program } from "@coral-xyz/anchor";
+import pkg from "@coral-xyz/anchor";
 import type { Otc } from "../target/types/otc";
-const anchor: any = pkg as any;
-const { BN } = anchor;
 import { PublicKey, SystemProgram, Keypair } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, createMint, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
 import { expect } from "chai";
 
+// ESM/CJS compatibility: import as default then destructure
+const { AnchorProvider, setProvider, workspace, BN } = pkg as typeof import("@coral-xyz/anchor");
+
 describe("otc localnet smoke", () => {
-  const provider = anchor.AnchorProvider.env();
-  anchor.setProvider(provider);
-  const program = (anchor.workspace as any).Otc as Program<Otc>;
-  const airdrop = async (pk: any, lamports: number) => {
+  const provider = AnchorProvider.env();
+  setProvider(provider);
+  const program = workspace.Otc as Program<Otc>;
+  const airdrop = async (pk: PublicKey, lamports: number) => {
     const sig = await provider.connection.requestAirdrop(pk, lamports);
     await provider.connection.confirmTransaction(sig, "confirmed");
   };
@@ -34,15 +35,15 @@ describe("otc localnet smoke", () => {
 
     await program.methods
       .initDesk(new BN(500000000), new BN(1800))
-      .accounts({ desk: desk.publicKey, tokenMint, usdcMint, owner: owner.publicKey, agent: agent.publicKey, payer: owner.publicKey, systemProgram: SystemProgram.programId })
+      .accounts({ desk: desk.publicKey, tokenMint, usdcMint, owner: owner.publicKey, agent: agent.publicKey, payer: owner.publicKey })
       .signers([owner, desk])
       .rpc();
 
     const ownerTokenAta = getAssociatedTokenAddressSync(tokenMint, owner.publicKey);
     await getOrCreateAssociatedTokenAccount(provider.connection, owner, tokenMint, owner.publicKey);
-    await mintTo(provider.connection, owner, tokenMint, ownerTokenAta, owner, BigInt(1_000_000_000000000) as any);
+    await mintTo(provider.connection, owner, tokenMint, ownerTokenAta, owner, 1_000_000_000000000n);
 
-    await program.methods.depositTokens(new BN("500000000000000")).accounts({ desk: desk.publicKey, owner: owner.publicKey, ownerTokenAta, deskTokenTreasury, tokenProgram: TOKEN_PROGRAM_ID }).signers([owner]).rpc();
+    await program.methods.depositTokens(new BN("500000000000000")).accounts({ desk: desk.publicKey, owner: owner.publicKey, ownerTokenAta, deskTokenTreasury }).signers([owner]).rpc();
 
     expect(true).to.eq(true);
   });

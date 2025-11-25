@@ -2,14 +2,32 @@ import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
 import { agentRuntime } from "@/lib/agent-runtime";
 import { walletToEntityId } from "@/lib/entityId";
 import QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
+import type { QuoteMemory } from "@/lib/plugin-otc-desk/types";
 import {
   DealCompletionService,
   type PaymentCurrency,
 } from "@/services/database";
 import { NextRequest, NextResponse } from "next/server";
-import { createPublicClient, http, type Address } from "viem";
+import { createPublicClient, http, type Address, type Abi } from "viem";
+import { Connection } from "@solana/web3.js";
 import { getChain, getRpcUrl } from "@/lib/getChain";
 import { getContractAddress } from "@/lib/getContractAddress";
+
+// Type-safe wrapper for readContract with dynamic ABIs
+interface ReadContractParams {
+  address: Address;
+  abi: Abi;
+  functionName: string;
+  args?: readonly unknown[];
+}
+
+async function readContractSafe<T>(
+  client: { readContract: (params: ReadContractParams) => Promise<unknown> },
+  params: ReadContractParams,
+): Promise<T> {
+  const result = await client.readContract(params);
+  return result as T;
+}
 
 export async function POST(request: NextRequest) {
   await agentRuntime.getRuntime();
@@ -91,8 +109,21 @@ export async function POST(request: NextRequest) {
     const offerAddress = body.offerAddress;
     const beneficiaryOverride = body.beneficiary; // Solana wallet address
 
-    const quoteService =
-      agentRuntime.runtime.getService<QuoteService>("QuoteService");
+    const runtime = agentRuntime.runtime;
+    if (!runtime) {
+      return NextResponse.json(
+        { error: "Runtime not initialized" },
+        { status: 500 },
+      );
+    }
+
+    const quoteService = runtime.getService<QuoteService>("QuoteService");
+    if (!quoteService) {
+      return NextResponse.json(
+        { error: "QuoteService not available" },
+        { status: 500 },
+      );
+    }
 
     const quote = await quoteService.getQuoteByQuoteId(quoteId);
 
@@ -132,7 +163,55 @@ export async function POST(request: NextRequest) {
         offerId,
         offerAddress,
         tokenAmount: tokenAmountStr,
+        transactionHash,
       });
+
+      // Verify transaction on-chain
+      if (!transactionHash) {
+        return NextResponse.json(
+          { error: "Transaction hash required for Solana verification" },
+          { status: 400 },
+        );
+      }
+
+      try {
+        const rpcUrl =
+          process.env.NEXT_PUBLIC_SOLANA_RPC ||
+          "https://api.mainnet-beta.solana.com";
+        const connection = new Connection(rpcUrl, "confirmed");
+
+        console.log(
+          `[DealCompletion] Verifying Solana tx: ${transactionHash} on ${rpcUrl}`,
+        );
+
+        // Fetch transaction
+        const tx = await connection.getTransaction(transactionHash, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+
+        if (!tx) {
+          throw new Error("Transaction not found or not confirmed");
+        }
+
+        if (tx.meta?.err) {
+          throw new Error(`Transaction failed: ${JSON.stringify(tx.meta.err)}`);
+        }
+
+        console.log("[DealCompletion] ✅ Solana transaction verified on-chain");
+      } catch (error) {
+        console.error("[DealCompletion] Solana verification failed:", error);
+        // If localnet, maybe allow skip? No, always enforce.
+        // Unless we are in a mock environment where RPC fails?
+        // For now, strict enforcement.
+        return NextResponse.json(
+          {
+            error: "Solana transaction verification failed",
+            details: error instanceof Error ? error.message : String(error),
+          },
+          { status: 400 },
+        );
+      }
 
       const tokenAmount = BigInt(tokenAmountStr);
       const discountBps = quote.discountBps || 1000;
@@ -160,20 +239,8 @@ export async function POST(request: NextRequest) {
     } else if (offerId && offerId !== "0") {
       // Fetch on-chain data for EVM deals
       // Use chain-specific contract address based on NETWORK env var
-      let OTC_ADDRESS: Address;
-      try {
-        OTC_ADDRESS = getContractAddress();
-      } catch (error) {
-        console.error("[DealCompletion] Failed to get contract address:", error);
-        return NextResponse.json(
-          { 
-            error: "Missing contract address configuration",
-            details: error instanceof Error ? error.message : "Unknown error"
-          },
-          { status: 500 },
-        );
-      }
-      
+      const OTC_ADDRESS = getContractAddress();
+
       const chain = getChain();
       const RPC_URL = getRpcUrl();
 
@@ -181,85 +248,115 @@ export async function POST(request: NextRequest) {
         offerId,
         OTC_ADDRESS,
         RPC_URL,
-        network: process.env.NETWORK || process.env.NEXT_PUBLIC_JEJU_NETWORK || "localnet",
+        network:
+          process.env.NETWORK ||
+          process.env.NEXT_PUBLIC_JEJU_NETWORK ||
+          "localnet",
       });
 
       const publicClient = createPublicClient({
         chain,
         transport: http(RPC_URL),
       });
-        const abi = otcArtifact.abi as any;
+      const abi = otcArtifact.abi as Abi;
 
-        const offerData = (await publicClient.readContract({
-          address: OTC_ADDRESS,
-          abi,
-          functionName: "offers",
-          args: [BigInt(offerId)],
-        } as any)) as any;
+      type OfferData = [
+        bigint, // consignmentId
+        string, // tokenId (bytes32)
+        Address, // beneficiary
+        bigint, // tokenAmount
+        bigint, // discountBps
+        bigint, // createdAt
+        bigint, // unlockTime
+        bigint, // priceUsdPerToken
+        bigint, // maxPriceDeviation
+        bigint, // ethUsdPrice
+        number, // currency
+        boolean, // approved
+        boolean, // paid
+        boolean, // fulfilled
+        boolean, // cancelled
+        Address, // payer
+        bigint, // amountPaid
+      ];
+      const offerData = await readContractSafe<OfferData>(publicClient, {
+        address: OTC_ADDRESS,
+        abi,
+        functionName: "offers",
+        args: [BigInt(offerId)],
+      });
 
-        // Contract returns array: [beneficiary, tokenAmount, discountBps, createdAt, unlockTime,
-        //   priceUsdPerToken, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]
-        const [
-          ,
-          tokenAmount,
-          discountBps,
-          ,
-          ,
-          priceUsdPerToken,
-          ,
-          currency,
-          ,
-          paid,
-          ,
-          ,
-          ,
-          amountPaid,
-        ] = offerData;
+      // Contract returns array matching struct order
+      const [
+        ,
+        ,
+        ,
+        // consignmentId
+        // tokenId
+        // beneficiary
+        tokenAmount,
+        discountBps, // createdAt
+        ,
+        ,
+        // unlockTime
+        priceUsdPerToken, // maxPriceDeviation
+        ,
+        ,
+        // ethUsdPrice
+        currency, // approved
+        ,
+        paid, // fulfilled
+        ,
+        ,
+        ,
+        // cancelled
+        // payer
+        amountPaid,
+      ] = offerData;
 
-        console.log("[DealCompletion] Offer data from contract:", {
-          tokenAmount: tokenAmount?.toString(),
-          priceUsdPerToken: priceUsdPerToken?.toString(),
-          discountBps: discountBps?.toString(),
-          amountPaid: amountPaid?.toString(),
-          currency,
-          paid,
-        });
+      console.log("[DealCompletion] Offer data from contract:", {
+        tokenAmount: tokenAmount?.toString(),
+        priceUsdPerToken: priceUsdPerToken?.toString(),
+        discountBps: discountBps?.toString(),
+        amountPaid: amountPaid?.toString(),
+        currency,
+        paid,
+      });
 
-        // Calculate real USD values from on-chain data
-        // tokenAmount is 18 decimals, priceUsdPerToken is 8 decimals
-        const tokenAmountWei = BigInt(tokenAmount);
-        const priceUsd8 = BigInt(priceUsdPerToken);
-        const discountBpsNum = Number(discountBps);
-        const amountPaidBig = BigInt(amountPaid);
+      // Calculate real USD values from on-chain data
+      // tokenAmount is 18 decimals, priceUsdPerToken is 8 decimals
+      const tokenAmountWei = BigInt(tokenAmount);
+      const priceUsd8 = BigInt(priceUsdPerToken);
+      const discountBpsNum = Number(discountBps);
+      const amountPaidBig = BigInt(amountPaid);
 
-        // totalUsd = (tokenAmount * priceUsdPerToken) / 1e18 (result in 8 decimals)
-        const totalUsd8 = (tokenAmountWei * priceUsd8) / BigInt(1e18);
-        totalUsd = Number(totalUsd8) / 1e8;
+      // totalUsd = (tokenAmount * priceUsdPerToken) / 1e18 (result in 8 decimals)
+      const totalUsd8 = (tokenAmountWei * priceUsd8) / BigInt(1e18);
+      totalUsd = Number(totalUsd8) / 1e8;
 
-        // discountUsd = totalUsd * discountBps / 10000
-        const discountUsd8 = (totalUsd8 * BigInt(discountBpsNum)) / 10000n;
-        discountUsd = Number(discountUsd8) / 1e8;
+      // discountUsd = totalUsd * discountBps / 10000
+      const discountUsd8 = (totalUsd8 * BigInt(discountBpsNum)) / 10000n;
+      discountUsd = Number(discountUsd8) / 1e8;
 
-        // discountedUsd = totalUsd - discountUsd
-        const discountedUsd8 = totalUsd8 - discountUsd8;
-        discountedUsd = Number(discountedUsd8) / 1e8;
+      // discountedUsd = totalUsd - discountUsd
+      const discountedUsd8 = totalUsd8 - discountUsd8;
+      discountedUsd = Number(discountedUsd8) / 1e8;
 
-        // Format payment amount based on currency
-        if (currency === 0) {
-          // ETH (18 decimals)
-          actualPaymentAmount = (Number(amountPaidBig) / 1e18).toFixed(6);
-        } else {
-          // USDC (6 decimals)
-          actualPaymentAmount = (Number(amountPaidBig) / 1e6).toFixed(2);
-        }
-
-        console.log("[DealCompletion] Calculated from on-chain data:", {
-          totalUsd,
-          discountUsd,
-          discountedUsd,
-          actualPaymentAmount,
-        });
+      // Format payment amount based on currency
+      if (currency === 0) {
+        // ETH (18 decimals)
+        actualPaymentAmount = (Number(amountPaidBig) / 1e18).toFixed(6);
+      } else {
+        // USDC (6 decimals)
+        actualPaymentAmount = (Number(amountPaidBig) / 1e6).toFixed(2);
       }
+
+      console.log("[DealCompletion] Calculated from on-chain data:", {
+        totalUsd,
+        discountUsd,
+        discountedUsd,
+        actualPaymentAmount,
+      });
     } else {
       // No offerId, use quote values (fallback)
       const discountBps = quote.discountBps;
@@ -329,30 +426,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Store chain type for proper currency display
-    (updated as any).chain = chainType === "solana" ? "solana" : "evm";
-    await agentRuntime.runtime.setCache(`quote:${quoteId}`, updated);
+    const updatedWithChain = {
+      ...updated,
+      chain: chainType === "solana" ? "solana" : "evm",
+    };
+    await runtime.setCache(`quote:${quoteId}`, updatedWithChain);
 
     // VERIFY quote is in entity's list, and fix index if missing
     const entityQuotes =
-      (await agentRuntime.runtime.getCache<string[]>(
-        `entity_quotes:${updated.entityId}`,
-      )) || [];
+      (await runtime.getCache<string[]>(`entity_quotes:${updated.entityId}`)) ||
+      [];
     if (!entityQuotes.includes(quoteId)) {
       console.warn(
         `[Deal Completion] Quote ${quoteId} not in entity ${updated.entityId} list - fixing index`,
       );
       entityQuotes.push(quoteId);
-      await agentRuntime.runtime.setCache(
-        `entity_quotes:${updated.entityId}`,
-        entityQuotes,
-      );
+      await runtime.setCache(`entity_quotes:${updated.entityId}`, entityQuotes);
 
       // Also ensure it's in the all_quotes index
-      const allQuotes =
-        (await agentRuntime.runtime.getCache<string[]>("all_quotes")) || [];
+      const allQuotes = (await runtime.getCache<string[]>("all_quotes")) || [];
       if (!allQuotes.includes(quoteId)) {
         allQuotes.push(quoteId);
-        await agentRuntime.runtime.setCache("all_quotes", allQuotes);
+        await runtime.setCache("all_quotes", allQuotes);
       }
       console.log(`[Deal Completion] ✅ Fixed indexes for quote ${quoteId}`);
     }
@@ -371,9 +466,22 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "share") {
-    const quoteService =
-      agentRuntime.runtime.getService<QuoteService>("QuoteService");
-    const quote = await quoteService.getQuoteByQuoteId(quoteId);
+    const shareRuntime = agentRuntime.runtime;
+    if (!shareRuntime) {
+      return NextResponse.json(
+        { error: "Runtime not initialized" },
+        { status: 500 },
+      );
+    }
+    const shareQuoteService =
+      shareRuntime.getService<QuoteService>("QuoteService");
+    if (!shareQuoteService) {
+      return NextResponse.json(
+        { error: "QuoteService not available" },
+        { status: 500 },
+      );
+    }
+    const quote = await shareQuoteService.getQuoteByQuoteId(quoteId);
     if (!quote) {
       return NextResponse.json({ error: "Quote not found" }, { status: 404 });
     }
@@ -408,9 +516,16 @@ export async function GET(request: NextRequest) {
     entityId,
   });
 
-  const quoteService =
-    agentRuntime.runtime.getService<QuoteService>("QuoteService");
+  const getRuntime = agentRuntime.runtime;
+  if (!getRuntime) {
+    console.warn("[Deal Completion GET] Runtime not ready");
+    return NextResponse.json({
+      success: true,
+      deals: [],
+    });
+  }
 
+  const quoteService = getRuntime.getService<QuoteService>("QuoteService");
   if (!quoteService) {
     console.warn("[Deal Completion GET] QuoteService not ready");
     return NextResponse.json({
@@ -424,14 +539,13 @@ export async function GET(request: NextRequest) {
   console.log("[Deal Completion GET] Got quotes by entityId:", quotes.length);
 
   // ALSO search by beneficiary address (for quotes indexed under wrong entityId)
-  const allQuoteIds =
-    (await agentRuntime.runtime.getCache<string[]>("all_quotes")) ?? [];
+  const allQuoteIds = (await getRuntime.getCache<string[]>("all_quotes")) ?? [];
   const quotesSet = new Set(quotes.map((q) => q.quoteId));
 
   for (const quoteId of allQuoteIds) {
     if (quotesSet.has(quoteId)) continue; // Already have it
 
-    const quote = await agentRuntime.runtime.getCache<any>(`quote:${quoteId}`);
+    const quote = await getRuntime.getCache<QuoteMemory>(`quote:${quoteId}`);
     if (quote && quote.beneficiary === normalizedWallet) {
       console.log("[Deal Completion GET] Found quote by beneficiary:", quoteId);
       quotes.push(quote);

@@ -18,6 +18,17 @@ type OAuthResponse = {
   screen_name?: string;
 };
 
+// Credentials stored in localStorage for OAuth
+interface StoredCredentials {
+  entityId: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  username?: string;
+  oauth1Token?: string;
+  oauth1TokenSecret?: string;
+}
+
 export default function CallbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [debug, setDebug] = useState<Record<string, string>>({});
@@ -58,7 +69,7 @@ export default function CallbackPage() {
         if (!data.oauth1_token || !data.oauth1_token_secret) {
           throw new Error("Missing oauth1 tokens in response");
         }
-        const credentials = {
+        const credentials: StoredCredentials = {
           entityId: data.user_id || data.entityId || "default_user",
           accessToken: data.access_token || "",
           refreshToken: data.refresh_token || "",
@@ -66,7 +77,7 @@ export default function CallbackPage() {
           username: data.screen_name || data.username,
           oauth1Token: data.oauth1_token,
           oauth1TokenSecret: data.oauth1_token_secret,
-        } as any;
+        };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(credentials));
         redirectToOrigin();
         return;
@@ -83,12 +94,12 @@ export default function CallbackPage() {
         if (!tok.access_token || !tok.refresh_token || !tok.user_id) {
           throw new Error("Incomplete OAuth 2.0 token data");
         }
-        const creds = {
+        const creds: StoredCredentials = {
           entityId: tok.user_id,
           accessToken: tok.access_token,
           refreshToken: tok.refresh_token,
           expiresAt: Date.now() + (tok.expires_in || 3600) * 1000,
-        } as any;
+        };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
         redirectToOrigin();
         return;

@@ -17,6 +17,13 @@ export async function GET(
   const runtime = await agentRuntime.getRuntime();
   const quoteService = runtime.getService<QuoteService>("QuoteService");
 
+  if (!quoteService) {
+    return NextResponse.json(
+      { error: "QuoteService not available" },
+      { status: 500 },
+    );
+  }
+
   // Search for quote with matching offerId
   const matchingQuote = await quoteService.getQuoteByOfferId(offerId);
 

@@ -13,7 +13,15 @@ import type {
   Chain,
 } from "@/types";
 
-export type { PaymentCurrency, QuoteStatus, Chain, Token, TokenMarketData, OTCConsignment, ConsignmentDeal };
+export type {
+  PaymentCurrency,
+  QuoteStatus,
+  Chain,
+  Token,
+  TokenMarketData,
+  OTCConsignment,
+  ConsignmentDeal,
+};
 
 export class QuoteDB {
   static async createQuote(data: {
@@ -191,7 +199,7 @@ export class TokenDB {
     const tokens = await Promise.all(
       allTokenIds.map((id) => runtime.getCache<Token>(`token:${id}`)),
     );
-    let result = tokens.filter((t): t is Token => t !== null);
+    let result = tokens.filter((t): t is Token => t != null);
     if (filters?.chain)
       result = result.filter((t) => t.chain === filters.chain);
     if (filters?.isActive !== undefined)
@@ -210,6 +218,36 @@ export class TokenDB {
     await runtime.setCache(`token:${tokenId}`, updated);
     return updated;
   }
+
+  /**
+   * Find a token by its on-chain tokenId (keccak256 hash of symbol).
+   * This is used to map from the smart contract's bytes32 tokenId to the database token.
+   */
+  static async getTokenByOnChainId(
+    onChainTokenId: string,
+  ): Promise<Token | null> {
+    const { keccak256, stringToBytes } = await import("viem");
+    const allTokens = await TokenDB.getAllTokens();
+
+    for (const token of allTokens) {
+      const computedId = keccak256(stringToBytes(token.symbol));
+      if (computedId.toLowerCase() === onChainTokenId.toLowerCase()) {
+        return token;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Find a token by its symbol (case-insensitive).
+   */
+  static async getTokenBySymbol(symbol: string): Promise<Token | null> {
+    const allTokens = await TokenDB.getAllTokens();
+    return (
+      allTokens.find((t) => t.symbol.toLowerCase() === symbol.toLowerCase()) ??
+      null
+    );
+  }
 }
 
 export class MarketDataDB {
@@ -220,7 +258,10 @@ export class MarketDataDB {
 
   static async getMarketData(tokenId: string): Promise<TokenMarketData | null> {
     const runtime = await agentRuntime.getRuntime();
-    return await runtime.getCache<TokenMarketData>(`market_data:${tokenId}`);
+    return (
+      (await runtime.getCache<TokenMarketData>(`market_data:${tokenId}`)) ??
+      null
+    );
   }
 }
 
@@ -298,7 +339,7 @@ export class ConsignmentDB {
       ),
     );
     return consignments.filter(
-      (c): c is OTCConsignment => c !== null && c.status === "active",
+      (c): c is OTCConsignment => c != null && c.status === "active",
     );
   }
 
@@ -332,7 +373,7 @@ export class ConsignmentDB {
       ),
     );
     let result = consignments.filter(
-      (c): c is OTCConsignment => c !== null && c.status === "active",
+      (c): c is OTCConsignment => c != null && c.status === "active",
     );
     if (filters?.chain)
       result = result.filter((c) => c.chain === filters.chain);

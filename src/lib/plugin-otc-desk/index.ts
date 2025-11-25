@@ -28,6 +28,32 @@ import { tokenProvider as shawProvider } from "./providers/shaw";
 import { tokenProvider as elizaTokenProvider } from "./providers/token";
 import QuoteService from "./services/quoteService";
 import { UserSessionStorageService } from "./services/userSessionStorage";
+import type { QuoteMemory, PaymentCurrency } from "./types";
+
+// Helper type for entity metadata from various sources (web, discord, etc.)
+interface EntitySourceMetadata {
+  username?: string;
+  name?: string;
+}
+
+// Helper function to safely get entity metadata for a source
+function getEntitySourceMetadata(
+  entity: Entity | null,
+  source: string,
+): EntitySourceMetadata {
+  if (!entity?.metadata) return {};
+  const sourceData = entity.metadata[source];
+  if (!sourceData || typeof sourceData !== "object") return {};
+  return sourceData as EntitySourceMetadata;
+}
+
+// Interface for websocket service with sendMessage capability
+interface WebSocketServiceWithSendMessage {
+  sendMessage(message: {
+    type: string;
+    payload: Record<string, unknown>;
+  }): Promise<void>;
+}
 
 /**
  * Extracts the text content from within a <response> XML tag.
@@ -390,7 +416,11 @@ const messageReceivedHandler = async ({
         const { walletToEntityId } = await import("@/lib/entityId");
         const entityId = message.entityId.toString();
 
-        const quoteData = {
+        const paymentCurrencyRaw = getTag("paymentCurrency");
+        const paymentCurrency: PaymentCurrency =
+          paymentCurrencyRaw === "USDC" ? "USDC" : "ETH";
+
+        const quoteData: QuoteMemory = {
           id: (await import("uuid")).v4(),
           quoteId,
           entityId: walletToEntityId(entityId),
@@ -400,14 +430,14 @@ const messageReceivedHandler = async ({
           apr: 0,
           lockupMonths: getNumTag("lockupMonths"),
           lockupDays: getNumTag("lockupDays"),
-          paymentCurrency: getTag("paymentCurrency") as any,
+          paymentCurrency,
           priceUsdPerToken: getNumTag("pricePerToken"),
           totalUsd: 0,
           discountUsd: 0,
           discountedUsd: 0,
           paymentAmount: "0",
           signature: "",
-          status: "active" as any,
+          status: "active",
           createdAt: Date.now(),
           executedAt: 0,
           rejectedAt: 0,
@@ -453,7 +483,7 @@ const messageReceivedHandler = async ({
 
     // Create response memory with parsed actions
     const responseMemory: Memory = {
-      id: createUniqueUuid(runtime, message.id),
+      id: createUniqueUuid(runtime, message.id ?? crypto.randomUUID()),
       entityId: runtime.agentId,
       roomId: message.roomId,
       worldId: message.worldId,
@@ -563,9 +593,8 @@ const syncSingleUser = async (
   source: string,
 ) => {
   const entity = await runtime.getEntityById(entityId);
-  logger.info(
-    `Syncing user: ${(entity?.metadata?.[source] as any)?.username || entityId}`,
-  );
+  const sourceMetadata = getEntitySourceMetadata(entity, source);
+  logger.info(`Syncing user: ${sourceMetadata.username || entityId}`);
 
   // Ensure we're not using WORLD type and that we have a valid channelId
   if (!channelId) {
@@ -579,11 +608,8 @@ const syncSingleUser = async (
   await runtime.ensureConnection({
     entityId,
     roomId,
-    userName: (entity?.metadata?.[source] as any)?.username || entityId,
-    name:
-      (entity?.metadata?.[source] as any)?.name ||
-      (entity?.metadata?.[source] as any)?.username ||
-      `User${entityId}`,
+    userName: sourceMetadata.username || entityId,
+    name: sourceMetadata.name || sourceMetadata.username || `User${entityId}`,
     source,
     channelId,
     serverId,
@@ -648,13 +674,14 @@ const handleServerSync = async ({
             logger.warn(`Skipping entity sync - missing room or entity id`);
             return;
           }
+          const entitySourceMeta = getEntitySourceMetadata(entity, source);
           await runtime.ensureConnection({
             entityId: entity.id,
             roomId: firstRoomUserIsIn.id,
-            userName: (entity.metadata?.[source] as any)?.username || entity.id,
+            userName: entitySourceMeta.username || entity.id,
             name:
-              (entity.metadata?.[source] as any)?.name ||
-              (entity.metadata?.[source] as any)?.username ||
+              entitySourceMeta.name ||
+              entitySourceMeta.username ||
               `User${entity.id}`,
             source: source,
             channelId: firstRoomUserIsIn.channelId,
@@ -717,7 +744,9 @@ const controlMessageHandler = async ({
     const websocketService = runtime.getService(websocketServiceName);
     if (websocketService && "sendMessage" in websocketService) {
       // Send the control message through the WebSocket service
-      await (websocketService as any).sendMessage({
+      const wsService =
+        websocketService as unknown as WebSocketServiceWithSendMessage;
+      await wsService.sendMessage({
         type: "controlMessage",
         payload: {
           action: message.payload.action,

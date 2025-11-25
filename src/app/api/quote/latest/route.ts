@@ -67,14 +67,10 @@ export async function GET(request: NextRequest) {
   let tokenChain = undefined;
   let tokenSymbol = undefined;
   if (tokenId) {
-    try {
-      const { TokenDB } = await import("@/services/database");
-      const token = await TokenDB.getToken(tokenId);
-      tokenChain = token.chain;
-      tokenSymbol = token.symbol;
-    } catch {
-      console.warn("[Quote API] Failed to fetch token data:", tokenId);
-    }
+    const { TokenDB } = await import("@/services/database");
+    const token = await TokenDB.getToken(tokenId);
+    tokenChain = token.chain;
+    tokenSymbol = token.symbol;
   }
 
   const formattedQuote = quote
@@ -100,7 +96,12 @@ export async function GET(request: NextRequest) {
       }
     : null;
 
-  console.log("[Quote API] Returning:", formattedQuote?.quoteId ?? "null", "chain:", tokenChain);
+  console.log(
+    "[Quote API] Returning:",
+    formattedQuote?.quoteId ?? "null",
+    "chain:",
+    tokenChain,
+  );
   return NextResponse.json({ success: true, quote: formattedQuote });
 }
 

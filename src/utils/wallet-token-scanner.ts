@@ -1,13 +1,13 @@
 /**
  * Wallet token scanner utilities
  * Scans user wallets for tokens without needing Alchemy or other API keys
- * 
+ *
  * Strategy:
  * - Base: Check balances for popular tokens using multicall (no API key needed)
  * - Solana: Use native RPC to list all SPL tokens (no API key needed)
  */
 
-import { PublicClient } from "viem";
+import type { PublicClient, Address } from "viem";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { POPULAR_BASE_TOKENS } from "./popular-base-tokens";
 import type { Chain } from "@/config/chains";
@@ -34,136 +34,149 @@ const ERC20_ABI = [
 ] as const;
 
 /**
+ * Multicall result type for balance queries
+ */
+interface MulticallResult {
+  status: "success" | "failure";
+  result?: bigint;
+  error?: Error;
+}
+
+/**
  * Scan wallet for popular ERC20 tokens on Base
  * Uses multicall for efficiency - no API keys needed
  */
 async function scanBaseTokens(
   address: string,
   publicClient: PublicClient,
-  registeredAddresses: Set<string>
 ): Promise<ScannedToken[]> {
-  try {
-    // Use multicall to check all balances in parallel
-    const balanceCalls = POPULAR_BASE_TOKENS.map((token) => ({
-      address: token.address as `0x${string}`,
-      abi: ERC20_ABI,
-      functionName: "balanceOf" as const,
-      args: [address as `0x${string}`],
-    }));
+  // Use multicall to check all balances in parallel
+  const balanceCalls = POPULAR_BASE_TOKENS.map((token) => ({
+    address: token.address as Address,
+    abi: ERC20_ABI,
+    functionName: "balanceOf" as const,
+    args: [address as Address],
+  }));
 
-    const balanceResults = await publicClient.multicall({
-      contracts: balanceCalls,
-      allowFailure: true,
-      authorizationList: [],
-    } as any);
+  // Type assertion needed due to viem's complex type inference with multicall
+  // The multicall function has deeply nested generics that don't infer correctly
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const balanceResults = (await (publicClient as any).multicall({
+    contracts: balanceCalls,
+    allowFailure: true,
+  })) as MulticallResult[];
 
-    const tokens: ScannedToken[] = [];
-    
-    for (let i = 0; i < POPULAR_BASE_TOKENS.length; i++) {
-      const result = balanceResults[i];
-      const tokenInfo = POPULAR_BASE_TOKENS[i];
+  const tokens: ScannedToken[] = [];
 
-      if (result.status === "success" && result.result) {
-        const balance = result.result as bigint;
-        if (balance > 0n) {
-          tokens.push({
-            address: tokenInfo.address.toLowerCase(),
-            symbol: tokenInfo.symbol,
-            name: tokenInfo.name,
-            balance: balance.toString(),
-            decimals: tokenInfo.decimals,
-            logoUrl: tokenInfo.logoUrl,
-            chain: "base",
-            isRegistered: registeredAddresses.has(tokenInfo.address.toLowerCase()),
-          });
-        }
+  for (let i = 0; i < POPULAR_BASE_TOKENS.length; i++) {
+    const result = balanceResults[i];
+    const tokenInfo = POPULAR_BASE_TOKENS[i];
+
+    if (result.status === "success" && result.result) {
+      const balance = result.result as bigint;
+      if (balance > 0n) {
+        tokens.push({
+          address: tokenInfo.address.toLowerCase(),
+          symbol: tokenInfo.symbol,
+          name: tokenInfo.name,
+          balance: balance.toString(),
+          decimals: tokenInfo.decimals,
+          logoUrl: tokenInfo.logoUrl,
+          chain: "base",
+          isRegistered: false, // Applied later
+        });
       }
     }
-
-    return tokens;
-  } catch (error) {
-    console.error("Failed to scan Base tokens:", error);
-    throw error;
   }
+
+  return tokens;
 }
 
 /**
  * Scan wallet for all SPL tokens on Solana
  * Uses native RPC - no API keys needed
  */
-async function scanSolanaTokens(
-  address: string,
-  registeredAddresses: Set<string>
-): Promise<ScannedToken[]> {
-  const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+async function scanSolanaTokens(address: string): Promise<ScannedToken[]> {
+  const rpcUrl =
+    process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
   const connection = new Connection(rpcUrl, "confirmed");
 
-  try {
-    const publicKey = new PublicKey(address);
+  const publicKey = new PublicKey(address);
 
-    // Get all token accounts for this wallet
-    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+  // Scan both Token Program and Token 2022 Program in parallel
+  const [tokenAccounts, token2022Accounts] = await Promise.all([
+    connection.getParsedTokenAccountsByOwner(publicKey, {
       programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+    }),
+    connection
+      .getParsedTokenAccountsByOwner(publicKey, {
+        programId: new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"),
+      })
+      .catch(() => ({ value: [] })), // Fail safe for Token 2022 on some RPCs
+  ]);
+
+  const tokens: ScannedToken[] = [];
+  const allAccounts = [...tokenAccounts.value, ...token2022Accounts.value];
+
+  for (const account of allAccounts) {
+    const accountData = account.account.data.parsed.info;
+    const balance = BigInt(accountData.tokenAmount.amount);
+
+    if (balance === BigInt(0)) continue;
+
+    // Get token metadata (mint address, decimals)
+    const mintAddress = accountData.mint;
+    const decimals = accountData.tokenAmount.decimals;
+
+    tokens.push({
+      address: mintAddress.toLowerCase(),
+      symbol: "SPL", // Would need metadata service to get real symbol
+      name: "SPL Token",
+      balance: balance.toString(),
+      decimals,
+      chain: "solana",
+      isRegistered: false, // Applied later
     });
-
-    const tokens: ScannedToken[] = [];
-
-    for (const account of tokenAccounts.value) {
-      const accountData = account.account.data.parsed.info;
-      const balance = BigInt(accountData.tokenAmount.amount);
-
-      if (balance === BigInt(0)) continue;
-
-      // Get token metadata (mint address, decimals)
-      const mintAddress = accountData.mint;
-      const decimals = accountData.tokenAmount.decimals;
-
-      tokens.push({
-        address: mintAddress.toLowerCase(),
-        symbol: "SPL", // Would need metadata service to get real symbol
-        name: "SPL Token",
-        balance: balance.toString(),
-        decimals,
-        chain: "solana",
-        isRegistered: registeredAddresses.has(mintAddress.toLowerCase()),
-      });
-    }
-
-    // Optionally enhance with Helius DAS API for better metadata
-    if (process.env.HELIUS_API_KEY) {
-      return await enhanceWithHelius(tokens, address);
-    }
-
-    return tokens;
-  } catch (error) {
-    console.error("Failed to scan Solana tokens:", error);
-    throw error;
   }
+
+  // Optionally enhance with Helius DAS API for better metadata
+  if (process.env.HELIUS_API_KEY) {
+    return await enhanceWithHelius(tokens, address);
+  }
+
+  return tokens;
 }
 
 /**
  * Enhance Solana tokens with metadata from Helius (optional)
+ * Gracefully degrades to original tokens if Helius API fails
  */
 async function enhanceWithHelius(
   tokens: ScannedToken[],
-  walletAddress: string
+  walletAddress: string,
 ): Promise<ScannedToken[]> {
   const heliusApiKey = process.env.HELIUS_API_KEY;
   if (!heliusApiKey) return tokens;
 
   try {
     const response = await fetch(
-      `https://api.helius.xyz/v0/addresses/${walletAddress}/balances?api-key=${heliusApiKey}`
+      `https://api.helius.xyz/v0/addresses/${walletAddress}/balances?api-key=${heliusApiKey}`,
     );
-    
+
     const data = await response.json();
-    
+
     // Map Helius metadata to our tokens
+    interface HeliusToken {
+      mint: string;
+      symbol?: string;
+      name?: string;
+      logoURI?: string;
+    }
     const enhancedTokens = tokens.map((token) => {
-      const heliusToken = data.tokens?.find(
-        (t: any) => t.mint.toLowerCase() === token.address
+      const heliusToken = (data.tokens as HeliusToken[] | undefined)?.find(
+        (t) => t.mint.toLowerCase() === token.address,
       );
-      
+
       if (heliusToken) {
         return {
           ...token,
@@ -172,30 +185,32 @@ async function enhanceWithHelius(
           logoUrl: heliusToken.logoURI,
         };
       }
-      
+
       return token;
     });
 
     return enhancedTokens;
-  } catch (error) {
-    console.warn("Failed to enhance with Helius:", error);
+  } catch {
+    // Graceful degradation: return original tokens if Helius API fails
     return tokens;
   }
 }
 
 /**
  * Get registered token addresses from database
+ * Returns empty set on failure to allow scanner to continue
  */
 async function getRegisteredAddresses(chain: Chain): Promise<Set<string>> {
   try {
     const response = await fetch(`/api/tokens?chain=${chain}`);
-    const registeredTokens = await response.json();
+    const registeredTokens: Array<{ contractAddress: string }> =
+      await response.json();
 
     return new Set(
-      registeredTokens.map((t: any) => t.contractAddress.toLowerCase())
+      registeredTokens.map((t) => t.contractAddress.toLowerCase()),
     );
-  } catch (error) {
-    console.error("Failed to fetch registered tokens:", error);
+  } catch {
+    // Graceful degradation: return empty set if API fails
     return new Set();
   }
 }
@@ -210,29 +225,56 @@ async function getRegisteredAddresses(chain: Chain): Promise<Set<string>> {
 export async function scanWalletTokens(
   address: string,
   chain: Chain,
-  publicClient?: PublicClient
+  publicClient?: PublicClient,
 ): Promise<ScannedToken[]> {
   if (!address) {
     throw new Error("Wallet address required");
   }
 
-  // Get registered token addresses first
-  const registeredAddresses = await getRegisteredAddresses(chain);
+  // Start fetching registered addresses immediately
+  const registeredAddressesPromise = getRegisteredAddresses(chain);
 
-  let tokens: ScannedToken[];
+  let tokensPromise: Promise<ScannedToken[]>;
 
   if (chain === "solana") {
-    tokens = await scanSolanaTokens(address, registeredAddresses);
+    // For Solana, we pass an empty set initially and filter later,
+    // but the internal function expects the set.
+    // Refactor: Pass the promise or wait here.
+    // To keep signatures clean, we'll wait for registeredAddresses inside the parallel block logic?
+    // No, scan functions take the Set.
+    // So we must wait for registeredAddresses or refactor scan functions.
+    // Actually, scan functions doing the filtering is efficient.
+    // But waiting for API call blocks the RPC call.
+
+    // Better: Launch RPC calls immediately, then filter with the result of the API call.
+    tokensPromise = scanSolanaTokens(address);
   } else if (chain === "base") {
     if (!publicClient) {
       throw new Error("Public client required for Base chain");
     }
-    tokens = await scanBaseTokens(address, publicClient, registeredAddresses);
+    // Base scanner needs the list of tokens to scan?
+    // No, scanBaseTokens uses POPULAR_BASE_TOKENS constant.
+    // It uses registeredAddresses only for the 'isRegistered' flag.
+    tokensPromise = scanBaseTokens(address, publicClient);
   } else {
     throw new Error(`Unsupported chain: ${chain}`);
   }
 
-  return tokens;
+  // Wait for both
+  const [registeredAddresses, tokens] = await Promise.all([
+    registeredAddressesPromise,
+    tokensPromise,
+  ]);
+
+  // Apply registration status
+  // Note: scanSolanaTokens and scanBaseTokens previously took the Set and applied it internally.
+  // I need to update them to NOT take the set, and return raw tokens, then apply here.
+  // This allows parallel execution.
+
+  return tokens.map((t) => ({
+    ...t,
+    isRegistered: registeredAddresses.has(t.address),
+  }));
 }
 
 /**
@@ -241,7 +283,7 @@ export async function scanWalletTokens(
 export async function scanWalletMultiChain(
   evmAddress?: string,
   solanaAddress?: string,
-  publicClient?: PublicClient
+  publicClient?: PublicClient,
 ): Promise<Record<Chain, ScannedToken[]>> {
   const results: Record<string, ScannedToken[]> = {};
 
@@ -251,7 +293,7 @@ export async function scanWalletMultiChain(
     promises.push(
       scanWalletTokens(evmAddress, "base", publicClient).then((tokens) => {
         results.base = tokens;
-      })
+      }),
     );
   }
 
@@ -259,7 +301,7 @@ export async function scanWalletMultiChain(
     promises.push(
       scanWalletTokens(solanaAddress, "solana").then((tokens) => {
         results.solana = tokens;
-      })
+      }),
     );
   }
 

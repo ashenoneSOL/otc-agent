@@ -10,6 +10,15 @@ interface IUniswapV3Pool {
     function token1() external view returns (address);
     function observe(uint32[] calldata secondsAgos) 
         external view returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s);
+    function slot0() external view returns (
+        uint160 sqrtPriceX96,
+        int24 tick,
+        uint16 observationIndex,
+        uint16 observationCardinality,
+        uint16 observationCardinalityNext,
+        uint8 feeProtocol,
+        bool unlocked
+    );
 }
 
 /// @title SimplePoolOracle
@@ -175,6 +184,31 @@ contract SimplePoolOracle is IAggregatorV3, Ownable {
             // For high-value tokens, require more conservative bounds
             require(price <= 1e14, "price manipulation detected"); // Max $1M
         }
+
+        // Check spot price deviation to prevent manipulation
+        (, int24 spotTick,,,,,) = pool.slot0();
+        uint256 spotPrice = getQuoteAtTick(spotTick);
+        
+        // Use the same conversion logic for spot price as TWAP?
+        // getQuoteAtTick returns basePerTarget.
+        // But we need to convert to USD (8 decimals) like we did for 'price'.
+        // Refactor conversion logic to avoid code duplication?
+        // For now, I'll just apply the conversion factor.
+        
+        uint256 spotPriceUsd;
+        if (isUSDC) {
+             spotPriceUsd = (spotPrice * 1e8) / 1e6;
+        } else if (isWETH) {
+            (, int256 ethUsdPrice, , , ) = ethUsdFeed.latestRoundData();
+            spotPriceUsd = (spotPrice * uint256(ethUsdPrice)) / 1e18;
+        }
+        
+        // Check deviation
+        if (spotPriceUsd > price) {
+            require(((spotPriceUsd - price) * 100) / price <= MAX_PRICE_CHANGE_PERCENT, "spot price deviation high");
+        } else {
+            require(((price - spotPriceUsd) * 100) / price <= MAX_PRICE_CHANGE_PERCENT, "spot price deviation high");
+        }
     }
     
     /// @notice Convert Uniswap V3 tick to price
@@ -191,12 +225,13 @@ contract SimplePoolOracle is IAggregatorV3, Ownable {
         
         if (isToken0) {
             // We want token1/token0 (base/target)
-            // Adjust for decimals: multiply by 10^targetDecimals, divide by 10^baseDecimals
-            price = (priceX192 * (10 ** targetDecimals)) / (2 ** 192) / (10 ** baseDecimals);
+            // Adjust for decimals: multiply by 10^targetDecimals
+            // Result is in base token wei per 1 full target token
+            price = (priceX192 * (10 ** targetDecimals)) / (2 ** 192);
         } else {
             // We want token0/token1 (base/target)
             // This is the inverse: (2^192) / priceX192
-            price = ((2 ** 192) / priceX192) * (10 ** targetDecimals) / (10 ** baseDecimals);
+            price = ((2 ** 192) / priceX192) * (10 ** targetDecimals);
         }
     }
     

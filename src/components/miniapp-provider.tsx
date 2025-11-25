@@ -13,7 +13,7 @@ export function MiniappProvider({ children }: { children: React.ReactNode }) {
     const initMiniapp = async () => {
       try {
         const context = await miniappSdk.context;
-        
+
         if (!context) {
           setIsInitialized(true);
           return;
@@ -41,4 +41,3 @@ export function MiniappProvider({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>;
 }
-

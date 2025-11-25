@@ -1,52 +1,56 @@
 "use client";
 
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
-import {
-  ConnectionProvider,
-  WalletProvider,
-} from "@solana/wallet-adapter-react";
-import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-} from "@solana/wallet-adapter-wallets";
+import { ConnectionProvider } from "@solana/wallet-adapter-react";
 import { clusterApiUrl } from "@solana/web3.js";
 import { useMemo } from "react";
 
-// Import Solana wallet styles
-import "@solana/wallet-adapter-react-ui/styles.css";
+/**
+ * Get Solana network environment consistent with config/chains.ts
+ */
+function getSolanaNetwork(): WalletAdapterNetwork {
+  // Check for explicit mainnet flag (same as config/chains.ts)
+  if (process.env.NEXT_PUBLIC_USE_MAINNET === "true") {
+    return WalletAdapterNetwork.Mainnet;
+  }
+
+  // Development uses devnet (or localnet if configured)
+  if (process.env.NODE_ENV === "development") {
+    return WalletAdapterNetwork.Devnet;
+  }
+
+  // Production defaults to testnet unless mainnet flag is set
+  return WalletAdapterNetwork.Devnet;
+}
+
+/**
+ * Get Solana RPC endpoint, preferring custom RPC if set
+ */
+function getSolanaEndpoint(network: WalletAdapterNetwork): string {
+  // Use custom RPC if configured (for localnet or custom nodes)
+  const customRpc = process.env.NEXT_PUBLIC_SOLANA_RPC;
+  if (customRpc) {
+    return customRpc;
+  }
+
+  return clusterApiUrl(network);
+}
 
 export function SolanaWalletProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Use devnet in development, mainnet-beta in production
-  const network =
-    process.env.NODE_ENV === "development"
-      ? WalletAdapterNetwork.Devnet
-      : WalletAdapterNetwork.Mainnet;
-
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
-
-  // Configure wallet adapters
-  const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter({ network })],
-    [network],
-  );
+  const network = useMemo(() => getSolanaNetwork(), []);
+  const endpoint = useMemo(() => getSolanaEndpoint(network), [network]);
 
   // Debug: Log when provider mounts
-  console.log("[SolanaWalletProvider] Provider initialized with:", {
+  console.log("[SolanaConnectionProvider] Provider initialized with:", {
     network,
     endpoint,
-    walletsCount: wallets.length,
   });
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={false}>
-        <WalletModalProvider>{children}</WalletModalProvider>
-      </WalletProvider>
-    </ConnectionProvider>
+    <ConnectionProvider endpoint={endpoint}>{children}</ConnectionProvider>
   );
 }
