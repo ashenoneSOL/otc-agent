@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 import { webpack } from 'next/dist/compiled/webpack/webpack';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   compiler: {
@@ -106,6 +107,15 @@ const nextConfig: NextConfig = {
       ...config,
       resolve: {
         ...config.resolve,
+        alias: {
+          ...config.resolve?.alias,
+        },
+        // Ensure nested packages can resolve @noble/hashes from top-level
+        modules: [
+          ...(config.resolve?.modules || ['node_modules']),
+          // Add parent node_modules for nested package resolution
+          path.resolve(__dirname, 'node_modules'),
+        ],
         fallback: {
           ...config.resolve?.fallback,
           fs: false,

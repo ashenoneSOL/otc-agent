@@ -38,6 +38,8 @@
     "@farcaster/miniapp-sdk": "^0.2.1",
     "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.8.0",
     "@libsql/client": "^0.15.15",
     "@neynar/nodejs-sdk": "^3.84.0",
     "@prisma/client": "^6.16.2",
@@ -182,6 +184,8 @@
     "handlebars"
   ],
   "overrides": {
-    "playwright-core": "1.48.2"
+    "playwright-core": "1.48.2",
+    "@noble/hashes": "^1.8.0",
+    "@noble/curves": "^1.9.7"
   }
 }
