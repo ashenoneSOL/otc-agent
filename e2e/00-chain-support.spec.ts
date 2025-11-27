@@ -3,7 +3,8 @@
  * Verifies that the application properly supports EVM (Base, BSC) and Solana
  */
 
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import type { Page } from 'playwright-core';
 
 test.setTimeout(60000);
 

@@ -53,6 +53,8 @@ export default defineConfig({
       name: 'chromium-synpress',
       use: { 
         ...devices['Desktop Chrome'],
+        // Use Chrome stable channel in CI for better extension support
+        channel: process.env.CI ? 'chrome' : undefined,
         // Required for MetaMask extension
         launchOptions: {
           headless: false,
@@ -65,10 +67,7 @@ export default defineConfig({
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--disable-software-rasterizer',
-            // Extension loading flags
             '--allow-insecure-localhost',
-            '--disable-extensions-except=',
-            '--load-extension=',
           ],
         },
       },

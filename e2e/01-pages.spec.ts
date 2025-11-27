@@ -3,7 +3,8 @@
  * Tests that all pages load correctly without errors
  */
 
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import type { Page } from 'playwright-core';
 
 // Set a desktop viewport for all tests to ensure consistent behavior
 test.use({ viewport: { width: 1280, height: 720 } });

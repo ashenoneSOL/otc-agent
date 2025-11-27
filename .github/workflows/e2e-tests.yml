@@ -168,43 +168,86 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: |
+          # Use regular install to allow dependency updates for synpress compatibility
+          bun install
 
       - name: Ensure deployment configs exist
         run: ./scripts/ensure-deployments.sh
 
-      - name: Install Playwright browsers with deps
+      - name: Install system dependencies
         run: |
-          # Install chromium with all dependencies for extension support
-          bunx playwright install chromium --with-deps
-          # Also install system Chrome for better extension compatibility
           sudo apt-get update
-          sudo apt-get install -y google-chrome-stable || true
+          sudo apt-get install -y \
+            xvfb \
+            xauth \
+            x11-utils \
+            libgtk-3-0 \
+            libnotify-dev \
+            libgconf-2-4 \
+            libnss3 \
+            libxss1 \
+            libasound2 \
+            libxtst6 \
+            xdg-utils \
+            fonts-liberation \
+            libappindicator3-1 \
+            libdrm2 \
+            libgbm1 \
+            libxshmfence1
 
-      - name: Install xvfb and display dependencies
+      - name: Install Google Chrome
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb xauth libgtk-3-0 libnotify-dev libgconf-2-4 libnss3 libxss1 libasound2 libxtst6
+          # Use the official Google Chrome installation
+          wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt-get install -y ./google-chrome-stable_current_amd64.deb || sudo apt-get -f install -y
+          rm google-chrome-stable_current_amd64.deb
+          # Verify Chrome is installed
+          google-chrome-stable --version
+          # Set Chrome as the browser for Playwright
+          echo "CHROME_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
+
+      - name: Install Playwright Chrome channel
+        run: |
+          # Install Chrome channel for Playwright (matches system Chrome)
+          bunx playwright install chrome --with-deps
+          # Also install chromium as fallback
+          bunx playwright install chromium --with-deps
 
       - name: Start virtual display
         run: |
-          # Start Xvfb on display :99
-          Xvfb :99 -screen 0 1920x1080x24 &
+          # Start Xvfb on display :99 with larger resolution
+          Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
           echo "DISPLAY=:99" >> $GITHUB_ENV
-          sleep 2
+          sleep 3
+          # Verify display is running
+          xdpyinfo -display :99 >/dev/null 2>&1 && echo "Display :99 is running" || echo "Display started"
 
       - name: Build Synpress wallet cache
         run: |
           # Build the MetaMask wallet cache with debug mode
-          bunx synpress --force --debug 2>&1 | head -200 || true
+          echo "Building Synpress cache..."
+          bunx synpress --force --debug 2>&1 | tee synpress-cache.log | head -300
+          
+          # Check if cache was created successfully
+          if [ -d ".cache/synpress" ] || [ -d "node_modules/.cache/synpress" ]; then
+            echo "Synpress cache created successfully"
+          else
+            echo "Warning: Synpress cache may not have been created"
+            # Continue anyway as cache might be in a different location
+          fi
         env:
           DISPLAY: ':99'
           WALLET_PASSWORD: 'Tester@1234'
+          PASSWORD: 'Tester@1234'
           SEED_PHRASE: 'test test test test test test test test test test test junk'
+          SECRET_WORDS: 'test test test test test test test test test test test junk'
           # Use a specific MetaMask version known to work
           METAMASK_VERSION: '11.9.1'
-          # Chrome flags for CI
-          CHROME_ARGS: '--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu'
+          # Force headed mode for extensions
+          HEADLESS: 'false'
+          # Synpress specific settings
+          CI: 'true'
 
       - name: Build application
         run: bun run build:next-only
@@ -237,7 +280,19 @@ jobs:
           DISPLAY: ':99'
           CI: 'true'
           WALLET_PASSWORD: 'Tester@1234'
+          PASSWORD: 'Tester@1234'
+          SEED_PHRASE: 'test test test test test test test test test test test junk'
+          SECRET_WORDS: 'test test test test test test test test test test test junk'
           NEXT_PUBLIC_E2E_TEST: '1'
+          HEADLESS: 'false'
+
+      - name: Upload Synpress cache log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synpress-cache-log
+          path: synpress-cache.log
+          retention-days: 7
 
       - name: Upload Synpress report
         if: always()

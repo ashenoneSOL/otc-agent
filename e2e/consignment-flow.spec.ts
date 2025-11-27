@@ -5,7 +5,8 @@
  * Run with: npx playwright test --headed e2e/consignment-flow.spec.ts
  */
 
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import type { Page } from 'playwright-core';
 
 // Check if we're in headed mode (dappwright requires this)
 const isHeaded = !process.env.CI && process.env.HEADED !== 'false';

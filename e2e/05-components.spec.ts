@@ -3,7 +3,8 @@
  * Tests individual UI components without wallet requirements
  */
 
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import type { Page } from 'playwright-core';
 
 test.setTimeout(30000);
 test.use({ viewport: { width: 1280, height: 720 } });
@@ -251,6 +252,10 @@ test.describe('Button States', () => {
     expect(count).toBeGreaterThan(0);
   });
 });
+
+
+
+
 
 
 

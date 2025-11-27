@@ -3,7 +3,8 @@
  * Tests all modal interactions and dialog flows without wallet requirements
  */
 
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import type { Page } from 'playwright-core';
 
 test.setTimeout(60000);
 test.use({ viewport: { width: 1280, height: 720 } });
