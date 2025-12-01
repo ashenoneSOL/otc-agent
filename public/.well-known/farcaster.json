@@ -2,10 +2,10 @@
   "frame": {
     "version": "next",
     "name": "Eliza OTC Desk",
-    "iconUrl": "https://YOUR_VERCEL_URL/icon.png",
-    "homeUrl": "https://YOUR_VERCEL_URL",
-    "imageUrl": "https://YOUR_VERCEL_URL/opengraph-image.png",
-    "splashImageUrl": "https://YOUR_VERCEL_URL/splash.png",
+    "iconUrl": "https://otc-agent.vercel.app/icon.png",
+    "homeUrl": "https://otc-agent.vercel.app/",
+    "imageUrl": "https://otc-agent.vercel.app/opengraph-image.png",
+    "splashImageUrl": "https://otc-agent.vercel.app/splash.png",
     "splashBackgroundColor": "#000000",
     "webhookUrl": "https://api.neynar.com/f/app/c384db1a-a823-4279-9f77-2b1ea955b4e3/event",
     "subtitle": "AI-Powered OTC Trading",
@@ -13,7 +13,7 @@
     "primaryCategory": "utility",
     "tags": ["defi", "trading", "ai", "otc", "base", "solana"],
     "tagline": "AI-powered token trading desk",
-    "heroImageUrl": "https://YOUR_VERCEL_URL/opengraph-image.png",
+    "heroImageUrl": "https://otc-agent.vercel.app/opengraph-image.png",
     "requiredChains": [
       "eip155:8453",
       "eip155:56",
