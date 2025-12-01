@@ -68,12 +68,13 @@ export async function GET(request: NextRequest) {
   const abi = otcArtifact.abi as Abi;
 
   // Enumerate all offers via nextOfferId
+  // Use type assertion to work around viem's strict generics with dynamic ABIs
   const nextOfferId = (await publicClient.readContract({
     address: OTC_ADDRESS,
     abi,
     functionName: "nextOfferId",
     args: [],
-  })) as bigint;
+  } as unknown as Parameters<typeof publicClient.readContract>[0])) as bigint;
 
   const now = Math.floor(Date.now() / 1000);
   const maturedOffers: bigint[] = [];
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
       abi,
       functionName: "offers",
       args: [i],
-    })) as RawOfferData;
+    } as unknown as Parameters<typeof publicClient.readContract>[0])) as RawOfferData;
 
     // [consignmentId, tokenId, beneficiary, tokenAmount, discountBps, createdAt, unlockTime,
     // priceUsdPerToken, maxPriceDeviation, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]

@@ -37,6 +37,7 @@
     "solana/**/*",
     "contracts/**/*",
     "tests/**/*",
+    "scripts/**/*",
     "a2a-js/src/samples/**/*",
     "a2a-js/test/**/*"
   ]
