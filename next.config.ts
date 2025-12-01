@@ -109,6 +109,9 @@ const nextConfig: NextConfig = {
         ...config.resolve,
         alias: {
           ...config.resolve?.alias,
+          // Force all packages to use root-level viem and ox (fix @base-org/account nested deps)
+          'viem': path.resolve(__dirname, 'node_modules/viem'),
+          'ox': path.resolve(__dirname, 'node_modules/ox'),
         },
         // Ensure nested packages can resolve @noble/hashes from top-level
         modules: [
