@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   // Explicitly set workspace root to prevent lockfile detection warnings
   outputFileTracingRoot: process.cwd(),
   serverExternalPackages: ['handlebars', '@elizaos/plugin-sql', '@elizaos/core'],
+  // Don't transpile ox - it has compiled .js files in _esm/ and _cjs/
+  // Instead, we'll configure webpack to prefer .js files and exclude .ts files from ox
   experimental: {
     inlineCss: true,
   },
@@ -37,6 +39,23 @@ const nextConfig: NextConfig = {
         message: /require\.extensions/,
       },
     ];
+    
+    // Exclude TypeScript source files from node_modules/ox/ from being processed
+    // porto imports from ox without extensions, webpack resolves to .ts files
+    // We need to prevent Next.js loaders from processing these files
+    config.module = config.module || {};
+    config.module.rules = config.module.rules || [];
+    
+    // Add rule BEFORE other rules to exclude .ts files from ox
+    // This prevents Next.js TypeScript loaders from processing them
+    config.module.rules.unshift({
+      test: /\.ts$/,
+      include: /node_modules\/ox\//,
+      use: {
+        loader: 'ignore-loader',
+      },
+      enforce: 'pre',
+    });
     
     // Exclude Web3 packages and handlebars from server-side bundling
     if (isServer) {
@@ -94,6 +113,18 @@ const nextConfig: NextConfig = {
       new webpack.IgnorePlugin({
         resourceRegExp: /^pg-native$|^cloudflare:sockets$/,
       }),
+      // Prevent webpack from processing .ts files from ox package
+      // porto imports from ox without extensions, webpack resolves to .ts files
+      // ox has compiled .js files that should be used via package.json exports
+      new webpack.IgnorePlugin({
+        checkResource(resource: string, context: string) {
+          // Ignore .ts files from ox package - use compiled .js files instead
+          if (context.includes('node_modules/ox') && resource.endsWith('.ts')) {
+            return true;
+          }
+          return false;
+        },
+      }),
       // Ignore IndexedDB related imports on server
       ...(isServer ? [
         new webpack.DefinePlugin({
@@ -112,7 +143,19 @@ const nextConfig: NextConfig = {
           // Force all packages to use root-level viem and ox (fix @base-org/account nested deps)
           'viem': path.resolve(__dirname, 'node_modules/viem'),
           'ox': path.resolve(__dirname, 'node_modules/ox'),
+          // Redirect ox TypeScript imports to use package.json exports (compiled .js files)
+          // This prevents webpack from processing .ts source files
+          'ox/erc8010/SignatureErc8010': path.resolve(__dirname, 'node_modules/ox/_esm/erc8010/SignatureErc8010.js'),
         },
+        // Prefer .js files over .ts files for node_modules to avoid processing TypeScript source
+        // This ensures webpack resolves ox imports to .js files instead of .ts files
+        extensions: [
+          '.js',
+          '.jsx',
+          '.json',
+          // Only include .ts/.tsx after .js so webpack prefers compiled files
+          ...(config.resolve?.extensions?.filter(ext => !['.js', '.jsx', '.json'].includes(ext)) || ['.ts', '.tsx']),
+        ],
         // Ensure nested packages can resolve @noble/hashes from top-level
         modules: [
           ...(config.resolve?.modules || ['node_modules']),
