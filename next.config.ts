@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
   // Explicitly set workspace root to prevent lockfile detection warnings
   outputFileTracingRoot: process.cwd(),
   serverExternalPackages: ['handlebars', '@elizaos/plugin-sql', '@elizaos/core'],
+  transpilePackages: ['ox', 'porto', 'viem'],
   experimental: {
     inlineCss: true,
   },
