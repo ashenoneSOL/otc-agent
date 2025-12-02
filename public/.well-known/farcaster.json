@@ -14,7 +14,6 @@
     "description": "Trade tokens OTC with Eliza AI agent. Negotiate deals on Base, BSC, and Solana networks with automated pricing and smart contracts.",
     "primaryCategory": "utility",
     "tags": [
-      "defi",
       "trading",
       "ai",
       "otc",
@@ -24,7 +23,7 @@
     "heroImageUrl": "https://otc-agent.vercel.app/opengraph-image.png?v=1",
     "tagline": "AI-powered token trading desk",
     "ogTitle": "Eliza OTC Desk",
-    "ogDescription": "Trade tokens OTC with Eliza AI agent. Negotiate deals on Base, BSC, and Solana networks with automated pricing and smart contracts.",
+    "ogDescription": "AI-powered OTC trading on Base and Solana. Automated pricing and smart contracts.",
     "ogImageUrl": "https://otc-agent.vercel.app/opengraph-image.png?v=1",
     "requiredChains": [
       "eip155:8453",
