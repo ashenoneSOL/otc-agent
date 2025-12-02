@@ -25,10 +25,10 @@ const appUrl = process.env.NEXT_PUBLIC_URL || "http://localhost:5004";
 
 // Farcaster Mini App frame configuration
 const frame = {
-  version: "next",
-  imageUrl: `${appUrl}/opengraph-image.png`,
+  version: "1", // Changed from "next" to match manifest
+  imageUrl: `${appUrl}/opengraph-image.png?v=1`, // Added ?v=1 to match manifest
   button: {
-    title: "Eliza OTC Desk",
+    title: "AI OTC Trading", // Changed to match manifest buttonTitle
     action: {
       type: "launch_frame",
       name: "Eliza OTC Desk",
@@ -66,6 +66,17 @@ export const metadata: Metadata = {
   },
   other: {
     "fc:frame": JSON.stringify(frame),
+    // Optionally add fc:miniapp for new format (recommended)
+    "fc:miniapp": JSON.stringify({
+      ...frame,
+      button: {
+        ...frame.button,
+        action: {
+          ...frame.button.action,
+          type: "launch_miniapp", // New format type
+        },
+      },
+    }),
   },
 };
 
