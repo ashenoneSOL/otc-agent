@@ -1,22 +1,27 @@
 "use client";
 
+import { memo, useCallback } from "react";
 import { ChainSelector } from "./chain-selector";
+import { useRenderTracker } from "@/utils/render-tracker";
 import type { Chain } from "@/config/chains";
 
-interface DealFiltersProps {
-  filters: {
-    chains: Chain[];
-    minMarketCap: number;
-    maxMarketCap: number;
-    negotiableTypes: ("negotiable" | "fixed")[];
-    isFractionalized: boolean;
-    searchQuery: string;
-  };
-  onFiltersChange: (filters: any) => void;
+interface FiltersState {
+  chains: Chain[];
+  minMarketCap: number;
+  maxMarketCap: number;
+  negotiableTypes: ("negotiable" | "fixed")[];
+  isFractionalized: boolean;
+  searchQuery: string;
 }
 
-export function DealFilters({ filters, onFiltersChange }: DealFiltersProps) {
-  const toggleNegotiableType = (type: "negotiable" | "fixed") => {
+interface DealFiltersProps {
+  filters: FiltersState;
+  onFiltersChange: (filters: FiltersState) => void;
+}
+
+export const DealFilters = memo(function DealFilters({ filters, onFiltersChange }: DealFiltersProps) {
+  useRenderTracker("DealFilters");
+  const toggleNegotiableType = useCallback((type: "negotiable" | "fixed") => {
     if (filters.negotiableTypes.includes(type)) {
       // If this is the only selected type, invert: turn it off and turn the other on
       if (filters.negotiableTypes.length === 1) {
@@ -34,9 +39,9 @@ export function DealFilters({ filters, onFiltersChange }: DealFiltersProps) {
         negotiableTypes: [...filters.negotiableTypes, type],
       });
     }
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleTypeSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleTypeSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     if (value === "all") {
       onFiltersChange({ ...filters, negotiableTypes: ["negotiable", "fixed"] });
@@ -46,12 +51,12 @@ export function DealFilters({ filters, onFiltersChange }: DealFiltersProps) {
         negotiableTypes: [value as "negotiable" | "fixed"],
       });
     }
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleFracSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleFracSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     onFiltersChange({ ...filters, isFractionalized: value === "true" });
-  };
+  }, [filters, onFiltersChange]);
 
   const typeOptions = [
     {
@@ -229,4 +234,4 @@ export function DealFilters({ filters, onFiltersChange }: DealFiltersProps) {
       </div>
     </>
   );
-}
+});

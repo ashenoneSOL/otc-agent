@@ -121,13 +121,40 @@ function parseNegotiationRequest(text: string): {
 }
 
 async function extractTokenContext(text: string): Promise<string | null> {
-  const tokenMatch = text.match(/\b([A-Z]{2,6})\b/);
-  if (tokenMatch) {
-    const symbol = tokenMatch[1];
-    const allTokens = await TokenDB.getAllTokens();
-    const token = allTokens.find((t) => t.symbol === symbol);
-    if (token) return token.id;
+  const allTokens = await TokenDB.getAllTokens();
+  if (allTokens.length === 0) return null;
+  
+  // Normalize text for matching
+  const normalizedText = text.toLowerCase();
+  
+  // Try to find a token symbol mentioned in the text
+  // Sort by symbol length descending to match longer symbols first (e.g., "ELIZA" before "ELI")
+  const sortedTokens = [...allTokens].sort((a, b) => b.symbol.length - a.symbol.length);
+  
+  for (const token of sortedTokens) {
+    // Match symbol as a word boundary (case-insensitive)
+    const symbolRegex = new RegExp(`\\b${token.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (symbolRegex.test(text)) {
+      return token.id;
+    }
+    
+    // Also try matching with $ prefix (e.g., "$ELIZA")
+    const dollarRegex = new RegExp(`\\$${token.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (dollarRegex.test(text)) {
+      return token.id;
+    }
+    
+    // Also match by name (case-insensitive)
+    if (token.name && normalizedText.includes(token.name.toLowerCase())) {
+      return token.id;
+    }
   }
+  
+  // Fallback: if only one token is registered, use it
+  if (allTokens.length === 1) {
+    return allTokens[0].id;
+  }
+  
   return null;
 }
 
@@ -147,6 +174,11 @@ async function findSuitableConsignment(
   );
 }
 
+// Worst possible deal defaults (lowest discount, longest lockup)
+const DEFAULT_MIN_DISCOUNT_BPS = 100; // 1% - lowest discount
+const DEFAULT_MAX_LOCKUP_MONTHS = 12; // 12 months - longest lockup
+const DEFAULT_MAX_LOCKUP_DAYS = 365;
+
 async function negotiateTerms(
   _runtime: IAgentRuntime,
   request: any,
@@ -159,11 +191,11 @@ async function negotiateTerms(
   reasoning: string;
   consignmentId?: string;
 }> {
-  let lockupMonths = 5;
-  let minDiscountBps = 100;
+  let lockupMonths = DEFAULT_MAX_LOCKUP_MONTHS; // Start with worst lockup
+  let minDiscountBps = DEFAULT_MIN_DISCOUNT_BPS;
   let maxDiscountBps = MAX_DISCOUNT_BPS;
   let minLockupDays = 7;
-  let maxLockupDays = 365;
+  let maxLockupDays = DEFAULT_MAX_LOCKUP_DAYS;
 
   if (consignment) {
     if (consignment.isNegotiable) {
@@ -193,7 +225,7 @@ async function negotiateTerms(
   }
 
   let discountBps =
-    request.requestedDiscountBps ?? existingQuote?.discountBps ?? 800;
+    request.requestedDiscountBps ?? existingQuote?.discountBps ?? DEFAULT_MIN_DISCOUNT_BPS;
   discountBps = Math.max(minDiscountBps, Math.min(maxDiscountBps, discountBps));
 
   if (discountBps >= 2000 && lockupMonths < 6) lockupMonths = 6;
@@ -275,21 +307,23 @@ export const quoteAction: Action = {
     // Fetch token info for dynamic symbol/name
     let tokenSymbol = "TOKEN";
     let tokenName = "Token";
-    let tokenChain = undefined;
+    let tokenChain: "evm" | "solana" | undefined = undefined;
+    let tokenLogoUrl: string | undefined = undefined;
     if (tokenId) {
       const token = await TokenDB.getToken(tokenId);
       tokenSymbol = token.symbol;
       tokenName = token.name;
-      tokenChain = token.chain;
+      tokenChain = token.chain === "solana" ? "solana" : "evm";
+      tokenLogoUrl = token.logoUrl;
     }
 
     let consignment: OTCConsignment | null = null;
     if (tokenId && negotiationRequest.tokenAmount) {
-      const lockupDays = (negotiationRequest.lockupMonths || 5) * 30;
+      const lockupDays = (negotiationRequest.lockupMonths || DEFAULT_MAX_LOCKUP_MONTHS) * 30;
       consignment = await findSuitableConsignment(
         tokenId,
         negotiationRequest.tokenAmount,
-        negotiationRequest.requestedDiscountBps || 1000,
+        negotiationRequest.requestedDiscountBps || DEFAULT_MIN_DISCOUNT_BPS,
         lockupDays,
       );
     }
@@ -326,6 +360,13 @@ export const quoteAction: Action = {
         apr: 0,
         lockupMonths: negotiated.lockupMonths,
         paymentAmount: "0",
+        // Token metadata
+        tokenId: tokenId || undefined,
+        tokenSymbol,
+        tokenName,
+        tokenLogoUrl,
+        chain: tokenChain,
+        consignmentId: negotiated.consignmentId,
       };
 
       console.log("[CREATE_OTC_QUOTE] Creating quote with negotiated terms");
@@ -352,9 +393,7 @@ export const quoteAction: Action = {
 
       const textResponse = `${negotiated.reasoning}
 
-📊 **Quote Terms** (ID: ${quoteId})
-• **Discount: ${(negotiated.discountBps / 100).toFixed(2)}%**
-• **Lockup: ${negotiated.lockupMonths} months** (${lockupDays} days)`;
+📊 **Quote Terms: Discount: ${(negotiated.discountBps / 100).toFixed(2)}% Lockup: ${negotiated.lockupMonths} months** (${lockupDays} days)`;
 
       if (callback) {
         await callback({
@@ -373,7 +412,7 @@ export const quoteAction: Action = {
 
     // ------------- Simple discount-based quote -------------
     const discountBps =
-      request.discountBps ?? existingQuote?.discountBps ?? 1000; // Default 10%
+      request.discountBps ?? existingQuote?.discountBps ?? DEFAULT_MIN_DISCOUNT_BPS; // Default worst deal (1%)
     const paymentCurrency =
       request.paymentCurrency || existingQuote?.paymentCurrency || "USDC";
 
@@ -400,8 +439,14 @@ export const quoteAction: Action = {
       createdAt: now,
       quoteId: "", // Will be generated by service
       apr: 0,
-      lockupMonths: 5,
+      lockupMonths: DEFAULT_MAX_LOCKUP_MONTHS, // Worst deal (12 months)
       paymentAmount: "0",
+      // Token metadata
+      tokenId: tokenId || undefined,
+      tokenSymbol,
+      tokenName,
+      tokenLogoUrl,
+      chain: tokenChain,
     };
 
     console.log("[CREATE_OTC_QUOTE] Creating quote with simple terms");
@@ -415,8 +460,8 @@ export const quoteAction: Action = {
   <tokenSymbol>${tokenSymbol}</tokenSymbol>
   <tokenName>${tokenName}</tokenName>
   ${tokenChain ? `<tokenChain>${tokenChain}</tokenChain>` : ""}
-  <lockupMonths>5</lockupMonths>
-  <lockupDays>150</lockupDays>
+  <lockupMonths>${DEFAULT_MAX_LOCKUP_MONTHS}</lockupMonths>
+  <lockupDays>${DEFAULT_MAX_LOCKUP_DAYS}</lockupDays>
   <pricePerToken>0</pricePerToken>
   <discountBps>${discountBps}</discountBps>
   <discountPercent>${(discountBps / 100).toFixed(2)}</discountPercent>
@@ -427,16 +472,9 @@ export const quoteAction: Action = {
   <message>OTC quote terms generated. Price will be determined by Chainlink oracle when you create the offer on-chain.</message>
 </quote>`;
 
-    const textResponse = `
-Here are current terms I can offer right now.
+    const textResponse = `I can offer a ${(discountBps / 100).toFixed(2)}% discount with a ${DEFAULT_MAX_LOCKUP_MONTHS}-month lockup.
 
-📊 **Quote Terms:**
-• Market Price: Determined by Chainlink oracle on-chain at execution time
-
-💎 **Your Discount:**
-• Discount Rate: ${(discountBps / 100).toFixed(2)}% (${discountBps} bps)
-
-You can choose how many tokens to buy when you accept.`.trim();
+📊 **Quote Terms: Discount: ${(discountBps / 100).toFixed(2)}% Lockup: ${DEFAULT_MAX_LOCKUP_MONTHS} months** (${DEFAULT_MAX_LOCKUP_DAYS} days)`;
 
     if (callback) {
       await callback({

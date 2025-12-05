@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { createPublicClient, http, erc20Abi } from "viem";
+import { base } from "viem/chains";
 import type { Token, TokenMarketData } from "@/services/database";
 
 interface TokenCacheEntry {
@@ -12,6 +14,64 @@ const pendingFetches = new Map<string, Promise<TokenCacheEntry | null>>();
 
 const CACHE_DURATION = 30000; // 30 seconds
 
+// Fallback: fetch token metadata from blockchain
+async function fetchTokenFromChain(tokenId: string): Promise<Token | null> {
+  const parts = tokenId.split("-");
+  if (parts.length < 3) return null;
+  
+  const chain = parts[1];
+  const address = parts[2] as `0x${string}`;
+  
+  if (!address?.startsWith("0x")) return null;
+  
+  // For now, only support base chain for on-chain fallback
+  if (chain !== "base") return null;
+  
+  try {
+    const publicClient = createPublicClient({
+      chain: base,
+      transport: http("/api/rpc/base"),
+    });
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const readContract = publicClient.readContract.bind(publicClient) as any;
+    const [symbol, name, decimals] = await Promise.all([
+      readContract({
+        address,
+        abi: erc20Abi,
+        functionName: "symbol",
+      }),
+      readContract({
+        address,
+        abi: erc20Abi,
+        functionName: "name",
+      }),
+      readContract({
+        address,
+        abi: erc20Abi,
+        functionName: "decimals",
+      }),
+    ]);
+    
+    return {
+      id: tokenId,
+      symbol: symbol as string,
+      name: name as string,
+      decimals: decimals as number,
+      chain: chain as Token["chain"],
+      contractAddress: address,
+      logoUrl: "",
+      description: "",
+      isActive: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  } catch (err) {
+    console.error("[useTokenCache] Failed to fetch token from chain:", err);
+    return null;
+  }
+}
+
 export function useTokenCache(tokenId: string | null) {
   const [token, setToken] = useState<Token | null>(null);
   const [marketData, setMarketData] = useState<TokenMarketData | null>(null);
@@ -20,14 +80,25 @@ export function useTokenCache(tokenId: string | null) {
 
   useEffect(() => {
     if (!tokenId) {
+      setToken(null);
+      setMarketData(null);
       setIsLoading(false);
       return;
     }
 
-    // Only fetch once for this tokenId per component instance
-    if (fetchedTokenId.current === tokenId) return;
-
-    fetchedTokenId.current = tokenId;
+    // If tokenId changed, reset state and fetch new token
+    if (fetchedTokenId.current !== tokenId) {
+      // Clear previous token data when tokenId changes
+      if (fetchedTokenId.current !== null) {
+        setToken(null);
+        setMarketData(null);
+        setIsLoading(true);
+      }
+      fetchedTokenId.current = tokenId;
+    } else {
+      // Already fetched this tokenId
+      return;
+    }
 
     async function loadToken(id: string) {
       // Check cache first (synchronously)
@@ -59,6 +130,19 @@ export function useTokenCache(tokenId: string | null) {
             globalTokenCache.set(id, entry);
             return entry;
           }
+          
+          // Fallback: fetch from blockchain if not in database
+          const chainToken = await fetchTokenFromChain(id);
+          if (chainToken) {
+            const entry: TokenCacheEntry = {
+              token: chainToken,
+              marketData: null,
+              fetchedAt: Date.now(),
+            };
+            globalTokenCache.set(id, entry);
+            return entry;
+          }
+          
           return null;
         })();
 
@@ -139,7 +223,19 @@ function subscribeToMarketData(
   }
 
   return () => {
-    marketDataSubscribers.get(tokenId)?.delete(callback);
+    const subscribers = marketDataSubscribers.get(tokenId);
+    if (subscribers) {
+      subscribers.delete(callback);
+      // Clean up interval when no more subscribers
+      if (subscribers.size === 0) {
+        const interval = marketDataRefreshIntervals.get(tokenId);
+        if (interval) {
+          clearInterval(interval);
+          marketDataRefreshIntervals.delete(tokenId);
+        }
+        marketDataSubscribers.delete(tokenId);
+      }
+    }
   };
 }
 

@@ -3,12 +3,69 @@ import { agentRuntime } from "@/lib/agent-runtime";
 import { put, head } from "@vercel/blob";
 import crypto from "crypto";
 
-// Wallet balance cache TTL: 30 seconds (for immediate repeated calls)
-const WALLET_CACHE_TTL_MS = 30 * 1000;
+// Wallet balance cache TTL: 15 minutes
+const WALLET_CACHE_TTL_MS = 15 * 60 * 1000;
+
+// Price cache TTL: 15 minutes
+const PRICE_CACHE_TTL_MS = 15 * 60 * 1000;
 
 // Codex GraphQL endpoint and Solana network ID
 const CODEX_GRAPHQL_URL = "https://graph.codex.io/graphql";
 const SOLANA_NETWORK_ID = 1399811149;
+
+// Bulk metadata cache for Solana tokens (permanent - metadata doesn't change)
+interface SolanaMetadataCache {
+  metadata: Record<string, { symbol: string; name: string; logoURI: string | null }>;
+}
+
+async function getSolanaMetadataCache(): Promise<Record<string, { symbol: string; name: string; logoURI: string | null }>> {
+  try {
+    const runtime = await agentRuntime.getRuntime();
+    const cached = await runtime.getCache<SolanaMetadataCache>("solana-metadata-bulk");
+    return cached?.metadata || {};
+  } catch {
+    return {};
+  }
+}
+
+async function setSolanaMetadataCache(
+  metadata: Record<string, { symbol: string; name: string; logoURI: string | null }>,
+): Promise<void> {
+  try {
+    const runtime = await agentRuntime.getRuntime();
+    await runtime.setCache("solana-metadata-bulk", { metadata });
+  } catch {
+    // Ignore
+  }
+}
+
+// Bulk price cache for Solana
+interface SolanaPriceCache {
+  prices: Record<string, number>;
+  cachedAt: number;
+}
+
+async function getSolanaPriceCache(): Promise<Record<string, number>> {
+  try {
+    const runtime = await agentRuntime.getRuntime();
+    const cached = await runtime.getCache<SolanaPriceCache>("solana-prices-bulk");
+    if (!cached) return {};
+    if (Date.now() - cached.cachedAt >= PRICE_CACHE_TTL_MS) return {};
+    console.log(`[Solana Balances] Using cached prices (${Object.keys(cached.prices).length} tokens)`);
+    return cached.prices;
+  } catch {
+    return {};
+  }
+}
+
+async function setSolanaPriceCache(prices: Record<string, number>): Promise<void> {
+  try {
+    const runtime = await agentRuntime.getRuntime();
+    await runtime.setCache("solana-prices-bulk", { prices, cachedAt: Date.now() });
+  } catch {
+    // Ignore
+  }
+}
 
 interface CachedWalletResponse {
   tokens: Array<{
@@ -452,7 +509,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ tokens: [] });
     }
 
-    // Step 2: Get ALL metadata from Helius in ONE call (much faster than cache lookups)
+    // Step 2: Get metadata from cache first, then fetch missing from Helius
     interface HeliusAsset {
       id: string;
       content?: {
@@ -463,94 +520,114 @@ export async function GET(request: NextRequest) {
     }
 
     const allMints = tokensWithBalance.map((t) => t.mint);
+    const cachedMetadata = await getSolanaMetadataCache();
     const metadata: Record<
       string,
       { symbol: string; name: string; logoURI: string | null }
-    > = {};
+    > = { ...cachedMetadata };
 
-    // Batch fetch ALL metadata (100 at a time) - faster than individual cache lookups!
-    for (let i = 0; i < allMints.length; i += 100) {
-      const batch = allMints.slice(i, i + 100);
-      try {
-        const metadataResponse = await fetch(
-          `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              jsonrpc: "2.0",
-              id: "metadata",
-              method: "getAssetBatch",
-              params: { ids: batch },
-            }),
-            signal: AbortSignal.timeout(8000),
-          },
-        );
+    // Find mints that need metadata
+    const mintsNeedingMetadata = allMints.filter((mint) => !metadata[mint]);
+    console.log(
+      `[Solana Balances] ${Object.keys(cachedMetadata).length} cached, ${mintsNeedingMetadata.length} need metadata`,
+    );
 
-        if (metadataResponse.ok) {
-          const data = await metadataResponse.json();
-          const assets = (data.result || []) as HeliusAsset[];
-          for (const asset of assets) {
-            if (asset?.id) {
-              metadata[asset.id] = {
-                symbol:
-                  asset.content?.metadata?.symbol ||
-                  asset.token_info?.symbol ||
-                  "SPL",
-                name: asset.content?.metadata?.name || "Unknown",
-                logoURI: asset.content?.links?.image || null,
-              };
+    // Batch fetch metadata for uncached tokens (100 at a time)
+    if (mintsNeedingMetadata.length > 0) {
+      for (let i = 0; i < mintsNeedingMetadata.length; i += 100) {
+        const batch = mintsNeedingMetadata.slice(i, i + 100);
+        try {
+          const metadataResponse = await fetch(
+            `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: "metadata",
+                method: "getAssetBatch",
+                params: { ids: batch },
+              }),
+              signal: AbortSignal.timeout(8000),
+            },
+          );
+
+          if (metadataResponse.ok) {
+            const data = await metadataResponse.json();
+            const assets = (data.result || []) as HeliusAsset[];
+            for (const asset of assets) {
+              if (asset?.id) {
+                metadata[asset.id] = {
+                  symbol:
+                    asset.content?.metadata?.symbol ||
+                    asset.token_info?.symbol ||
+                    "SPL",
+                  name: asset.content?.metadata?.name || "Unknown",
+                  logoURI: asset.content?.links?.image || null,
+                };
+              }
             }
           }
+        } catch {
+          // Continue without this batch's metadata
         }
-      } catch {
-        // Continue without this batch's metadata
       }
+
+      // Update bulk metadata cache (fire-and-forget)
+      setSolanaMetadataCache(metadata).catch(() => {});
     }
 
     console.log(
       `[Solana Balances] Got metadata for ${Object.keys(metadata).length} tokens`,
     );
 
-    // Step 3: Get prices from Jupiter (batch, fast)
+    // Step 3: Get prices from cache first, then fetch missing from Jupiter
     const mints = tokensWithBalance.map((t) => t.mint);
-    const prices: Record<string, number> = {};
+    const cachedPrices = await getSolanaPriceCache();
+    const prices: Record<string, number> = { ...cachedPrices };
 
+    // Find mints that need prices
+    const mintsNeedingPrices = mints.filter((mint) => prices[mint] === undefined);
     console.log(
-      `[Solana Balances] Fetching prices for ${mints.length} tokens...`,
+      `[Solana Balances] ${Object.keys(cachedPrices).length} prices cached, ${mintsNeedingPrices.length} need fetch`,
     );
 
     // Jupiter price API - fetch in batches of 100
-    for (let i = 0; i < mints.length; i += 100) {
-      const batch = mints.slice(i, i + 100);
-      try {
-        const priceResponse = await fetch(
-          `https://api.jup.ag/price/v2?ids=${batch.join(",")}`,
-          { signal: AbortSignal.timeout(10000) },
-        );
+    if (mintsNeedingPrices.length > 0) {
+      for (let i = 0; i < mintsNeedingPrices.length; i += 100) {
+        const batch = mintsNeedingPrices.slice(i, i + 100);
+        try {
+          const priceResponse = await fetch(
+            `https://api.jup.ag/price/v2?ids=${batch.join(",")}`,
+            { signal: AbortSignal.timeout(10000) },
+          );
 
-        if (priceResponse.ok) {
-          const priceData = await priceResponse.json();
-          if (priceData.data) {
-            for (const [mint, data] of Object.entries(priceData.data)) {
-              const price = (data as { price?: string })?.price;
-              if (price) prices[mint] = parseFloat(price);
+          if (priceResponse.ok) {
+            const priceData = await priceResponse.json();
+            if (priceData.data) {
+              for (const [mint, data] of Object.entries(priceData.data)) {
+                const price = (data as { price?: string })?.price;
+                if (price) prices[mint] = parseFloat(price);
+              }
             }
+          } else {
+            console.log(
+              `[Solana Balances] Jupiter batch ${i / 100 + 1} returned ${priceResponse.status}`,
+            );
           }
-        } else {
+        } catch (err) {
           console.log(
-            `[Solana Balances] Jupiter batch ${i / 100 + 1} returned ${priceResponse.status}`,
+            `[Solana Balances] Jupiter batch ${i / 100 + 1} failed:`,
+            err,
           );
         }
-      } catch (err) {
-        console.log(
-          `[Solana Balances] Jupiter batch ${i / 100 + 1} failed:`,
-          err,
-        );
       }
+
+      // Update bulk price cache (fire-and-forget)
+      setSolanaPriceCache(prices).catch(() => {});
     }
     console.log(
-      `[Solana Balances] Jupiter returned ${Object.keys(prices).length} prices`,
+      `[Solana Balances] Have prices for ${Object.keys(prices).length} tokens`,
     );
 
     // Step 4: Check blob cache for unreliable image URLs (parallel)
@@ -662,7 +739,7 @@ export async function GET(request: NextRequest) {
       logoURI: t.logoURI,
     }));
 
-    // Cache for 30 seconds
+    // Cache for 15 minutes
     await setCachedWalletResponse(walletAddress, enrichedTokens);
 
     return NextResponse.json({ tokens: enrichedTokens });

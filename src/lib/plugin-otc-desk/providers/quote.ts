@@ -120,6 +120,13 @@ export async function setUserQuote(
     apr: number;
     lockupMonths: number;
     paymentAmount: string;
+    // Token metadata (optional)
+    tokenId?: string;
+    tokenSymbol?: string;
+    tokenName?: string;
+    tokenLogoUrl?: string;
+    chain?: "evm" | "solana";
+    consignmentId?: string;
   },
 ): Promise<QuoteMemory> {
   const normalized = walletAddress.toLowerCase();
@@ -130,6 +137,7 @@ export async function setUserQuote(
     entityId,
     discountBps: quote.discountBps,
     lockupMonths: quote.lockupMonths,
+    tokenSymbol: quote.tokenSymbol,
   });
 
   const runtime = await agentRuntime.getRuntime();
@@ -192,6 +200,13 @@ export async function setUserQuote(
     blockNumber: 0,
     rejectionReason: "",
     approvalNote: "",
+    // Token metadata
+    tokenId: quote.tokenId,
+    tokenSymbol: quote.tokenSymbol,
+    tokenName: quote.tokenName,
+    tokenLogoUrl: quote.tokenLogoUrl,
+    chain: quote.chain,
+    consignmentId: quote.consignmentId,
   };
 
   await runtime.setCache(`quote:${quoteId}`, quoteData);
@@ -210,7 +225,15 @@ export async function setUserQuote(
     await runtime.setCache(`entity_quotes:${entityId}`, entityQuoteIds);
   }
 
-  console.log("[setUserQuote] ✅ New quote created and indexed:", quoteId);
+  // Add to beneficiary index for faster lookups
+  const beneficiaryQuoteIds =
+    (await runtime.getCache<string[]>(`beneficiary_quotes:${normalized}`)) ?? [];
+  if (!beneficiaryQuoteIds.includes(quoteId)) {
+    beneficiaryQuoteIds.push(quoteId);
+    await runtime.setCache(`beneficiary_quotes:${normalized}`, beneficiaryQuoteIds);
+  }
+
+  console.log("[setUserQuote] ✅ New quote created and indexed:", quoteId, "token:", quote.tokenSymbol);
   return quoteData;
 }
 
@@ -236,6 +259,14 @@ export async function deleteUserQuote(walletAddress: string): Promise<void> {
     (id) => id !== quote.quoteId,
   );
   await runtime.setCache(`entity_quotes:${entityId}`, updatedEntityQuoteIds);
+
+  // Also remove from beneficiary index
+  const beneficiaryQuoteIds =
+    (await runtime.getCache<string[]>(`beneficiary_quotes:${normalized}`)) ?? [];
+  const updatedBeneficiaryQuoteIds = beneficiaryQuoteIds.filter(
+    (id) => id !== quote.quoteId,
+  );
+  await runtime.setCache(`beneficiary_quotes:${normalized}`, updatedBeneficiaryQuoteIds);
 
   const allQuotes = (await runtime.getCache<string[]>("all_quotes")) ?? [];
   const updatedAllQuotes = allQuotes.filter((id) => id !== quote.quoteId);

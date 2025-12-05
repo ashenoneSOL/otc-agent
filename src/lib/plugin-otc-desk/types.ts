@@ -38,6 +38,13 @@ export interface QuoteMemory {
   approvalNote: string;
   // Optional chain context to distinguish EVM vs Solana flows
   chain?: ChainType;
+  // Token metadata for display
+  tokenId?: string;
+  tokenSymbol?: string;
+  tokenName?: string;
+  tokenLogoUrl?: string;
+  // Consignment reference
+  consignmentId?: string;
 }
 
 export interface UserSessionMemory {

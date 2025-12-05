@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, parseAbi } from "viem";
-import { base } from "viem/chains";
 import { Connection } from "@solana/web3.js";
 import { TokenRegistryService } from "@/services/tokenRegistry";
 

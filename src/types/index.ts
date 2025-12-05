@@ -66,6 +66,7 @@ export interface Offer {
  */
 export interface ConsignmentParams {
   tokenId: string;
+  tokenSymbol: string;
   amount: bigint;
   isNegotiable: boolean;
   fixedDiscountBps: number;

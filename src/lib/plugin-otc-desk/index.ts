@@ -113,9 +113,7 @@ Example response for "give me 15%":
 <response>
 I can offer 15% discount with a 6-month lockup.
 
-📊 **Quote Terms**
-• **Discount: 15.00%**
-• **Lockup: 6 months**
+📊 **Quote Terms: Discount: 15.00% Lockup: 6 months**
 
 <quote>
   <quoteId>OTC-XXXXX</quoteId>
@@ -398,6 +396,11 @@ const messageReceivedHandler = async ({
       console.log(
         "[MessageHandler] Detected <quote> XML in response, parsing and saving",
       );
+      // Worst possible deal defaults (lowest discount, longest lockup)
+      const DEFAULT_MIN_DISCOUNT_BPS = 100; // 1% - lowest discount
+      const DEFAULT_MAX_LOCKUP_MONTHS = 12; // 12 months - longest lockup
+      const DEFAULT_MAX_LOCKUP_DAYS = 365;
+
       // Simple regex-based parsing (server-side compatible)
       const quoteXml = quoteMatch[0];
       const getTag = (tag: string) => {
@@ -406,9 +409,9 @@ const messageReceivedHandler = async ({
         );
         return match ? match[1].trim() : "";
       };
-      const getNumTag = (tag: string) => {
+      const getNumTag = (tag: string, defaultVal: number = 0) => {
         const val = getTag(tag);
-        return val ? parseFloat(val) : 0;
+        return val ? parseFloat(val) : defaultVal;
       };
 
       const quoteId = getTag("quoteId");
@@ -426,10 +429,10 @@ const messageReceivedHandler = async ({
           entityId: walletToEntityId(entityId),
           beneficiary: entityId.toLowerCase(),
           tokenAmount: getTag("tokenAmount") || "0",
-          discountBps: getNumTag("discountBps"),
+          discountBps: getNumTag("discountBps", DEFAULT_MIN_DISCOUNT_BPS),
           apr: 0,
-          lockupMonths: getNumTag("lockupMonths"),
-          lockupDays: getNumTag("lockupDays"),
+          lockupMonths: getNumTag("lockupMonths", DEFAULT_MAX_LOCKUP_MONTHS),
+          lockupDays: getNumTag("lockupDays", DEFAULT_MAX_LOCKUP_DAYS),
           paymentCurrency,
           priceUsdPerToken: getNumTag("pricePerToken"),
           totalUsd: 0,

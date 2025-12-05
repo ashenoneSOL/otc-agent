@@ -1,9 +1,10 @@
 "use client";
 import "@/app/globals.css";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { Footer } from "@/components/footer";
+import { useRenderTracker } from "@/utils/render-tracker";
 
 const DealsGrid = dynamic(
   () => import("@/components/deals-grid").then((m) => m.DealsGrid),
@@ -14,20 +15,29 @@ const DealFilters = dynamic(
   { ssr: false },
 );
 
+const INITIAL_FILTERS = {
+  chains: ["ethereum", "base", "bsc", "solana"] as (
+    | "ethereum"
+    | "base"
+    | "bsc"
+    | "solana"
+  )[],
+  minMarketCap: 0,
+  maxMarketCap: 0,
+  negotiableTypes: ["negotiable", "fixed"] as ("negotiable" | "fixed")[],
+  isFractionalized: false,
+  searchQuery: "",
+};
+
 function MarketplaceContent() {
-  const [filters, setFilters] = useState({
-    chains: ["ethereum", "base", "bsc", "solana"] as (
-      | "ethereum"
-      | "base"
-      | "bsc"
-      | "solana"
-    )[],
-    minMarketCap: 0,
-    maxMarketCap: 0,
-    negotiableTypes: ["negotiable", "fixed"] as ("negotiable" | "fixed")[],
-    isFractionalized: false,
-    searchQuery: "",
-  });
+  useRenderTracker("MarketplaceContent");
+  
+  const [filters, setFilters] = useState(INITIAL_FILTERS);
+  
+  // Memoize the callback to prevent DealFilters re-renders
+  const handleFiltersChange = useCallback((newFilters: typeof INITIAL_FILTERS) => {
+    setFilters(newFilters);
+  }, []);
 
   return (
     <div className="relative flex flex-col h-full min-h-0">
@@ -35,7 +45,7 @@ function MarketplaceContent() {
         <div className="max-w-7xl mx-auto w-full flex flex-col min-h-0 flex-1">
           {/* Filters - Fixed */}
           <div className="mb-4 flex-shrink-0">
-            <DealFilters filters={filters} onFiltersChange={setFilters} />
+            <DealFilters filters={filters} onFiltersChange={handleFiltersChange} />
           </div>
 
           {/* Deals Grid - Scrollable */}

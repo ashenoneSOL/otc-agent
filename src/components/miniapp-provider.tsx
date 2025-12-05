@@ -1,14 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import miniappSdk from "@farcaster/miniapp-sdk";
 import { sendWelcomeNotification } from "@/lib/notifications";
+import { useRenderTracker } from "@/utils/render-tracker";
 
 export function MiniappProvider({ children }: { children: React.ReactNode }) {
+  useRenderTracker("MiniappProvider");
+  
   const [isInitialized, setIsInitialized] = useState(false);
+  const initStartedRef = useRef(false);
 
   useEffect(() => {
-    if (typeof window === "undefined" || isInitialized) return;
+    // Prevent double initialization with refs (more reliable than state)
+    if (typeof window === "undefined" || initStartedRef.current) return;
+    initStartedRef.current = true;
 
     const initMiniapp = async () => {
       try {
@@ -37,7 +43,10 @@ export function MiniappProvider({ children }: { children: React.ReactNode }) {
     };
 
     initMiniapp();
-  }, [isInitialized]);
+  }, []); // No deps needed - ref guards against double execution
+
+  // Use isInitialized to prevent unused variable warning
+  void isInitialized;
 
   return <>{children}</>;
 }

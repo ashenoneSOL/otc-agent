@@ -4,7 +4,28 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useMultiWallet } from "@/components/multiwallet";
 import { usePrivy } from "@privy-io/react-auth";
+import { useOTC } from "@/hooks/contracts/useOTC";
+import { useRenderTracker } from "@/utils/render-tracker";
 import type { TokenWithBalance } from "@/components/consignment-form/token-selection-step";
+
+// Solana imports
+import type { Idl, Wallet } from "@coral-xyz/anchor";
+import * as anchor from "@coral-xyz/anchor";
+import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import {
+  Connection,
+  Keypair,
+  PublicKey as SolPubkey,
+  SystemProgram as SolSystemProgram,
+} from "@solana/web3.js";
+import { SUPPORTED_CHAINS } from "@/config/chains";
+
+// Solana config
+const SOLANA_RPC = SUPPORTED_CHAINS.solana.rpcUrl;
+const SOLANA_DESK = SUPPORTED_CHAINS.solana.contracts.otc;
+
+// Default gas deposit fallback (0.001 ETH) - used when RPC fetch fails
+const DEFAULT_GAS_DEPOSIT = BigInt(1000000000000000);
 
 const TokenSelectionStep = dynamic(
   () =>
@@ -25,6 +46,13 @@ const ReviewStep = dynamic(
     ),
   { ssr: false },
 );
+const SubmissionStepComponent = dynamic(
+  () =>
+    import("@/components/consignment-form/submission-step").then(
+      (m) => m.SubmissionStepComponent,
+    ),
+  { ssr: false },
+);
 
 function getRequiredChain(tokenId: string): "evm" | "solana" | null {
   if (!tokenId) return null;
@@ -38,7 +66,13 @@ function getRequiredChain(tokenId: string): "evm" | "solana" | null {
   return null;
 }
 
-const STEP_LABELS = ["Select", "Configure", "Review"];
+async function fetchSolanaIdl(): Promise<Idl> {
+  const res = await fetch("/api/solana/idl");
+  if (!res.ok) throw new Error("Failed to load Solana IDL");
+  return (await res.json()) as Idl;
+}
+
+const STEP_LABELS = ["Select", "Configure", "Review", "Submit"];
 
 const INITIAL_FORM_DATA = {
   tokenId: "",
@@ -58,15 +92,24 @@ const INITIAL_FORM_DATA = {
   maxTimeToExecuteSeconds: 1800,
 };
 
+// Extract chain and address from tokenId (format: token-{chain}-{address})
+function getTokenInfo(tokenId: string) {
+  const parts = tokenId?.split("-") || [];
+  const chain = parts[1] || "";
+  const address = parts.slice(2).join("-") || "";
+  return { chain, address };
+}
+
 export default function ConsignPageClient() {
+  useRenderTracker("ConsignPageClient");
+  
   const {
     hasWallet,
     activeFamily,
     setActiveFamily,
-    evmConnected,
-    solanaConnected,
     evmAddress,
     solanaPublicKey,
+    solanaWallet,
     networkLabel,
     disconnect,
     connectWallet,
@@ -74,21 +117,21 @@ export default function ConsignPageClient() {
     isFarcasterContext,
   } = useMultiWallet();
   const { login, ready: privyReady } = usePrivy();
+  const { createConsignmentOnChain, approveToken, getRequiredGasDeposit } = useOTC();
 
   const [step, setStep] = useState(1);
-  const [selectedToken, setSelectedToken] = useState<TokenWithBalance | null>(
-    null,
-  );
+  const [selectedToken, setSelectedToken] = useState<TokenWithBalance | null>(null);
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
+  const [gasDeposit, setGasDeposit] = useState<bigint | null>(null);
 
-  const currentAddress =
-    activeFamily === "solana" ? solanaPublicKey : evmAddress;
+  const currentAddress = activeFamily === "solana" ? solanaPublicKey : evmAddress;
   const displayAddress = currentAddress
     ? `${currentAddress.slice(0, 6)}...${currentAddress.slice(-4)}`
     : null;
 
-  const requiredChain = useMemo(
-    () => getRequiredChain(formData.tokenId),
+  const requiredChain = useMemo(() => getRequiredChain(formData.tokenId), [formData.tokenId]);
+  const { chain: tokenChain, address: rawTokenAddress } = useMemo(
+    () => getTokenInfo(formData.tokenId),
     [formData.tokenId],
   );
 
@@ -102,10 +145,10 @@ export default function ConsignPageClient() {
   // Reset form when chain changes (prevents stale token selection)
   useEffect(() => {
     if (step > 1 && selectedToken) {
-      const tokenChain = selectedToken.chain;
+      const tokenChainType = selectedToken.chain;
       const isTokenOnCurrentChain =
-        (tokenChain === "solana" && activeFamily === "solana") ||
-        (tokenChain !== "solana" && activeFamily === "evm");
+        (tokenChainType === "solana" && activeFamily === "solana") ||
+        (tokenChainType !== "solana" && activeFamily === "evm");
 
       if (!isTokenOnCurrentChain) {
         // Token is on different chain, reset to step 1
@@ -116,17 +159,36 @@ export default function ConsignPageClient() {
     }
   }, [activeFamily, step, selectedToken]);
 
+  // Pre-fetch gas deposit when we have a token selected and reach review step
+  useEffect(() => {
+    if (step === 3 && activeFamily !== "solana" && rawTokenAddress) {
+      getRequiredGasDeposit()
+        .then((deposit) => {
+          console.log("[ConsignPage] Gas deposit fetched:", deposit?.toString());
+          setGasDeposit(deposit);
+        })
+        .catch((err) => {
+          console.error("[ConsignPage] Failed to fetch gas deposit:", err);
+          setGasDeposit(DEFAULT_GAS_DEPOSIT);
+        });
+    }
+  }, [step, activeFamily, rawTokenAddress, getRequiredGasDeposit]);
+
   const updateFormData = useCallback((updates: Partial<typeof formData>) => {
     setFormData((prev) => ({ ...prev, ...updates }));
   }, []);
 
-  const handleNext = useCallback(() => setStep((s) => Math.min(s + 1, 3)), []);
+  const handleNext = useCallback(() => setStep((s) => Math.min(s + 1, 4)), []);
   const handleBack = useCallback(() => setStep((s) => Math.max(s - 1, 1)), []);
 
   const handleConnect = useCallback(
     (chain?: "evm" | "solana") => {
       if (chain) setActiveFamily(chain);
-      privyAuthenticated ? connectWallet() : login();
+      if (privyAuthenticated) {
+        connectWallet();
+      } else {
+        login();
+      }
     },
     [setActiveFamily, privyAuthenticated, connectWallet, login],
   );
@@ -134,8 +196,7 @@ export default function ConsignPageClient() {
   const handleTokenSelect = useCallback((token: TokenWithBalance) => {
     setSelectedToken(token);
     // Auto-set deal amounts based on token balance
-    const humanBalance =
-      Number(BigInt(token.balance)) / Math.pow(10, token.decimals);
+    const humanBalance = Number(BigInt(token.balance)) / Math.pow(10, token.decimals);
     const minDeal = Math.max(1, Math.floor(humanBalance * 0.01));
     const maxDeal = Math.floor(humanBalance);
     setFormData((prev) => ({
@@ -144,6 +205,207 @@ export default function ConsignPageClient() {
       maxDealAmount: maxDeal.toString(),
     }));
   }, []);
+
+  const getBlockExplorerUrl = useCallback(
+    (txHash: string) => {
+      if (tokenChain === "solana") {
+        return `https://solscan.io/tx/${txHash}`;
+      }
+      if (tokenChain === "bsc") {
+        return `https://bscscan.com/tx/${txHash}`;
+      }
+      return `https://basescan.org/tx/${txHash}`;
+    },
+    [tokenChain],
+  );
+
+  const handleApproveToken = useCallback(async (): Promise<string> => {
+    // Solana path - approve is done as part of the transaction
+    if (activeFamily === "solana") {
+      return "solana-approval-pending";
+    }
+
+    // EVM path
+    if (!rawTokenAddress) throw new Error("Token address not found");
+    const decimals = selectedToken?.decimals ?? 18;
+    const rawAmount = BigInt(
+      Math.floor(parseFloat(formData.amount) * Math.pow(10, decimals)),
+    );
+    const txHash = await approveToken(rawTokenAddress as `0x${string}`, rawAmount);
+    return txHash as string;
+  }, [activeFamily, rawTokenAddress, selectedToken, formData.amount, approveToken]);
+
+  const handleCreateConsignment = useCallback(async (
+    onTxSubmitted?: (txHash: string) => void,
+  ): Promise<{
+    txHash: string;
+    consignmentId: string;
+  }> => {
+    const decimals = selectedToken?.decimals ?? 18;
+
+    // Solana path
+    if (activeFamily === "solana") {
+      if (!SOLANA_DESK) {
+        throw new Error("SOLANA_DESK address not configured in environment.");
+      }
+      if (!solanaWallet || !solanaWallet.publicKey) {
+        throw new Error("Connect a Solana wallet to continue.");
+      }
+      if (!rawTokenAddress) {
+        throw new Error("Token address not found");
+      }
+
+      const connection = new Connection(SOLANA_RPC, "confirmed");
+
+      // Adapt our wallet adapter to Anchor's Wallet interface
+      const anchorWallet = {
+        publicKey: new SolPubkey(solanaWallet.publicKey.toBase58()),
+        signTransaction: solanaWallet.signTransaction,
+        signAllTransactions: solanaWallet.signAllTransactions,
+      } as Wallet;
+
+      const provider = new anchor.AnchorProvider(connection, anchorWallet, {
+        commitment: "confirmed",
+      });
+
+      console.log("[ConsignPage] Fetching Solana IDL...");
+      const idl = await fetchSolanaIdl();
+      console.log("[ConsignPage] IDL loaded, creating program...");
+      const program = new anchor.Program(idl, provider);
+
+      const desk = new SolPubkey(SOLANA_DESK);
+      const tokenMintPk = new SolPubkey(rawTokenAddress);
+      const consignerPk = new SolPubkey(solanaWallet.publicKey.toBase58());
+
+      // Get consigner's token ATA
+      const consignerTokenAta = await getAssociatedTokenAddress(tokenMintPk, consignerPk, false);
+
+      // Get desk's token treasury
+      const deskTokenTreasury = await getAssociatedTokenAddress(tokenMintPk, desk, true);
+
+      // Generate consignment keypair (required as signer in the program)
+      const consignmentKeypair = Keypair.generate();
+
+      // Convert amounts to raw values
+      const rawAmount = new anchor.BN(
+        Math.floor(parseFloat(formData.amount) * Math.pow(10, decimals)).toString(),
+      );
+      const rawMinDeal = new anchor.BN(
+        Math.floor(parseFloat(formData.minDealAmount) * Math.pow(10, decimals)).toString(),
+      );
+      const rawMaxDeal = new anchor.BN(
+        Math.floor(parseFloat(formData.maxDealAmount) * Math.pow(10, decimals)).toString(),
+      );
+
+      // Call createConsignment instruction
+      const txSignature = await program.methods
+        .createConsignment(
+          rawAmount,
+          formData.isNegotiable,
+          formData.fixedDiscountBps ?? 0,
+          formData.fixedLockupDays ?? 0,
+          formData.minDiscountBps,
+          formData.maxDiscountBps,
+          formData.minLockupDays,
+          formData.maxLockupDays,
+          rawMinDeal,
+          rawMaxDeal,
+          formData.isFractionalized,
+          formData.isPrivate,
+          formData.maxPriceVolatilityBps,
+          new anchor.BN(formData.maxTimeToExecuteSeconds),
+        )
+        .accounts({
+          desk: desk,
+          consigner: consignerPk,
+          tokenMint: tokenMintPk,
+          consignerTokenAta: consignerTokenAta,
+          deskTokenTreasury: deskTokenTreasury,
+          consignment: consignmentKeypair.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SolSystemProgram.programId,
+        })
+        .signers([consignmentKeypair])
+        .rpc();
+
+      // Notify that tx was submitted (Solana confirms fast so this is immediate)
+      if (onTxSubmitted) {
+        onTxSubmitted(txSignature);
+      }
+
+      return {
+        txHash: txSignature,
+        consignmentId: consignmentKeypair.publicKey.toString(),
+      };
+    }
+
+    // EVM path - use cached gas deposit or fetch with retry
+    let currentGasDeposit = gasDeposit;
+    if (!currentGasDeposit) {
+      console.log("[ConsignPage] Gas deposit not cached, fetching...");
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          currentGasDeposit = await getRequiredGasDeposit();
+          if (currentGasDeposit) {
+            console.log("[ConsignPage] Gas deposit fetched:", currentGasDeposit.toString());
+            break;
+          }
+        } catch (err) {
+          console.error("[ConsignPage] Gas deposit fetch failed:", err);
+        }
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        }
+      }
+      currentGasDeposit ??= DEFAULT_GAS_DEPOSIT;
+    }
+
+    // Convert human-readable amounts to raw amounts with decimals
+    const rawAmount = BigInt(Math.floor(parseFloat(formData.amount) * Math.pow(10, decimals)));
+    const rawMinDeal = BigInt(
+      Math.floor(parseFloat(formData.minDealAmount) * Math.pow(10, decimals)),
+    );
+    const rawMaxDeal = BigInt(
+      Math.floor(parseFloat(formData.maxDealAmount) * Math.pow(10, decimals)),
+    );
+
+    const result = await createConsignmentOnChain(
+      {
+        tokenId: formData.tokenId,
+        tokenSymbol: selectedToken?.symbol ?? "TOKEN",
+        amount: rawAmount,
+        isNegotiable: formData.isNegotiable,
+        fixedDiscountBps: formData.fixedDiscountBps ?? 0,
+        fixedLockupDays: formData.fixedLockupDays ?? 0,
+        minDiscountBps: formData.minDiscountBps,
+        maxDiscountBps: formData.maxDiscountBps,
+        minLockupDays: formData.minLockupDays,
+        maxLockupDays: formData.maxLockupDays,
+        minDealAmount: rawMinDeal,
+        maxDealAmount: rawMaxDeal,
+        isFractionalized: formData.isFractionalized,
+        isPrivate: formData.isPrivate,
+        maxPriceVolatilityBps: formData.maxPriceVolatilityBps,
+        maxTimeToExecute: formData.maxTimeToExecuteSeconds,
+        gasDeposit: currentGasDeposit,
+      },
+      onTxSubmitted,
+    );
+
+    return {
+      txHash: result.txHash,
+      consignmentId: result.consignmentId.toString(),
+    };
+  }, [
+    activeFamily,
+    solanaWallet,
+    rawTokenAddress,
+    selectedToken,
+    formData,
+    gasDeposit,
+    createConsignmentOnChain,
+    getRequiredGasDeposit,
+  ]);
 
   return (
     <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
@@ -188,12 +450,12 @@ export default function ConsignPageClient() {
         {/* Progress indicator */}
         <div className="mb-6 sm:mb-8">
           <div className="flex justify-between items-center mb-2">
-            {[1, 2, 3].map((s) => (
+            {[1, 2, 3, 4].map((s) => (
               <div
                 key={s}
                 className={`flex-1 h-2 ${
                   s <= step ? "bg-orange-500" : "bg-zinc-200 dark:bg-zinc-800"
-                } ${s < 3 ? "mr-2" : ""} rounded-full transition-colors`}
+                } ${s < 4 ? "mr-2" : ""} rounded-full transition-colors`}
               />
             ))}
           </div>
@@ -201,9 +463,7 @@ export default function ConsignPageClient() {
             {STEP_LABELS.map((label, idx) => (
               <span
                 key={label}
-                className={
-                  step === idx + 1 ? "text-orange-500 font-medium" : ""
-                }
+                className={step === idx + 1 ? "text-orange-500 font-medium" : ""}
               >
                 {label}
               </span>
@@ -236,12 +496,32 @@ export default function ConsignPageClient() {
             <ReviewStep
               formData={formData}
               onBack={handleBack}
+              onNext={handleNext}
               requiredChain={requiredChain}
               isConnectedToRequiredChain={isConnectedToRequiredChain}
               onConnect={() => handleConnect(requiredChain || undefined)}
               privyReady={privyReady}
               selectedTokenSymbol={selectedToken?.symbol}
               selectedTokenDecimals={selectedToken?.decimals}
+            />
+          )}
+          {step === 4 && (
+            <SubmissionStepComponent
+              formData={formData}
+              consignerAddress={
+                activeFamily === "solana" ? solanaPublicKey || "" : evmAddress || ""
+              }
+              chain={tokenChain || (activeFamily === "solana" ? "solana" : "base")}
+              activeFamily={activeFamily}
+              selectedTokenDecimals={selectedToken?.decimals ?? 18}
+              selectedTokenSymbol={selectedToken?.symbol ?? "TOKEN"}
+              selectedTokenName={selectedToken?.name}
+              selectedTokenAddress={selectedToken?.contractAddress}
+              selectedTokenLogoUrl={selectedToken?.logoUrl}
+              onApproveToken={handleApproveToken}
+              onCreateConsignment={handleCreateConsignment}
+              getBlockExplorerUrl={getBlockExplorerUrl}
+              onBack={handleBack}
             />
           )}
         </div>

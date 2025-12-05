@@ -42,13 +42,17 @@ export async function GET(request: NextRequest) {
   if (!quote) {
     console.log("[Quote API] Creating default quote for token:", tokenId);
 
+    // Worst possible deal defaults (lowest discount, longest lockup)
+    const DEFAULT_MIN_DISCOUNT_BPS = 100; // 1%
+    const DEFAULT_MAX_LOCKUP_MONTHS = 12; // 12 months
+
     await quoteService.createQuote({
       entityId,
       beneficiary: wallet.toLowerCase(),
       tokenAmount: "0",
-      discountBps: 1000,
+      discountBps: DEFAULT_MIN_DISCOUNT_BPS,
       apr: 0,
-      lockupMonths: 5,
+      lockupMonths: DEFAULT_MAX_LOCKUP_MONTHS,
       paymentCurrency: "USDC",
       totalUsd: 0,
       discountUsd: 0,

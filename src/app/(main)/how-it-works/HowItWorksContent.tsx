@@ -8,7 +8,7 @@ import { useCallback } from "react";
 
 export default function HowItWorksContent() {
   const router = useRouter();
-  const { isConnected } = useMultiWallet();
+  useMultiWallet(); // Hook used for side effects only
 
   // Simple wallet connect - just use Privy login
   const handleOpenConsignmentForm = useCallback(() => {

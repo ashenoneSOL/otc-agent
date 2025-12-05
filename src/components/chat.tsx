@@ -307,7 +307,7 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
       return;
     }
 
-    // Poll every second for new messages
+    // Poll every 2 seconds for new messages (faster polling has diminishing returns)
     pollingIntervalRef.current = setInterval(async () => {
       const response = await fetch(
         `/api/rooms/${roomId}/messages?afterTimestamp=${lastMessageTimestampRef.current}&_=${Date.now()}`,
@@ -362,7 +362,7 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
           }
         }
       }
-    }, 1000);
+    }, 2000);
 
     // Stop polling after 30 seconds
     const timeoutId = setTimeout(() => {
@@ -614,7 +614,11 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
     localStorage.setItem("otc-desk-connect-overlay-seen", "1");
     localStorage.setItem("otc-desk-connect-overlay-dismissed", "1");
     dispatch({ type: "SET_CONNECT_OVERLAY", payload: false });
-    privyAuthenticated ? connectWallet() : login();
+    if (privyAuthenticated) {
+      connectWallet();
+    } else {
+      login();
+    }
   }, [privyAuthenticated, connectWallet, login]);
 
   // Switch chain - just changes active family if already connected, otherwise prompts connect
@@ -624,9 +628,17 @@ export const Chat = ({ roomId: initialRoomId }: ChatProps = {}) => {
 
       // If not connected to that chain, prompt connect/login
       if (targetChain === "solana" && !solanaConnected) {
-        privyAuthenticated ? connectWallet() : login();
+        if (privyAuthenticated) {
+          connectWallet();
+        } else {
+          login();
+        }
       } else if (targetChain === "evm" && !evmConnected) {
-        privyAuthenticated ? connectWallet() : login();
+        if (privyAuthenticated) {
+          connectWallet();
+        } else {
+          login();
+        }
       }
     },
     [
@@ -776,31 +788,7 @@ function ChatHeader({
             {/* Desktop version */}
             <div className="hidden sm:flex items-center gap-6 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/50 px-4 py-2">
               <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Current Offer
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-zinc-500 dark:text-zinc-400 text-xs">
-                  Discount
-                </span>
-                <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                  {(
-                    currentQuote.discountPercent ||
-                    currentQuote.discountBps / 100
-                  ).toFixed(0)}
-                  %
-                </span>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-zinc-500 dark:text-zinc-400 text-xs">
-                  Maturity
-                </span>
-                <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                  {Math.round(
-                    currentQuote.lockupMonths ||
-                      (currentQuote.lockupDays || 0) / 30,
-                  )}{" "}
-                  months
-                </span>
+                Offer Ready
               </div>
               <Button
                 onClick={
@@ -835,33 +823,7 @@ function ChatHeader({
             {/* Mobile version */}
             <div className="flex sm:hidden flex-col gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/50 p-3">
               <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Current Offer
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-zinc-500 dark:text-zinc-400 text-xs">
-                    Discount
-                  </span>
-                  <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                    {(
-                      currentQuote.discountPercent ||
-                      currentQuote.discountBps / 100
-                    ).toFixed(0)}
-                    %
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-zinc-500 dark:text-zinc-400 text-xs">
-                    Maturity
-                  </span>
-                  <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                    {Math.round(
-                      currentQuote.lockupMonths ||
-                        (currentQuote.lockupDays || 0) / 30,
-                    )}{" "}
-                    months
-                  </span>
-                </div>
+                Offer Ready
               </div>
               <div className="flex gap-2">
                 <Button

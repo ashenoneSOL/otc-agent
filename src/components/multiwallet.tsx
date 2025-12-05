@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useChainId, useDisconnect, useConnect, useAccount } from "wagmi";
@@ -17,6 +18,7 @@ import {
 } from "@privy-io/react-auth";
 import { SUPPORTED_CHAINS, type ChainFamily } from "@/config/chains";
 import type { EVMChain } from "@/types";
+import { useRenderTracker } from "@/utils/render-tracker";
 
 // Interface compatible with @solana/wallet-adapter-react for downstream components
 interface SolanaTransaction {
@@ -105,6 +107,8 @@ export function MultiWalletProvider({
 }: {
   children: React.ReactNode;
 }) {
+  useRenderTracker("MultiWalletProvider");
+  
   const {
     ready: privyReady,
     authenticated: privyAuthenticated,
@@ -119,6 +123,9 @@ export function MultiWalletProvider({
   const { connect: connectWagmi, connectors } = useConnect();
   const { isConnected: isWagmiConnected, address: wagmiAddress } = useAccount();
   const chainId = useChainId();
+  
+  // Track previous state to avoid logging on every render
+  const prevStateRef = useRef<string | null>(null);
 
   // === Derived wallet state ===
   // Check BOTH Privy wallets array AND wagmi direct connection AND Privy user linkedAccounts
@@ -445,10 +452,25 @@ export function MultiWalletProvider({
   const hasWallet = evmConnected || solanaConnected;
   const isConnected = hasWallet || privyAuthenticated;
 
-  // Debug logging in development - simplified to only key state changes
+  // Debug logging in development - only log when state actually changes
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
-    console.log("[MultiWallet] State:", {
+    
+    const stateKey = JSON.stringify({
+      evmConnected,
+      solanaConnected,
+      activeFamily,
+      hasWallet,
+      evmAddress,
+      solanaPublicKey,
+      preferredFamily,
+    });
+    
+    // Only log if state actually changed
+    if (prevStateRef.current === stateKey) return;
+    prevStateRef.current = stateKey;
+    
+    console.log("[MultiWallet] State changed:", {
       privyAuthenticated,
       privyReady,
       walletsCount: wallets.length,
@@ -465,7 +487,6 @@ export function MultiWalletProvider({
       activeFamily,
       hasWallet,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     evmConnected,
     solanaConnected,
@@ -476,6 +497,12 @@ export function MultiWalletProvider({
     preferredFamily,
     hasActiveEvmWallet,
     hasActiveSolanaWallet,
+    privyAuthenticated,
+    privyReady,
+    wallets.length,
+    linkedEvmAddress,
+    linkedSolanaAddress,
+    isWagmiConnected,
   ]);
 
   const evmNetworkName = useMemo(() => {
@@ -531,35 +558,65 @@ export function MultiWalletProvider({
 
   const paymentPairLabel = activeFamily === "solana" ? "USDC/SOL" : "USDC/ETH";
 
-  // === Context value ===
-  const value: MultiWalletContextValue = {
-    activeFamily,
-    setActiveFamily,
-    selectedEVMChain,
-    setSelectedEVMChain,
-    isConnected,
-    hasWallet,
-    entityId,
-    networkLabel,
-    evmConnected,
-    evmAddress,
-    solanaConnected,
-    solanaPublicKey,
-    solanaWallet: solanaWalletAdapter,
-    privyAuthenticated,
-    privyReady,
-    privyUser,
-    isFarcasterContext,
-    paymentPairLabel,
-    isPhantomInstalled,
-    currentChainId: chainId ?? null,
-    login,
-    logout,
-    connectWallet,
-    connectSolanaWallet,
-    switchSolanaWallet,
-    disconnect,
-  };
+  // === Context value - memoized to prevent unnecessary child re-renders ===
+  const value = useMemo<MultiWalletContextValue>(
+    () => ({
+      activeFamily,
+      setActiveFamily,
+      selectedEVMChain,
+      setSelectedEVMChain,
+      isConnected,
+      hasWallet,
+      entityId,
+      networkLabel,
+      evmConnected,
+      evmAddress,
+      solanaConnected,
+      solanaPublicKey,
+      solanaWallet: solanaWalletAdapter,
+      privyAuthenticated,
+      privyReady,
+      privyUser,
+      isFarcasterContext,
+      paymentPairLabel,
+      isPhantomInstalled,
+      currentChainId: chainId ?? null,
+      login,
+      logout,
+      connectWallet,
+      connectSolanaWallet,
+      switchSolanaWallet,
+      disconnect,
+    }),
+    [
+      activeFamily,
+      setActiveFamily,
+      selectedEVMChain,
+      setSelectedEVMChain,
+      isConnected,
+      hasWallet,
+      entityId,
+      networkLabel,
+      evmConnected,
+      evmAddress,
+      solanaConnected,
+      solanaPublicKey,
+      solanaWalletAdapter,
+      privyAuthenticated,
+      privyReady,
+      privyUser,
+      isFarcasterContext,
+      paymentPairLabel,
+      isPhantomInstalled,
+      chainId,
+      login,
+      logout,
+      connectWallet,
+      connectSolanaWallet,
+      switchSolanaWallet,
+      disconnect,
+    ]
+  );
 
   return (
     <MultiWalletContext.Provider value={value}>

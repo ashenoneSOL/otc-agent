@@ -390,15 +390,39 @@ export async function POST(request: NextRequest) {
     console.log("[Approve API] ✅ Already in single-approver mode");
   }
 
-  // Check if already approved
-  const offerRaw = await safeReadContract<RawOfferData>(publicClient, {
-    address: OTC_ADDRESS,
-    abi,
-    functionName: "offers",
-    args: [BigInt(offerId)],
-  });
+  // Poll for offer to exist (tx might still be pending)
+  // This handles the case where frontend calls us immediately after tx submission
+  let offer;
+  const maxPollAttempts = 10; // 10 attempts * 2 seconds = 20 seconds max wait
+  
+  for (let attempt = 1; attempt <= maxPollAttempts; attempt++) {
+    const offerRaw = await safeReadContract<RawOfferData>(publicClient, {
+      address: OTC_ADDRESS,
+      abi,
+      functionName: "offers",
+      args: [BigInt(offerId)],
+    });
+    
+    offer = parseOfferStruct(offerRaw);
+    
+    // Check if offer exists (beneficiary is set when offer is created)
+    if (offer.beneficiary && offer.beneficiary !== "0x0000000000000000000000000000000000000000") {
+      console.log(`[Approve API] Offer found on attempt ${attempt}`);
+      break;
+    }
+    
+    if (attempt < maxPollAttempts) {
+      console.log(`[Approve API] Offer ${offerId} not found yet, waiting... (${attempt}/${maxPollAttempts})`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
 
-  const offer = parseOfferStruct(offerRaw);
+  if (!offer?.beneficiary || offer.beneficiary === "0x0000000000000000000000000000000000000000") {
+    return NextResponse.json(
+      { error: `Offer ${offerId} not found after ${maxPollAttempts} attempts. Transaction may still be pending.` },
+      { status: 404 }
+    );
+  }
 
   console.log("[Approve API] Offer state:", {
     approved: offer.approved,

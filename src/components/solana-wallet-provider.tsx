@@ -2,8 +2,9 @@
 
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
 import { ConnectionProvider } from "@solana/wallet-adapter-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { SUPPORTED_CHAINS } from "@/config/chains";
+import { useRenderTracker } from "@/utils/render-tracker";
 
 /**
  * Get Solana network from unified chain config
@@ -39,15 +40,25 @@ export function SolanaWalletProvider({
 }: {
   children: React.ReactNode;
 }) {
+  useRenderTracker("SolanaWalletProvider");
+  
   const network = useMemo(() => getSolanaNetwork(), []);
   const endpoint = useMemo(() => getSolanaEndpoint(), []);
+  const hasLoggedInit = useRef(false);
 
-  // Debug: Log when provider mounts
-  console.log("[SolanaConnectionProvider] Provider initialized with:", {
-    network,
-    endpoint,
-    chainConfig: SUPPORTED_CHAINS.solana.id,
-  });
+  // Log only once on mount, not on every render
+  useEffect(() => {
+    if (hasLoggedInit.current) return;
+    hasLoggedInit.current = true;
+    
+    if (process.env.NODE_ENV === "development") {
+      console.log("[SolanaConnectionProvider] Provider initialized with:", {
+        network,
+        endpoint,
+        chainConfig: SUPPORTED_CHAINS.solana.id,
+      });
+    }
+  }, [network, endpoint]);
 
   return (
     <ConnectionProvider endpoint={endpoint}>{children}</ConnectionProvider>

@@ -216,8 +216,70 @@ export async function POST(request: NextRequest) {
 
       const tokenAmount = BigInt(tokenAmountStr);
       const discountBps = quote.discountBps || 1000;
-      const tokenPrice = 1.0; // $1.00 from setPrices
-      const solPrice = 100.0; // $100 from setPrices
+      
+      // Fetch real prices from market data and price feeds
+      let tokenPrice = 0;
+      let solPrice = 0;
+      
+      // Try to get actual token price from market data
+      if (quote.tokenId) {
+        try {
+          const { MarketDataDB } = await import("@/services/database");
+          const marketData = await MarketDataDB.getMarketData(quote.tokenId);
+          if (marketData?.priceUsd && marketData.priceUsd > 0) {
+            tokenPrice = marketData.priceUsd;
+            console.log("[DealCompletion] Using market data token price:", tokenPrice);
+          }
+        } catch (err) {
+          console.warn("[DealCompletion] Failed to fetch token market data:", err);
+        }
+      }
+      
+      // Fallback to quote's stored price if market data unavailable
+      if (tokenPrice === 0 && quote.priceUsdPerToken && quote.priceUsdPerToken > 0) {
+        tokenPrice = quote.priceUsdPerToken;
+        console.log("[DealCompletion] Using quote stored token price:", tokenPrice);
+      }
+      
+      // Get SOL price from price feed API
+      try {
+        const { getSolPriceUsd } = await import("@/lib/plugin-otc-desk/services/priceFeed");
+        solPrice = await getSolPriceUsd();
+        console.log("[DealCompletion] Using SOL price from API:", solPrice);
+      } catch (err) {
+        console.warn("[DealCompletion] Failed to fetch SOL price from API:", err);
+        // Try market data as fallback
+        try {
+          const { MarketDataDB } = await import("@/services/database");
+          const solMarketData = await MarketDataDB.getMarketData("token-solana-So11111111111111111111111111111111111111112");
+          if (solMarketData?.priceUsd && solMarketData.priceUsd > 0) {
+            solPrice = solMarketData.priceUsd;
+          }
+        } catch {
+          // Last resort: env variable
+          const solPriceEnv = process.env.SOL_USD_PRICE;
+          if (solPriceEnv) {
+            solPrice = parseFloat(solPriceEnv);
+          }
+        }
+        console.log("[DealCompletion] Using fallback SOL price:", solPrice);
+      }
+      
+      // Validate we have real prices
+      if (tokenPrice === 0) {
+        console.error("[DealCompletion] CRITICAL: Token price is $0 - deal value cannot be calculated");
+        return NextResponse.json(
+          { error: "Token price unavailable - please ensure token has market data" },
+          { status: 400 }
+        );
+      }
+      if (body.paymentCurrency === "SOL" && solPrice === 0) {
+        console.error("[DealCompletion] CRITICAL: SOL price is $0 - cannot calculate SOL payment");
+        return NextResponse.json(
+          { error: "SOL price unavailable - please try again later" },
+          { status: 400 }
+        );
+      }
 
       // Calculate values
       totalUsd = Number(tokenAmount) * tokenPrice;
@@ -232,6 +294,8 @@ export async function POST(request: NextRequest) {
       }
 
       console.log("[DealCompletion] Calculated Solana deal values:", {
+        tokenPrice,
+        solPrice,
         totalUsd,
         discountUsd,
         discountedUsd,
@@ -393,6 +457,10 @@ export async function POST(request: NextRequest) {
       throw new Error("CRITICAL: Solana deal has $0 value");
     }
 
+    // Calculate priceUsdPerToken from totalUsd / tokenAmount
+    const tokenAmountNum = parseFloat(tokenAmountStr);
+    const priceUsdPerToken = tokenAmountNum > 0 ? totalUsd / tokenAmountNum : 0;
+    
     console.log("[DealCompletion] Calling updateQuoteExecution with:", {
       quoteId,
       tokenAmount: tokenAmountStr,
@@ -402,6 +470,8 @@ export async function POST(request: NextRequest) {
       paymentCurrency,
       paymentAmount: actualPaymentAmount,
       offerId,
+      priceUsdPerToken,
+      lockupDays: body.lockupDays,
     });
 
     const updated = await quoteService.updateQuoteExecution(quoteId, {
@@ -414,6 +484,8 @@ export async function POST(request: NextRequest) {
       offerId,
       transactionHash,
       blockNumber,
+      priceUsdPerToken,
+      lockupDays: body.lockupDays,
     });
 
     // VERIFY status changed
@@ -537,16 +609,34 @@ export async function GET(request: NextRequest) {
   console.log("[Deal Completion GET] Got quotes by entityId:", quotes.length);
 
   // ALSO search by beneficiary address (for quotes indexed under wrong entityId)
-  const allQuoteIds = (await getRuntime.getCache<string[]>("all_quotes")) ?? [];
+  // Use beneficiary index if available, otherwise do a limited parallel search
+  const beneficiaryQuoteIds = await getRuntime.getCache<string[]>(`beneficiary_quotes:${normalizedWallet}`);
   const quotesSet = new Set(quotes.map((q) => q.quoteId));
 
-  for (const quoteId of allQuoteIds) {
-    if (quotesSet.has(quoteId)) continue; // Already have it
-
-    const quote = await getRuntime.getCache<QuoteMemory>(`quote:${quoteId}`);
-    if (quote && quote.beneficiary === normalizedWallet) {
-      console.log("[Deal Completion GET] Found quote by beneficiary:", quoteId);
-      quotes.push(quote);
+  if (beneficiaryQuoteIds) {
+    // Fast path: use beneficiary index
+    const additionalQuotes = await Promise.all(
+      beneficiaryQuoteIds
+        .filter((id) => !quotesSet.has(id))
+        .map((id) => getRuntime.getCache<QuoteMemory>(`quote:${id}`))
+    );
+    for (const quote of additionalQuotes) {
+      if (quote) quotes.push(quote);
+    }
+  } else {
+    // Slow path fallback: parallel search (limited to 50 for performance)
+    const allQuoteIds = (await getRuntime.getCache<string[]>("all_quotes")) ?? [];
+    const idsToCheck = allQuoteIds.filter((id) => !quotesSet.has(id)).slice(0, 50);
+    
+    if (idsToCheck.length > 0) {
+      const additionalQuotes = await Promise.all(
+        idsToCheck.map((id) => getRuntime.getCache<QuoteMemory>(`quote:${id}`))
+      );
+      for (const quote of additionalQuotes) {
+        if (quote && quote.beneficiary === normalizedWallet) {
+          quotes.push(quote);
+        }
+      }
     }
   }
 
@@ -565,8 +655,127 @@ export async function GET(request: NextRequest) {
     deals.length,
   );
 
-  return NextResponse.json({
-    success: true,
-    deals,
+  // Enrich deals with token metadata - batch fetch to avoid N+1 queries
+  const { TokenDB, ConsignmentDB } = await import("@/services/database");
+  
+  // Collect unique IDs that need fetching
+  const consignmentIdsToFetch = new Set<string>();
+  const tokenIdsToFetch = new Set<string>();
+  
+  for (const deal of deals) {
+    const quoteData = deal as QuoteMemory;
+    if (!quoteData.tokenId && quoteData.consignmentId) {
+      consignmentIdsToFetch.add(quoteData.consignmentId);
+    }
+    if (quoteData.tokenId && (!quoteData.tokenSymbol || !quoteData.tokenName)) {
+      tokenIdsToFetch.add(quoteData.tokenId);
+    }
+  }
+  
+  // Batch fetch consignments and tokens in parallel
+  const [consignmentResults, tokenResults] = await Promise.all([
+    Promise.all(
+      [...consignmentIdsToFetch].map(async (id) => {
+        try {
+          const consignment = await ConsignmentDB.getConsignment(id);
+          return { id, data: consignment };
+        } catch {
+          return { id, data: null };
+        }
+      })
+    ),
+    Promise.all(
+      [...tokenIdsToFetch].map(async (id) => {
+        try {
+          const token = await TokenDB.getToken(id);
+          return { id, data: token };
+        } catch {
+          return { id, data: null };
+        }
+      })
+    ),
+  ]);
+  
+  // Build lookup maps
+  const consignmentMap = new Map(
+    consignmentResults.map((r) => [r.id, r.data])
+  );
+  const tokenMap = new Map(
+    tokenResults.map((r) => [r.id, r.data])
+  );
+  
+  // Also add tokens found via consignments
+  for (const result of consignmentResults) {
+    if (result.data?.tokenId && !tokenMap.has(result.data.tokenId)) {
+      tokenIdsToFetch.add(result.data.tokenId);
+    }
+  }
+  
+  // Fetch any additional tokens found via consignments
+  if (tokenIdsToFetch.size > tokenMap.size) {
+    const additionalTokenIds = [...tokenIdsToFetch].filter((id) => !tokenMap.has(id));
+    const additionalTokens = await Promise.all(
+      additionalTokenIds.map(async (id) => {
+        try {
+          const token = await TokenDB.getToken(id);
+          return { id, data: token };
+        } catch {
+          return { id, data: null };
+        }
+      })
+    );
+    for (const { id, data } of additionalTokens) {
+      tokenMap.set(id, data);
+    }
+  }
+  
+  // Enrich deals using pre-fetched data
+  const enrichedDeals = deals.map((deal) => {
+    const quoteData = deal as QuoteMemory;
+    let tokenSymbol = quoteData.tokenSymbol;
+    let tokenName = quoteData.tokenName;
+    let tokenLogoUrl = quoteData.tokenLogoUrl;
+    let tokenId = quoteData.tokenId;
+    let chain: string | undefined = deal.chain;
+    const consignmentId = quoteData.consignmentId;
+
+    // If quote doesn't have token metadata, try consignment lookup
+    if (!tokenId && consignmentId) {
+      const consignment = consignmentMap.get(consignmentId);
+      if (consignment) {
+        tokenId = consignment.tokenId;
+        chain = consignment.chain;
+      }
+    }
+
+    // Look up token by tokenId if we still need metadata
+    if (tokenId && (!tokenSymbol || !tokenName)) {
+      const token = tokenMap.get(tokenId);
+      if (token) {
+        tokenSymbol = tokenSymbol || token.symbol;
+        tokenName = tokenName || token.name;
+        tokenLogoUrl = tokenLogoUrl || token.logoUrl;
+      }
+    }
+
+    return {
+      ...deal,
+      tokenSymbol,
+      tokenName,
+      tokenLogoUrl,
+      tokenId,
+      chain,
+      consignmentId,
+    };
   });
+
+  // Cache for 30 seconds - deals change infrequently but should be reasonably fresh
+  return NextResponse.json(
+    { success: true, deals: enrichedDeals },
+    {
+      headers: {
+        "Cache-Control": "private, s-maxage=30, stale-while-revalidate=60",
+      },
+    }
+  );
 }

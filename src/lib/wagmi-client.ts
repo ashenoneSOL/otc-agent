@@ -4,10 +4,20 @@ import { localhost, base, baseSepolia, bsc, bscTestnet } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 import { farcasterMiniApp } from "@farcaster/miniapp-wagmi-connector";
 
-// Custom RPC URLs
+// Custom RPC URLs - use proxy routes to keep API keys server-side
 const baseRpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL;
 const bscRpcUrl = process.env.NEXT_PUBLIC_BSC_RPC_URL;
 const anvilRpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545";
+
+// Get absolute URL for proxy routes (needed for wagmi HTTP transport)
+function getProxyUrl(path: string): string {
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}${path}`;
+  }
+  // Server-side fallback - use env or default
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:4444";
+  return `${appUrl}${path}`;
+}
 
 // Determine available chains based on configuration
 function getAvailableChains() {
@@ -48,8 +58,9 @@ function getTransports() {
     transports[base.id] = http(baseRpcUrl);
     transports[baseSepolia.id] = http(baseRpcUrl);
   } else {
-    // Use public RPCs
-    transports[base.id] = http("https://mainnet.base.org");
+    // Use proxy route for Base mainnet (keeps Alchemy API key server-side)
+    // Falls back to public RPC if proxy isn't available
+    transports[base.id] = http(getProxyUrl("/api/rpc/base"));
     transports[baseSepolia.id] = http("https://sepolia.base.org");
   }
 

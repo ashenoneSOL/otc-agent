@@ -59,23 +59,13 @@ export const tokenContextProvider: Provider = {
     let text = `Token: ${token.symbol}\n`;
 
     if (negotiableConsignments.length > 0) {
-      const minDiscount = Math.min(
-        ...negotiableConsignments.map((c) => c.minDiscountBps / 100),
-      );
-      const maxDiscount = Math.max(
-        ...negotiableConsignments.map((c) => c.maxDiscountBps / 100),
-      );
-      const minLockup = Math.min(
-        ...negotiableConsignments.map((c) => c.minLockupDays),
-      );
-      const maxLockup = Math.max(
-        ...negotiableConsignments.map((c) => c.maxLockupDays),
-      );
-
-      text += `Negotiable deals: Discount ${minDiscount}%-${maxDiscount}%, Lockup ${minLockup}-${maxLockup} days\n`;
+      // CONFIDENTIAL: Do not reveal actual min/max bounds or amounts to prevent gaming
+      // The AI should negotiate naturally; server-side validation enforces bounds
+      text += `Negotiable deals available: ${negotiableConsignments.length} listing(s) with terms open for negotiation\n`;
     }
 
     if (fixedConsignments.length > 0) {
+      // Fixed terms are public since they're non-negotiable
       text += `Fixed price deals: `;
       text += fixedConsignments
         .map(

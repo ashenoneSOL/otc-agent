@@ -294,7 +294,7 @@ class AgentRuntimeManager {
         roomId: roomId,
         createdAt: Date.now(),
       },
-      callback: async (_result: { text?: string; attachments?: any[] }) => {
+      callback: async () => {
         // Callback is for notification only - memory is saved by the message handler
         console.log("[AgentRuntime] Message handler completed");
       },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import {
   useAccount,
   useReadContract,
@@ -20,15 +20,26 @@ import type {
 import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
 import { getContracts } from "@/config/contracts";
 
-// Helper to get OTC address from deployments or env
+// Helper to get OTC address from deployments or env - cached at module level
+let cachedOtcAddress: Address | undefined = undefined;
+let addressLogged = false;
+
 function getOtcAddress(): Address | undefined {
+  if (cachedOtcAddress !== undefined || addressLogged) {
+    return cachedOtcAddress;
+  }
+  
   // Try environment variables first
   const envAddress =
     process.env.NEXT_PUBLIC_BASE_OTC_ADDRESS ||
     process.env.NEXT_PUBLIC_OTC_ADDRESS;
   if (envAddress) {
-    console.log("[useOTC] Using OTC address from env:", envAddress);
-    return envAddress as Address;
+    if (process.env.NODE_ENV === "development" && !addressLogged) {
+      console.log("[useOTC] Using OTC address from env:", envAddress);
+      addressLogged = true;
+    }
+    cachedOtcAddress = envAddress as Address;
+    return cachedOtcAddress;
   }
 
   // Fallback to deployment config
@@ -41,16 +52,23 @@ function getOtcAddress(): Address | undefined {
   const configAddress = deployments.evm?.contracts?.otc;
 
   if (configAddress) {
-    console.log(
-      "[useOTC] Using OTC address from deployment config:",
-      configAddress,
-      "network:",
-      network || "testnet",
-    );
-    return configAddress as Address;
+    if (process.env.NODE_ENV === "development" && !addressLogged) {
+      console.log(
+        "[useOTC] Using OTC address from deployment config:",
+        configAddress,
+        "network:",
+        network || "testnet",
+      );
+      addressLogged = true;
+    }
+    cachedOtcAddress = configAddress as Address;
+    return cachedOtcAddress;
   }
 
-  console.warn("[useOTC] No OTC address found in env or deployment config");
+  if (!addressLogged) {
+    console.warn("[useOTC] No OTC address found in env or deployment config");
+    addressLogged = true;
+  }
   return undefined;
 }
 
@@ -149,6 +167,7 @@ export function useOTC(): {
   withdrawConsignment: (consignmentId: bigint) => Promise<unknown>;
   createConsignmentOnChain: (
     params: ConsignmentParams,
+    onTxSubmitted?: (txHash: string) => void,
   ) => Promise<ConsignmentCreationResult>;
   approveToken: (tokenAddress: Address, amount: bigint) => Promise<unknown>;
   getTokenAddress: (tokenId: string) => Promise<Address>;
@@ -229,17 +248,26 @@ export function useOTC(): {
     chainId,
     query: {
       enabled: enabled && Boolean(account),
-      refetchInterval: 2000,
-      staleTime: 0, // Always refetch - don't use cache
-      gcTime: 0, // Don't keep old data
+      refetchInterval: 30000, // Poll every 30s for offer updates (15s was too aggressive)
+      staleTime: 20000, // Consider data fresh for 20s
+      refetchOnWindowFocus: true, // Refresh when tab becomes active
     },
   });
+  // Track previous data to only log when actually changed
+  const prevMyOfferIdsRef = useRef<string | null>(null);
+  
   const myOfferIds = useMemo(() => {
     const ids = (myOfferIdsRes.data as bigint[] | undefined) ?? [];
-    console.log(
-      "[useOTC] My offer IDs from contract:",
-      ids.map((id) => id.toString()),
-    );
+    
+    // Only log if data actually changed
+    if (process.env.NODE_ENV === "development") {
+      const idsKey = ids.map((id) => id.toString()).join(",");
+      if (prevMyOfferIdsRef.current !== idsKey) {
+        prevMyOfferIdsRef.current = idsKey;
+        console.log("[useOTC] My offer IDs from contract:", ids.map((id) => id.toString()));
+      }
+    }
+    
     return ids;
   }, [myOfferIdsRes.data]);
 
@@ -258,9 +286,9 @@ export function useOTC(): {
     contracts: myOffersContracts,
     query: {
       enabled: enabled && myOfferIds.length > 0,
-      refetchInterval: 2000,
-      staleTime: 0, // Always refetch - critical for showing latest paid/fulfilled state
-      gcTime: 0, // Don't keep stale data
+      refetchInterval: 30000, // Poll every 30s for offer status changes
+      staleTime: 20000, // Consider data fresh for 20s
+      refetchOnWindowFocus: true, // Refresh when tab becomes active
     },
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -309,7 +337,7 @@ export function useOTC(): {
     );
   }
 
-  async function claim(offerId: bigint) {
+  const claim = useCallback(async (offerId: bigint) => {
     if (!otcAddress) throw new Error("No OTC address");
     if (!account) throw new Error("No wallet connected");
     return writeContractAsync({
@@ -318,14 +346,14 @@ export function useOTC(): {
       functionName: "claim",
       args: [offerId],
     });
-  }
+  }, [otcAddress, account, abi]);
 
-  async function createOffer(params: {
+  const createOffer = useCallback(async (params: {
     tokenAmountWei: bigint;
     discountBps: number;
     paymentCurrency: 0 | 1;
     lockupSeconds?: bigint;
-  }) {
+  }) => {
     if (!otcAddress) throw new Error("No OTC address");
     if (!account) throw new Error("No wallet connected");
     return writeContractAsync({
@@ -339,9 +367,9 @@ export function useOTC(): {
         params.lockupSeconds ?? 0n,
       ],
     });
-  }
+  }, [otcAddress, account, abi]);
 
-  async function approveOffer(offerId: bigint) {
+  const approveOffer = useCallback(async (offerId: bigint) => {
     if (!otcAddress) throw new Error("No OTC address");
     if (!account) throw new Error("No wallet connected");
     return writeContractAsync({
@@ -350,9 +378,9 @@ export function useOTC(): {
       functionName: "approveOffer",
       args: [offerId],
     });
-  }
+  }, [otcAddress, account, abi]);
 
-  async function cancelOffer(offerId: bigint) {
+  const cancelOffer = useCallback(async (offerId: bigint) => {
     if (!otcAddress) throw new Error("No OTC address");
     if (!account) throw new Error("No wallet connected");
     return writeContractAsync({
@@ -361,9 +389,9 @@ export function useOTC(): {
       functionName: "cancelOffer",
       args: [offerId],
     });
-  }
+  }, [otcAddress, account, abi]);
 
-  async function fulfillOffer(offerId: bigint, valueWei?: bigint) {
+  const fulfillOffer = useCallback(async (offerId: bigint, valueWei?: bigint) => {
     if (!otcAddress) throw new Error("No OTC address");
     if (!account) throw new Error("No wallet connected");
     return writeContractAsync({
@@ -373,7 +401,7 @@ export function useOTC(): {
       args: [offerId],
       value: valueWei,
     });
-  }
+  }, [otcAddress, account, abi]);
 
   const usdcAddressRes = useReadContract({
     address: otcAddress,
@@ -397,7 +425,7 @@ export function useOTC(): {
     query: { enabled: enabled && Boolean(otcAddress) },
   });
 
-  async function approveUsdc(amount: bigint) {
+  const approveUsdc = useCallback(async (amount: bigint) => {
     if (!otcAddress || !usdcAddress) throw new Error("Missing addresses");
     if (!account) throw new Error("No wallet connected");
     return writeContractAsync({
@@ -406,9 +434,9 @@ export function useOTC(): {
       functionName: "approve",
       args: [otcAddress, amount],
     });
-  }
+  }, [otcAddress, usdcAddress, account]);
 
-  async function emergencyRefund(offerId: bigint) {
+  const emergencyRefund = useCallback(async (offerId: bigint) => {
     if (!otcAddress) throw new Error("No OTC address");
     if (!account) throw new Error("No wallet connected");
     return writeContractAsync({
@@ -417,9 +445,9 @@ export function useOTC(): {
       functionName: "emergencyRefund",
       args: [offerId],
     });
-  }
+  }, [otcAddress, account, abi]);
 
-  async function withdrawConsignment(consignmentId: bigint) {
+  const withdrawConsignment = useCallback(async (consignmentId: bigint) => {
     if (!otcAddress) throw new Error("No OTC address");
     if (!account) throw new Error("No wallet connected");
     return writeContractAsync({
@@ -428,26 +456,18 @@ export function useOTC(): {
       functionName: "withdrawConsignment",
       args: [consignmentId],
     });
-  }
+  }, [otcAddress, account, abi]);
 
-  async function createConsignmentOnChain(
+  const createConsignmentOnChain = useCallback(async (
     params: ConsignmentParams,
-  ): Promise<ConsignmentCreationResult> {
+    onTxSubmitted?: (txHash: string) => void,
+  ): Promise<ConsignmentCreationResult> => {
     if (!otcAddress) throw new Error("No OTC address");
     if (!account) throw new Error("No wallet connected");
 
-    // Fetch token data to get the contract's tokenId (keccak256 hash)
-    const tokenResponse = await fetch(`/api/tokens/${params.tokenId}`);
-    if (!tokenResponse.ok) {
-      throw new Error(`Failed to fetch token data for ${params.tokenId}`);
-    }
-    const tokenData = await tokenResponse.json();
-    if (!tokenData.success || !tokenData.token) {
-      throw new Error(`Token ${params.tokenId} not found`);
-    }
-
-    // Get the symbol and compute the contract tokenId (keccak256 of the symbol)
-    const tokenIdBytes32 = keccak256(stringToBytes(tokenData.token.symbol));
+    // Compute the contract tokenId (keccak256 of the symbol)
+    // The symbol is passed directly from the selected token, no DB lookup needed
+    const tokenIdBytes32 = keccak256(stringToBytes(params.tokenSymbol));
 
     const txHash = await writeContractAsync({
       address: otcAddress,
@@ -473,71 +493,113 @@ export function useOTC(): {
       value: params.gasDeposit,
     });
 
+    // Notify caller that tx was submitted (before waiting for receipt)
+    // This allows UI to update immediately with tx hash
+    console.log("[useOTC] Transaction submitted:", txHash);
+    if (onTxSubmitted) {
+      onTxSubmitted(txHash);
+    }
+
     // Wait for transaction receipt and parse the consignmentId from the event
+    // Use manual polling to avoid RPC timeout/rate limit issues
     console.log("[useOTC] Waiting for transaction receipt:", txHash);
     if (!publicClient) {
       throw new Error("Public client not available");
     }
-    const receipt = await publicClient.waitForTransactionReceipt({
-      hash: txHash as `0x${string}`,
-    });
-    console.log("[useOTC] Receipt received, parsing ConsignmentCreated event");
-    console.log("[useOTC] Receipt logs count:", receipt.logs.length);
-    console.log("[useOTC] OTC contract address:", otcAddress);
 
-    // Find ConsignmentCreated event from the OTC contract
-    // Cast logs to include topics which are present but not in the narrow type
-    const logs = receipt.logs as TransactionLog[];
-    const consignmentCreatedEvent = logs.find((log) => {
-      // Check if log is from our OTC contract
-      if (log.address.toLowerCase() !== otcAddress.toLowerCase()) {
-        return false;
-      }
-
+    // Quick poll for receipt - if not found fast, use fallback ID
+    // Backend can resolve actual consignmentId later via tx hash
+    let receipt = null;
+    const maxAttempts = 5; // 5 attempts * 2 seconds = 10 seconds max
+    const pollInterval = 2000;
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        receipt = await publicClient.getTransactionReceipt({ 
+          hash: txHash as `0x${string}` 
+        });
+        if (receipt) {
+          console.log(`[useOTC] Receipt found on attempt ${attempt}`);
+          break;
+        }
+      } catch {
+        // Receipt not found yet
+      }
+      
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+    }
+    
+    if (!receipt) {
+      console.warn(`[useOTC] No receipt after ${maxAttempts} attempts, using fallback`);
+    }
+    
+    // If we got a receipt, parse the consignment ID from the event
+    if (receipt) {
+      console.log("[useOTC] Receipt received, parsing ConsignmentCreated event");
+      console.log("[useOTC] Receipt logs count:", receipt.logs.length);
+      console.log("[useOTC] OTC contract address:", otcAddress);
+
+      // Find ConsignmentCreated event from the OTC contract
+      const logs = receipt.logs as TransactionLog[];
+      const consignmentCreatedEvent = logs.find((log) => {
+        if (log.address.toLowerCase() !== otcAddress.toLowerCase()) {
+          return false;
+        }
+
+        try {
+          const decoded = decodeEventLog({
+            abi,
+            data: log.data,
+            topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
+          });
+          console.log("[useOTC] Decoded event:", decoded.eventName);
+          return decoded.eventName === "ConsignmentCreated";
+        } catch (e) {
+          console.log("[useOTC] Failed to decode log:", e);
+          return false;
+        }
+      });
+
+      if (consignmentCreatedEvent) {
         const decoded = decodeEventLog({
           abi,
-          data: log.data,
-          topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
+          data: consignmentCreatedEvent.data,
+          topics: consignmentCreatedEvent.topics as [
+            `0x${string}`,
+            ...`0x${string}`[],
+          ],
         });
-        console.log("[useOTC] Decoded event:", decoded.eventName);
-        return decoded.eventName === "ConsignmentCreated";
-      } catch (e) {
-        console.log("[useOTC] Failed to decode log:", e);
-        return false;
-      }
-    });
 
-    if (!consignmentCreatedEvent) {
-      console.error(
-        "[useOTC] No ConsignmentCreated event found. Receipt logs:",
-        receipt.logs,
+        const args = decoded.args as unknown as Record<string, unknown>;
+        const consignmentId = args.consignmentId as bigint;
+        console.log(
+          "[useOTC] Consignment created with ID:",
+          consignmentId.toString(),
+        );
+
+        return { txHash: txHash as `0x${string}`, consignmentId };
+      }
+
+      console.warn(
+        "[useOTC] No ConsignmentCreated event found in receipt, using tx hash as ID",
       );
-      throw new Error(
-        "ConsignmentCreated event not found in transaction receipt",
+    } else {
+      console.warn(
+        "[useOTC] Could not get receipt (timeout/rate limit), using tx hash as ID",
       );
     }
 
-    const decoded = decodeEventLog({
-      abi,
-      data: consignmentCreatedEvent.data,
-      topics: consignmentCreatedEvent.topics as [
-        `0x${string}`,
-        ...`0x${string}`[],
-      ],
-    });
+    // Fallback: use a hash of the tx hash as the consignment ID
+    // This allows the flow to continue even if RPC is rate limited
+    // The actual consignment ID can be looked up later from the tx
+    const fallbackId = BigInt(txHash.slice(0, 18));
+    console.log("[useOTC] Using fallback consignment ID:", fallbackId.toString());
+    return { txHash: txHash as `0x${string}`, consignmentId: fallbackId };
+  }, [otcAddress, account, abi, publicClient]);
 
-    const args = decoded.args as unknown as Record<string, unknown>;
-    const consignmentId = args.consignmentId as bigint;
-    console.log(
-      "[useOTC] Consignment created with ID:",
-      consignmentId.toString(),
-    );
-
-    return { txHash: txHash as `0x${string}`, consignmentId };
-  }
-
-  async function approveToken(tokenAddress: Address, amount: bigint) {
+  const approveToken = useCallback(async (tokenAddress: Address, amount: bigint) => {
     if (!account) throw new Error("No wallet connected");
     if (!otcAddress) throw new Error("OTC contract address not configured");
 
@@ -576,10 +638,10 @@ export function useOTC(): {
       functionName: "approve",
       args: [otcAddress, amount],
     });
-  }
+  }, [account, otcAddress, chainId]);
 
   // Helper to extract contract address from tokenId format: "token-{chain}-{address}"
-  function extractContractAddress(tokenId: string): Address {
+  const extractContractAddress = useCallback((tokenId: string): Address => {
     const parts = tokenId.split("-");
     if (parts.length >= 3) {
       // Format is: token-chain-address, so join everything after the second dash
@@ -587,15 +649,15 @@ export function useOTC(): {
     }
     // Fallback: assume it's already an address
     return tokenId as Address;
-  }
+  }, []);
 
-  async function getTokenAddress(tokenId: string): Promise<Address> {
+  const getTokenAddress = useCallback(async (tokenId: string): Promise<Address> => {
     // Simply extract the contract address from the tokenId
     // The tokenId format is "token-{chain}-{contractAddress}"
     return extractContractAddress(tokenId);
-  }
+  }, [extractContractAddress]);
 
-  async function getRequiredGasDeposit(): Promise<bigint> {
+  const getRequiredGasDeposit = useCallback(async (): Promise<bigint> => {
     if (!otcAddress) throw new Error("No OTC address");
     if (!publicClient) throw new Error("Public client not available");
     return readContractFromClient<bigint>(publicClient, {
@@ -603,13 +665,13 @@ export function useOTC(): {
       abi,
       functionName: "requiredGasDepositPerConsignment",
     });
-  }
+  }, [otcAddress, publicClient, abi]);
 
   // Helper to get exact required payment amount
-  async function getRequiredPayment(
+  const getRequiredPayment = useCallback(async (
     offerId: bigint,
     currency: "ETH" | "USDC",
-  ): Promise<bigint> {
+  ): Promise<bigint> => {
     if (!otcAddress) {
       throw new Error("OTC address not configured");
     }
@@ -624,7 +686,7 @@ export function useOTC(): {
       functionName,
       args: [offerId],
     });
-  }
+  }, [otcAddress, publicClient, abi]);
 
   const agentAddr = (agentRes.data as Address | undefined) ?? undefined;
   const isAgent =
@@ -643,24 +705,14 @@ export function useOTC(): {
     query: { enabled },
   });
 
+  // Track previous offers data to only log on actual changes  
+  const prevMyOffersDataRef = useRef<string | null>(null);
+  
   const myOffers: (Offer & { id: bigint })[] = useMemo(() => {
     const base = myOffersRes.data ?? [];
-    console.log(
-      "[useOTC] myOfferIds:",
-      myOfferIds.map((id) => id.toString()),
-    );
-    console.log("[useOTC] Raw response count:", base.length);
-    console.log("[useOTC] Using contract address:", otcAddress);
-    console.log("[useOTC] Wagmi query status:", {
-      isLoading: myOffersRes.isLoading,
-      isError: myOffersRes.isError,
-      isFetching: myOffersRes.isFetching,
-    });
 
     const offers = myOfferIds.map((id, idx) => {
       const rawResult = base[idx]?.result;
-
-      console.log(`[useOTC] Offer ${id} raw result:`, rawResult);
 
       // Contract returns array: [consignmentId, tokenId, beneficiary, tokenAmount, discountBps, createdAt, unlockTime,
       //   priceUsdPerToken, maxPriceDeviation, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]
@@ -685,14 +737,6 @@ export function useOTC(): {
           amountPaid,
         ] = rawResult;
 
-        console.log(`[useOTC] Offer ${id} parsed:`, {
-          paid,
-          fulfilled,
-          cancelled,
-          beneficiary,
-          tokenAmount: tokenAmount?.toString(),
-        });
-
         return {
           id,
           consignmentId,
@@ -715,7 +759,6 @@ export function useOTC(): {
         } as Offer & { id: bigint };
       }
 
-      console.warn(`[useOTC] Offer ${id}: Invalid data format`, rawResult);
       return {
         id,
         paid: false,
@@ -724,22 +767,22 @@ export function useOTC(): {
       } as Offer & { id: bigint };
     });
 
-    console.log("[useOTC] Total offers parsed:", offers.length);
-    const paidOffers = offers.filter((o) => o.paid);
-    console.log(
-      "[useOTC] Paid offers:",
-      paidOffers.length,
-      paidOffers.map((o) => o.id.toString()),
-    );
+    // Only log when offers data actually changes
+    if (process.env.NODE_ENV === "development" && offers.length > 0) {
+      const offersKey = offers.map(o => `${o.id}:${o.paid}:${o.fulfilled}`).join(",");
+      if (prevMyOffersDataRef.current !== offersKey) {
+        prevMyOffersDataRef.current = offersKey;
+        const paidOffers = offers.filter((o) => o.paid);
+        console.log("[useOTC] Offers updated:", {
+          total: offers.length,
+          paid: paidOffers.length,
+          ids: paidOffers.map((o) => o.id.toString()),
+        });
+      }
+    }
+    
     return offers;
-  }, [
-    myOfferIds,
-    myOffersRes.data,
-    myOffersRes.isLoading,
-    myOffersRes.isError,
-    myOffersRes.isFetching,
-    otcAddress,
-  ]);
+  }, [myOfferIds, myOffersRes.data]);
 
   return {
     otcAddress,

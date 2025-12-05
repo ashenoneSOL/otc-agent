@@ -40,8 +40,8 @@ function isContractAddress(query: string): boolean {
 const MIN_TOKEN_BALANCE = 1; // At least 1 token (human-readable)
 const MIN_VALUE_USD = 0.001; // $0.001 minimum if we have a price
 
-// Client-side token cache (5 minute TTL)
-const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
+// Client-side token cache (15 minute TTL)
+const TOKEN_CACHE_TTL_MS = 15 * 60 * 1000;
 interface CachedTokens {
   tokens: TokenWithBalance[];
   walletAddress: string;
@@ -59,7 +59,7 @@ function getTokenCache(
     if (!cached) return null;
 
     const data: CachedTokens = JSON.parse(cached);
-    // Check if cache is still valid (5 minutes)
+    // Check if cache is still valid (15 minutes)
     if (Date.now() - data.cachedAt >= TOKEN_CACHE_TTL_MS) {
       localStorage.removeItem(cacheKey);
       return null;
@@ -214,7 +214,11 @@ export function TokenSelectionStep({
   }, [searchIsAddress, searchQuery, tokens]);
 
   const handleConnect = useCallback(() => {
-    privyAuthenticated ? connectWallet() : login();
+    if (privyAuthenticated) {
+      connectWallet();
+    } else {
+      login();
+    }
   }, [privyAuthenticated, connectWallet, login]);
 
   const getEvmChainName = useCallback((): Chain => {
@@ -316,10 +320,11 @@ export function TokenSelectionStep({
         return;
       }
 
-      // Check client-side cache first (5 minute TTL) unless force refresh
+      // Check client-side cache first (15 minute TTL) unless force refresh
+      // Only use cache if it has tokens - empty results shouldn't be cached
       if (!forceRefresh) {
         const cachedTokens = getTokenCache(userAddress, chain);
-        if (cachedTokens) {
+        if (cachedTokens && cachedTokens.length > 0) {
           setTokens(cachedTokens);
           dispatchLoading({ type: "FINISH_LOADING" });
           return;
@@ -383,8 +388,8 @@ export function TokenSelectionStep({
           return bBalance - aBalance;
         });
 
-        // Save to client-side cache (5 minute TTL)
-        if (userAddress) {
+        // Save to client-side cache (15 minute TTL) - only cache if we found tokens
+        if (userAddress && filteredTokens.length > 0) {
           setTokenCache(userAddress, chain, filteredTokens);
         }
         setTokens(filteredTokens);
@@ -411,7 +416,7 @@ export function TokenSelectionStep({
     prevWalletRef.current = userAddress || null;
 
     loadUserTokens();
-  }, [loadUserTokens]);
+  }, [loadUserTokens, activeFamily, evmAddress, solanaPublicKey]);
 
   // Refresh handler
   const handleRefresh = useCallback(() => {

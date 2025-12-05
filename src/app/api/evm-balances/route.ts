@@ -22,41 +22,42 @@ interface CachedTokenMetadata {
   logoUrl?: string;
 }
 
-async function getCachedMetadata(
+// Bulk metadata cache - stores all known metadata per chain in one key
+interface BulkMetadataCache {
+  metadata: Record<string, CachedTokenMetadata>;
+}
+
+async function getBulkMetadataCache(
   chain: string,
-  address: string,
-): Promise<CachedTokenMetadata | null> {
+): Promise<Record<string, CachedTokenMetadata>> {
   try {
     const runtime = await agentRuntime.getRuntime();
-    return await runtime.getCache<CachedTokenMetadata>(
-      `evm-metadata:${chain}:${address.toLowerCase()}`,
+    const cached = await runtime.getCache<BulkMetadataCache>(
+      `evm-metadata-bulk:${chain}`,
     );
+    return cached?.metadata || {};
   } catch {
-    return null;
+    return {};
   }
 }
 
-async function setCachedMetadata(
+async function setBulkMetadataCache(
   chain: string,
-  address: string,
-  metadata: CachedTokenMetadata,
+  metadata: Record<string, CachedTokenMetadata>,
 ): Promise<void> {
   try {
     const runtime = await agentRuntime.getRuntime();
-    await runtime.setCache(
-      `evm-metadata:${chain}:${address.toLowerCase()}`,
-      metadata,
-    );
+    await runtime.setCache(`evm-metadata-bulk:${chain}`, { metadata });
   } catch {
     // Ignore
   }
 }
 
-// Price cache TTL: 5 minutes
-const PRICE_CACHE_TTL_MS = 5 * 60 * 1000;
+// Price cache TTL: 15 minutes
+const PRICE_CACHE_TTL_MS = 15 * 60 * 1000;
 
-// Wallet balance cache TTL: 30 seconds (for immediate repeated calls)
-const WALLET_CACHE_TTL_MS = 30 * 1000;
+// Wallet balance cache TTL: 15 minutes
+const WALLET_CACHE_TTL_MS = 15 * 60 * 1000;
 
 interface CachedWalletBalances {
   tokens: TokenBalance[];
@@ -186,37 +187,39 @@ const CHAIN_CONFIG: Record<
   },
 };
 
-interface CachedPrice {
-  priceUsd: number;
+// Bulk price cache - stores all prices per chain in one key
+interface BulkPriceCache {
+  prices: Record<string, number>;
   cachedAt: number;
 }
 
-async function getCachedPrice(
+async function getBulkPriceCache(
   chain: string,
-  address: string,
-): Promise<number | null> {
+): Promise<Record<string, number>> {
   try {
     const runtime = await agentRuntime.getRuntime();
-    const cached = await runtime.getCache<CachedPrice>(
-      `token-price:${chain}:${address.toLowerCase()}`,
+    const cached = await runtime.getCache<BulkPriceCache>(
+      `evm-prices-bulk:${chain}`,
     );
-    if (!cached) return null;
-    if (Date.now() - cached.cachedAt >= PRICE_CACHE_TTL_MS) return null;
-    return cached.priceUsd;
+    if (!cached) return {};
+    if (Date.now() - cached.cachedAt >= PRICE_CACHE_TTL_MS) return {};
+    console.log(
+      `[EVM Balances] Using cached prices (${Object.keys(cached.prices).length} tokens)`,
+    );
+    return cached.prices;
   } catch {
-    return null;
+    return {};
   }
 }
 
-async function setCachedPrice(
+async function setBulkPriceCache(
   chain: string,
-  address: string,
-  priceUsd: number,
+  prices: Record<string, number>,
 ): Promise<void> {
   try {
     const runtime = await agentRuntime.getRuntime();
-    await runtime.setCache(`token-price:${chain}:${address.toLowerCase()}`, {
-      priceUsd,
+    await runtime.setCache(`evm-prices-bulk:${chain}`, {
+      prices,
       cachedAt: Date.now(),
     });
   } catch {
@@ -285,21 +288,14 @@ async function fetchAlchemyBalances(
 
     if (nonZeroBalances.length === 0) return [];
 
-    // Step 2: Check metadata cache (parallel lookups)
-    const cacheResults = await Promise.all(
-      nonZeroBalances.map(async (t: { contractAddress: string }) => ({
-        addr: t.contractAddress.toLowerCase(),
-        cached: await getCachedMetadata(chain, t.contractAddress.toLowerCase()),
-      })),
-    );
-
-    const cachedMetadata: Record<string, CachedTokenMetadata> = {};
+    // Step 2: Get bulk metadata cache (single fast lookup)
+    const bulkCache = await getBulkMetadataCache(chain);
+    const cachedMetadata: Record<string, CachedTokenMetadata> = { ...bulkCache };
     const needsMetadata: string[] = [];
 
-    for (const { addr, cached } of cacheResults) {
-      if (cached) {
-        cachedMetadata[addr] = cached;
-      } else {
+    for (const t of nonZeroBalances) {
+      const addr = (t as { contractAddress: string }).contractAddress.toLowerCase();
+      if (!cachedMetadata[addr]) {
         needsMetadata.push(addr);
       }
     }
@@ -336,9 +332,6 @@ async function fetchAlchemyBalances(
                 logoUrl: result.logo || undefined,
               };
 
-              // Cache permanently
-              setCachedMetadata(chain, contractAddress, metadata);
-
               // Fire-and-forget image caching
               if (result.logo) {
                 cacheImageToBlob(result.logo).catch(() => {});
@@ -358,6 +351,9 @@ async function fetchAlchemyBalances(
       for (const { contractAddress, metadata } of metadataResults) {
         cachedMetadata[contractAddress] = metadata;
       }
+
+      // Update bulk cache with new metadata (fire-and-forget)
+      setBulkMetadataCache(chain, cachedMetadata).catch(() => {});
     }
 
     // Step 4: Build token list
@@ -553,45 +549,43 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ tokens: [] });
     }
 
-    // Fetch prices for tokens that don't have them
+    // Get bulk price cache (single fast lookup)
+    const cachedPrices = await getBulkPriceCache(chain);
     const tokensNeedingPrices = tokens.filter((t) => !t.priceUsd);
-    if (tokensNeedingPrices.length > 0) {
-      // Check price cache (parallel lookups)
-      const priceCacheResults = await Promise.all(
-        tokensNeedingPrices.map(async (t) => ({
-          addr: t.contractAddress,
-          cached: await getCachedPrice(chain, t.contractAddress),
-        })),
-      );
+    const uncachedAddresses: string[] = [];
 
-      const uncachedAddresses: string[] = [];
-      for (const { addr, cached } of priceCacheResults) {
-        const token = tokensNeedingPrices.find(
-          (t) => t.contractAddress === addr,
-        );
-        if (token) {
-          if (cached !== null) {
-            token.priceUsd = cached;
-          } else {
-            uncachedAddresses.push(addr);
-          }
+    // Apply cached prices first
+    for (const token of tokensNeedingPrices) {
+      const cachedPrice = cachedPrices[token.contractAddress.toLowerCase()];
+      if (cachedPrice !== undefined) {
+        token.priceUsd = cachedPrice;
+      } else {
+        uncachedAddresses.push(token.contractAddress);
+      }
+    }
+
+    console.log(
+      `[EVM Balances] ${Object.keys(cachedPrices).length} prices cached, ${uncachedAddresses.length} need fetch`,
+    );
+
+    // Fetch uncached prices (DeFiLlama + CoinGecko)
+    if (uncachedAddresses.length > 0) {
+      const newPrices = await fetchPrices(chain, uncachedAddresses);
+      for (const token of tokensNeedingPrices) {
+        if (!token.priceUsd) {
+          const price = newPrices[token.contractAddress.toLowerCase()] || 0;
+          token.priceUsd = price;
         }
       }
 
-      // Fetch uncached prices (DeFiLlama + CoinGecko)
-      if (uncachedAddresses.length > 0) {
-        const prices = await fetchPrices(chain, uncachedAddresses);
-        for (const token of tokensNeedingPrices) {
-          if (!token.priceUsd) {
-            const price = prices[token.contractAddress.toLowerCase()] || 0;
-            token.priceUsd = price;
-            // Fire-and-forget price caching
-            if (price > 0) {
-              setCachedPrice(chain, token.contractAddress, price);
-            }
-          }
+      // Merge new prices with cached and save (fire-and-forget)
+      const allPrices = { ...cachedPrices };
+      for (const [addr, price] of Object.entries(newPrices)) {
+        if (price > 0) {
+          allPrices[addr.toLowerCase()] = price;
         }
       }
+      setBulkPriceCache(chain, allPrices).catch(() => {});
     }
 
     // Calculate USD values
@@ -641,7 +635,7 @@ export async function GET(request: NextRequest) {
       `[EVM Balances] ${tokens.length} total -> ${filteredTokens.length} after dust filter`,
     );
 
-    // Cache the result for 30 seconds
+    // Cache the result for 15 minutes
     await setCachedWalletBalances(chain, address, filteredTokens);
 
     return NextResponse.json({ tokens: filteredTokens });

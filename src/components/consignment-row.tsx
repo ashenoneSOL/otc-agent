@@ -5,7 +5,8 @@ import Image from "next/image";
 import type { OTCConsignment, Token } from "@/services/database";
 import { Button } from "./button";
 import { useOTC } from "@/hooks/contracts/useOTC";
-import { useAccount } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
+import { erc20Abi } from "viem";
 
 interface ConsignmentRowProps {
   consignment: OTCConsignment;
@@ -18,19 +19,56 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [withdrawTxHash, setWithdrawTxHash] = useState<string | null>(null);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [isWithdrawn, setIsWithdrawn] = useState(consignment.status === "withdrawn");
   const fetchedTokenId = useRef<string | null>(null);
   const { withdrawConsignment } = useOTC();
   const { address } = useAccount();
+  const publicClient = usePublicClient();
 
   useEffect(() => {
-    // Only fetch if tokenId changed
+    if (isWithdrawn) return;
     if (fetchedTokenId.current === consignment.tokenId) return;
 
     async function loadData() {
       fetchedTokenId.current = consignment.tokenId;
+
       const tokenRes = await fetch(`/api/tokens/${consignment.tokenId}`);
       const tokenData = await tokenRes.json();
-      if (tokenData.success) setToken(tokenData.token);
+
+      if (tokenData.success) {
+        setToken(tokenData.token);
+      } else if (publicClient) {
+        const tokenIdParts = consignment.tokenId?.split("-") || [];
+        const tokenAddress = tokenIdParts[2] as `0x${string}`;
+
+        if (tokenAddress?.startsWith("0x")) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const readContract = publicClient.readContract.bind(publicClient) as any;
+            const [symbol, name, decimals] = await Promise.all([
+              readContract({ address: tokenAddress, abi: erc20Abi, functionName: "symbol" }),
+              readContract({ address: tokenAddress, abi: erc20Abi, functionName: "name" }),
+              readContract({ address: tokenAddress, abi: erc20Abi, functionName: "decimals" }),
+            ]);
+
+            setToken({
+              id: consignment.tokenId,
+              symbol: symbol as string,
+              name: name as string,
+              decimals: decimals as number,
+              chain: consignment.chain,
+              contractAddress: tokenAddress,
+              logoUrl: "",
+              description: "",
+              isActive: true,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            });
+          } catch (err) {
+            console.error("[ConsignmentRow] Failed to fetch token from chain:", err);
+          }
+        }
+      }
 
       const totalAmount = BigInt(consignment.totalAmount);
       const remainingAmount = BigInt(consignment.remainingAmount);
@@ -50,12 +88,23 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
     consignment.isFractionalized,
     consignment.minDealAmount,
     consignment.maxDealAmount,
+    consignment.chain,
+    publicClient,
+    isWithdrawn,
   ]);
 
-  if (!token) return null;
+  // Don't render if already withdrawn (optimistic hide) - AFTER hooks per React rules
+  if (isWithdrawn) {
+    return null;
+  }
+
+  // Extract token info from tokenId as fallback (format: token-{chain}-{address})
+  // Don't show the contract address as symbol - that's confusing
+  const tokenSymbol = token?.symbol || "TOKEN";
+  const tokenDecimals = token?.decimals ?? 18;
 
   const formatAmount = (amount: string) => {
-    const num = Number(amount) / 1e18;
+    const num = Number(amount) / Math.pow(10, tokenDecimals);
     if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M`;
     if (num >= 1000) return `${(num / 1000).toFixed(2)}K`;
     return num.toFixed(2);
@@ -83,7 +132,7 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
 
     if (
       !confirm(
-        `Withdraw ${formatAmount(consignment.remainingAmount)} ${token?.symbol} from the smart contract?\n\nYou will pay the gas fee for this transaction. This cannot be undone.`,
+        `Withdraw ${formatAmount(consignment.remainingAmount)} ${tokenSymbol} from the smart contract?\n\nYou will pay the gas fee for this transaction. This cannot be undone.`,
       )
     )
       return;
@@ -94,13 +143,8 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
       const contractConsignmentId = BigInt(consignment.contractConsignmentId);
 
       // Execute on-chain withdrawal (user pays gas)
-      console.log(
-        "[ConsignmentRow] Withdrawing consignment:",
-        contractConsignmentId.toString(),
-      );
       const txHash = await withdrawConsignment(contractConsignmentId);
       setWithdrawTxHash(txHash as string);
-      console.log("[ConsignmentRow] Withdrawal tx submitted:", txHash);
 
       // Update database status after successful on-chain withdrawal
       const response = await fetch(
@@ -114,22 +158,21 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
         console.warn(
           "[ConsignmentRow] Failed to update database, but withdrawal succeeded on-chain",
         );
+        // Still hide the row since on-chain succeeded
+        setIsWithdrawn(true);
         setWithdrawError(
           "Withdrawal successful on-chain, but database update failed. Your tokens are in your wallet.",
         );
+      } else {
+        // Optimistically hide immediately
+        setIsWithdrawn(true);
       }
 
-      // Refresh parent component state
-      if (onUpdate) {
-        onUpdate();
-      }
-
-      // Show success message for 3 seconds before clearing
+      // Refresh parent to sync state (with small delay to ensure DB is updated)
       setTimeout(() => {
-        setWithdrawTxHash(null);
-      }, 5000);
+        if (onUpdate) onUpdate();
+      }, 500);
     } catch (error: unknown) {
-      console.error("[ConsignmentRow] Withdrawal failed:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
 
@@ -150,18 +193,22 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
-          {token.logoUrl && (
+          {token?.logoUrl ? (
             <Image
               src={token.logoUrl}
-              alt={token.symbol}
+              alt={tokenSymbol}
               width={40}
               height={40}
               className="w-10 h-10 rounded-full"
             />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-sm font-bold">
+              {tokenSymbol.slice(0, 2)}
+            </div>
           )}
           <div>
-            <h3 className="font-semibold">{token.symbol}</h3>
-            <p className="text-sm text-zinc-500">{token.name}</p>
+            <h3 className="font-semibold">{tokenSymbol}</h3>
+            <p className="text-sm text-zinc-500">{token?.name || "Token"}</p>
           </div>
         </div>
         <div className="flex gap-2 items-center">

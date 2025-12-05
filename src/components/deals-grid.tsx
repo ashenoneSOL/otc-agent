@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, memo } from "react";
 import { TokenDealsSection } from "./token-deals-section";
 import { useTokenCache } from "@/hooks/useTokenCache";
+import { useRenderTracker } from "@/utils/render-tracker";
 import type {
   OTCConsignment,
   Token,
@@ -54,11 +55,55 @@ function groupConsignmentsByToken(
   return Array.from(grouped.values());
 }
 
-function TokenGroupLoader({ tokenGroup }: { tokenGroup: TokenGroup }) {
-  const { token, marketData: cachedMarketData } = useTokenCache(
+const TokenGroupLoader = memo(function TokenGroupLoader({ tokenGroup }: { tokenGroup: TokenGroup }) {
+  useRenderTracker("TokenGroupLoader", { tokenId: tokenGroup.tokenId });
+  
+  const { token, marketData: cachedMarketData, isLoading } = useTokenCache(
     tokenGroup.tokenId,
   );
-  if (!token) return null;
+  
+  // Show loading skeleton while fetching token
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 animate-pulse">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-12 h-12 bg-zinc-200 dark:bg-zinc-800 rounded-full"></div>
+          <div className="flex-1">
+            <div className="h-6 bg-zinc-200 dark:bg-zinc-800 rounded w-32 mb-2"></div>
+            <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-48"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // If token failed to load, show minimal fallback with tokenId
+  if (!token) {
+    const parts = tokenGroup.tokenId.split("-");
+    const chain = parts[1] || "unknown";
+    const address = parts[2] || tokenGroup.tokenId;
+    const shortAddress = address.length > 10 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address;
+    
+    return (
+      <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+        <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-lg font-bold">
+              ?
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">{shortAddress}</h3>
+              <span className="text-sm text-zinc-500">{chain.toUpperCase()} Token</span>
+            </div>
+          </div>
+        </div>
+        <div className="p-4 text-sm text-zinc-500">
+          {tokenGroup.consignments.length} listing(s) available
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <TokenDealsSection
       token={token}
@@ -66,9 +111,10 @@ function TokenGroupLoader({ tokenGroup }: { tokenGroup: TokenGroup }) {
       consignments={tokenGroup.consignments}
     />
   );
-}
+});
 
 export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
+  useRenderTracker("DealsGrid", { searchQuery, chainsCount: filters.chains.length });
   const [tokenGroups, setTokenGroups] = useState<TokenGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 

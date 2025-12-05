@@ -25,40 +25,37 @@ export const otcDeskProvider: Provider = {
       }
     }
 
+    // IMPORTANT: Never reveal the actual negotiation bounds to the buyer.
+    // The constraints guide the AI's behavior but are CONFIDENTIAL.
+    // The AI should only present offers, never reveal what the limits are.
     let constraintsText = `
-Hard constraints (general):
-- Discount range: 1% (min) to 25% (max). Never quote outside this range.
-- Lockup: 1 week (min) to 1 year (max). Never quote outside this range.`;
+General guidelines:
+- Discount and lockup terms are determined through negotiation
+- Present competitive offers that balance buyer value with desk profitability
+- Terms are validated server-side; focus on finding mutually acceptable deals`;
 
     if (currentConsignments.length > 0) {
       const negotiable = currentConsignments.filter((c: any) => c.isNegotiable);
 
       if (negotiable.length === 0) {
         const fixed = currentConsignments[0];
+        // For fixed-price deals, the terms are public since they're non-negotiable
         constraintsText = `
 This token has fixed-price deals only:
 - Discount: ${fixed.fixedDiscountBps / 100}% (FIXED)
 - Lockup: ${fixed.fixedLockupDays} days (FIXED)
 Do not negotiate. Present these exact terms.`;
       } else {
-        const minDiscount = Math.min(
-          ...negotiable.map((c: any) => c.minDiscountBps),
-        );
-        const maxDiscount = Math.max(
-          ...negotiable.map((c: any) => c.maxDiscountBps),
-        );
-        const minLockup = Math.min(
-          ...negotiable.map((c: any) => c.minLockupDays),
-        );
-        const maxLockup = Math.max(
-          ...negotiable.map((c: any) => c.maxLockupDays),
-        );
-
+        // For negotiable deals: DO NOT reveal the actual min/max bounds
+        // The AI should negotiate naturally without disclosing the seller's limits
+        // The server-side validation will enforce the actual bounds
         constraintsText = `
-Hard constraints for this specific token:
-- Discount range: ${minDiscount / 100}% (min) to ${maxDiscount / 100}% (max)
-- Lockup range: ${minLockup} days (min) to ${maxLockup} days (max)
-Never quote outside these ranges for this token.`;
+This token has negotiable terms available. 
+- CONFIDENTIAL: Specific bounds exist but must NEVER be disclosed to the buyer.
+- Start with conservative offers (lower discount, longer lockup).
+- Negotiate based on client needs without revealing what the maximum possible discount is.
+- The quote action will validate and enforce actual bounds server-side.
+- If a client pushes hard, you can improve terms slightly but never volunteer maximums.`;
       }
     }
 

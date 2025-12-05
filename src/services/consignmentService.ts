@@ -26,6 +26,7 @@ export interface ConsignmentParams {
   maxPriceVolatilityBps: number;
   maxTimeToExecuteSeconds: number;
   chain: Chain;
+  contractConsignmentId?: string;
 }
 
 export class ConsignmentService {
@@ -85,6 +86,7 @@ export class ConsignmentService {
       maxTimeToExecuteSeconds: params.maxTimeToExecuteSeconds,
       status: "active",
       chain: params.chain,
+      contractConsignmentId: params.contractConsignmentId,
     });
 
     return consignment;

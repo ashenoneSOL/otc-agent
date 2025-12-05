@@ -24,7 +24,8 @@ export function TokenDealsSection({
   const [isExpanded, setIsExpanded] = useState(true);
 
   const formatAmount = (amount: string) => {
-    const num = Number(amount) / 1e18;
+    const divisor = 10 ** token.decimals;
+    const num = Number(amount) / divisor;
     if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M`;
     if (num >= 1000) return `${(num / 1000).toFixed(2)}K`;
     return num.toFixed(2);
@@ -44,7 +45,7 @@ export function TokenDealsSection({
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4 flex-1 min-w-0">
-            {token.logoUrl && (
+            {token.logoUrl ? (
               <Image
                 src={token.logoUrl}
                 alt={token.symbol}
@@ -52,6 +53,10 @@ export function TokenDealsSection({
                 height={48}
                 className="w-12 h-12 rounded-full flex-shrink-0"
               />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
+                {token.symbol.slice(0, 2).toUpperCase()}
+              </div>
             )}
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline gap-2">
@@ -63,21 +68,31 @@ export function TokenDealsSection({
                 </span>
               </div>
               <div className="flex items-center gap-4 mt-1 text-sm">
+                {marketData?.priceUsd != null && (
+                  <div>
+                    <span className="text-zinc-600 dark:text-zinc-400">
+                      Price:{" "}
+                    </span>
+                    <span className="font-medium">
+                      ${marketData.priceUsd < 0.0001 
+                        ? marketData.priceUsd.toExponential(2) 
+                        : marketData.priceUsd.toFixed(4)}
+                    </span>
+                  </div>
+                )}
                 <div>
                   <span className="text-zinc-600 dark:text-zinc-400">
-                    Price:{" "}
-                  </span>
-                  <span className="font-medium">
-                    ${marketData?.priceUsd.toFixed(4)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-zinc-600 dark:text-zinc-400">
-                    Quantity:{" "}
+                    Available:{" "}
                   </span>
                   <span className="font-medium">
                     {formatAmount(totalAvailable.toString())} {token.symbol}
                   </span>
+                </div>
+                <div>
+                  <span className="text-zinc-600 dark:text-zinc-400">
+                    Listings:{" "}
+                  </span>
+                  <span className="font-medium">{consignments.length}</span>
                 </div>
               </div>
             </div>
@@ -109,33 +124,13 @@ export function TokenDealsSection({
               className="p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer group"
               onClick={() => router.push(`/token/${token.id}`)}
             >
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                 <div>
                   <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
                     Available Amount
                   </div>
                   <div className="font-medium group-hover:text-orange-600 transition-colors">
                     {formatAmount(consignment.remainingAmount)} {token.symbol}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                    Discount
-                  </div>
-                  <div className="font-medium">
-                    {consignment.isNegotiable
-                      ? `${(consignment.minDiscountBps ?? 0) / 100}% - ${(consignment.maxDiscountBps ?? 0) / 100}%`
-                      : `${(consignment.fixedDiscountBps ?? 0) / 100}%`}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                    Lockup Period
-                  </div>
-                  <div className="font-medium">
-                    {consignment.isNegotiable
-                      ? `${consignment.minLockupDays}d - ${consignment.maxLockupDays}d`
-                      : `${consignment.fixedLockupDays}d`}
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-2 flex-wrap">

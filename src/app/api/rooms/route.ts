@@ -99,16 +99,22 @@ export async function POST(request: NextRequest) {
     .toUpperCase();
   const initialQuoteId = `OTC-${hash}`;
 
+  // Worst possible deal for buyer (lowest discount, longest lockup)
+  // Buyers can negotiate better terms from this starting point
+  const DEFAULT_MIN_DISCOUNT_BPS = 100; // 1% - lowest discount
+  const DEFAULT_MAX_LOCKUP_MONTHS = 12; // 12 months - longest lockup
+  const DEFAULT_MAX_LOCKUP_DAYS = 365;
+
   const initialQuoteData = {
     id: uuidv4(),
     quoteId: initialQuoteId,
     entityId: userEntityId,
     beneficiary: entityId.toLowerCase(),
     tokenAmount: "0",
-    discountBps: 1000,
+    discountBps: DEFAULT_MIN_DISCOUNT_BPS,
     apr: 0,
-    lockupMonths: 5,
-    lockupDays: 150,
+    lockupMonths: DEFAULT_MAX_LOCKUP_MONTHS,
+    lockupDays: DEFAULT_MAX_LOCKUP_DAYS,
     paymentCurrency: "USDC" as any,
     priceUsdPerToken: 0.00127,
     totalUsd: 0,
@@ -149,29 +155,18 @@ export async function POST(request: NextRequest) {
     initialQuoteId,
   );
 
-  // Create a welcome message with default quote terms
-  const welcomeMessage = `I can offer a 10.00% discount with a 5-month lockup.
+  // Create a welcome message explaining base terms - no quote XML until user specifies a token
+  // This prevents the Accept button from appearing before a real token is negotiated
+  const discountPercent = (DEFAULT_MIN_DISCOUNT_BPS / 100).toFixed(2);
+  const welcomeMessage = `Welcome! I can help you negotiate OTC deals for tokens.
 
-📊 **Quote Terms** (ID: ${initialQuoteId})
-• **Discount: 10.00%**
-• **Lockup: 5 months** (150 days)
+**Default Terms (starting point):**
+• Discount: ${discountPercent}%
+• Lockup: ${DEFAULT_MAX_LOCKUP_MONTHS} months (${DEFAULT_MAX_LOCKUP_DAYS} days)
 
-<!-- XML_START -->
+Tell me which token you're interested in, and we can negotiate better terms based on the amount and lockup period you prefer.
 
-<quote>
-  <quoteId>${initialQuoteId}</quoteId>
-  <tokenSymbol>TOKEN</tokenSymbol>
-  <lockupMonths>5</lockupMonths>
-  <lockupDays>150</lockupDays>
-  <pricePerToken>0.00127</pricePerToken>
-  <discountBps>1000</discountBps>
-  <discountPercent>10.00</discountPercent>
-  <paymentCurrency>USDC</paymentCurrency>
-  <createdAt>${new Date().toISOString()}</createdAt>
-  <status>negotiated</status>
-  <message>Amount is selected during acceptance. Terms will be validated on-chain.</message>
-</quote>
-<!-- XML_END -->`;
+For example, try: "I want to buy ELIZA tokens" or "What tokens are available?"`;
 
   const agentMessage: Memory = {
     id: uuidv4() as UUID,

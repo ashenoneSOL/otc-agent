@@ -1,16 +1,18 @@
 "use client";
 
-import { XMarkIcon, Bars3Icon } from "@heroicons/react/24/outline";
+import { Bars3Icon } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useCallback, memo } from "react";
 import { usePathname } from "next/navigation";
 
-import { Dialog } from "@/components/dialog";
 import { Logo } from "@/components/logo";
+import { useRenderTracker } from "@/utils/render-tracker";
 
-export function Header() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+export const Header = memo(function Header() {
+  useRenderTracker("Header");
+  
+  const [, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
 
   const NavLinks = ({ mobile = false }) => (
@@ -154,4 +156,4 @@ export function Header() {
       </nav>
     </header>
   );
-}
+});

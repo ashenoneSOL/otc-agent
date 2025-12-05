@@ -78,12 +78,15 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
       deployments.evm?.contracts?.otc ||
       process.env.NEXT_PUBLIC_BASE_OTC_ADDRESS;
 
+    // For mainnet, use proxy route to keep Alchemy key server-side
+    // For testnet, use public Sepolia RPC
+    const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL ||
+      (isMainnet ? "/api/rpc/base" : "https://sepolia.base.org");
+
     return {
       id: chain.id.toString(),
       name: isMainnet ? "Base" : "Base Sepolia",
-      rpcUrl:
-        process.env.NEXT_PUBLIC_BASE_RPC_URL ||
-        (isMainnet ? "https://mainnet.base.org" : "https://sepolia.base.org"),
+      rpcUrl,
       explorerUrl: isMainnet
         ? "https://basescan.org"
         : "https://sepolia.basescan.org",

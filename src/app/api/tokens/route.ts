@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MarketDataDB, type Chain } from "@/services/database";
+import { MarketDataDB, TokenDB, type Chain } from "@/services/database";
 import { TokenRegistryService } from "@/services/tokenRegistry";
 import { MarketDataService } from "@/services/marketDataService";
 import { agentRuntime } from "@/lib/agent-runtime";
@@ -31,10 +31,15 @@ export async function GET(request: NextRequest) {
     }),
   );
 
-  return NextResponse.json({
-    success: true,
-    tokens: tokensWithMarketData,
-  });
+  // Cache for 5 minutes - token metadata rarely changes
+  return NextResponse.json(
+    { success: true, tokens: tokensWithMarketData },
+    {
+      headers: {
+        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+      },
+    }
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -103,6 +108,32 @@ export async function POST(request: NextRequest) {
     success: true,
     token,
   });
+}
+
+/**
+ * PATCH /api/tokens - Update token metadata
+ * Body: { tokenId, updates: { logoUrl?, name?, symbol?, ... } }
+ */
+export async function PATCH(request: NextRequest) {
+  const body = await request.json();
+  const { tokenId, updates } = body;
+
+  if (!tokenId || !updates) {
+    return NextResponse.json(
+      { error: "tokenId and updates are required" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const updated = await TokenDB.updateToken(tokenId, updates);
+    return NextResponse.json({ success: true, token: updated });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Update failed" },
+      { status: 404 },
+    );
+  }
 }
 
 /**

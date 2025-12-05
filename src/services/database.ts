@@ -93,6 +93,9 @@ export class QuoteDB {
       offerId: string;
       transactionHash: string;
       blockNumber: number;
+      priceUsdPerToken?: number;
+      ethUsdPrice?: number;
+      lockupDays?: number;
     },
   ): Promise<Quote> {
     const runtime = await agentRuntime.getRuntime();
@@ -380,6 +383,7 @@ export class ConsignmentDB {
 
   static async getConsignmentsByConsigner(
     consignerAddress: string,
+    includeWithdrawn = false,
   ): Promise<OTCConsignment[]> {
     const runtime = await agentRuntime.getRuntime();
     const consignmentIds =
@@ -391,7 +395,11 @@ export class ConsignmentDB {
         runtime.getCache<OTCConsignment>(`consignment:${id}`),
       ),
     );
-    return consignments.filter((c): c is OTCConsignment => c !== null);
+    // Filter out null entries and optionally withdrawn consignments
+    return consignments.filter(
+      (c): c is OTCConsignment =>
+        c !== null && (includeWithdrawn || c.status !== "withdrawn"),
+    );
   }
 
   static async getAllConsignments(filters?: {
