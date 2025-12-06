@@ -41,7 +41,7 @@ export function SolanaWalletProvider({
   children: React.ReactNode;
 }) {
   useRenderTracker("SolanaWalletProvider");
-  
+
   const network = useMemo(() => getSolanaNetwork(), []);
   const endpoint = useMemo(() => getSolanaEndpoint(), []);
   const hasLoggedInit = useRef(false);
@@ -50,7 +50,7 @@ export function SolanaWalletProvider({
   useEffect(() => {
     if (hasLoggedInit.current) return;
     hasLoggedInit.current = true;
-    
+
     if (process.env.NODE_ENV === "development") {
       console.log("[SolanaConnectionProvider] Provider initialized with:", {
         network,

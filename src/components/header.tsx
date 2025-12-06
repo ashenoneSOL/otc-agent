@@ -12,7 +12,7 @@ import { useRenderTracker } from "@/utils/render-tracker";
 
 export const Header = memo(function Header() {
   useRenderTracker("Header");
-  
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
 
@@ -161,12 +161,12 @@ export const Header = memo(function Header() {
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-50">
           {/* Backdrop */}
-          <div 
-            className="fixed inset-0 bg-black/50" 
+          <div
+            className="fixed inset-0 bg-black/50"
             onClick={() => setMobileMenuOpen(false)}
             aria-hidden="true"
           />
-          
+
           {/* Menu panel */}
           <div className="fixed inset-y-0 right-0 w-3/4 max-w-[280px] sm:max-w-[230px] bg-white dark:bg-zinc-900 shadow-xl">
             <div className="px-4 py-4 space-y-1">

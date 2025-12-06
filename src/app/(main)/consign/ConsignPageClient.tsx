@@ -102,7 +102,7 @@ function getTokenInfo(tokenId: string) {
 
 export default function ConsignPageClient() {
   useRenderTracker("ConsignPageClient");
-  
+
   const {
     hasWallet,
     activeFamily,
@@ -117,19 +117,26 @@ export default function ConsignPageClient() {
     isFarcasterContext,
   } = useMultiWallet();
   const { login, ready: privyReady } = usePrivy();
-  const { createConsignmentOnChain, approveToken, getRequiredGasDeposit } = useOTC();
+  const { createConsignmentOnChain, approveToken, getRequiredGasDeposit } =
+    useOTC();
 
   const [step, setStep] = useState(1);
-  const [selectedToken, setSelectedToken] = useState<TokenWithBalance | null>(null);
+  const [selectedToken, setSelectedToken] = useState<TokenWithBalance | null>(
+    null,
+  );
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [gasDeposit, setGasDeposit] = useState<bigint | null>(null);
 
-  const currentAddress = activeFamily === "solana" ? solanaPublicKey : evmAddress;
+  const currentAddress =
+    activeFamily === "solana" ? solanaPublicKey : evmAddress;
   const displayAddress = currentAddress
     ? `${currentAddress.slice(0, 6)}...${currentAddress.slice(-4)}`
     : null;
 
-  const requiredChain = useMemo(() => getRequiredChain(formData.tokenId), [formData.tokenId]);
+  const requiredChain = useMemo(
+    () => getRequiredChain(formData.tokenId),
+    [formData.tokenId],
+  );
   const { chain: tokenChain, address: rawTokenAddress } = useMemo(
     () => getTokenInfo(formData.tokenId),
     [formData.tokenId],
@@ -164,7 +171,10 @@ export default function ConsignPageClient() {
     if (step === 3 && activeFamily !== "solana" && rawTokenAddress) {
       getRequiredGasDeposit()
         .then((deposit) => {
-          console.log("[ConsignPage] Gas deposit fetched:", deposit?.toString());
+          console.log(
+            "[ConsignPage] Gas deposit fetched:",
+            deposit?.toString(),
+          );
           setGasDeposit(deposit);
         })
         .catch((err) => {
@@ -196,7 +206,8 @@ export default function ConsignPageClient() {
   const handleTokenSelect = useCallback((token: TokenWithBalance) => {
     setSelectedToken(token);
     // Auto-set deal amounts based on token balance
-    const humanBalance = Number(BigInt(token.balance)) / Math.pow(10, token.decimals);
+    const humanBalance =
+      Number(BigInt(token.balance)) / Math.pow(10, token.decimals);
     const minDeal = Math.max(1, Math.floor(humanBalance * 0.01));
     const maxDeal = Math.floor(humanBalance);
     setFormData((prev) => ({
@@ -231,181 +242,214 @@ export default function ConsignPageClient() {
     const rawAmount = BigInt(
       Math.floor(parseFloat(formData.amount) * Math.pow(10, decimals)),
     );
-    const txHash = await approveToken(rawTokenAddress as `0x${string}`, rawAmount);
+    const txHash = await approveToken(
+      rawTokenAddress as `0x${string}`,
+      rawAmount,
+    );
     return txHash as string;
-  }, [activeFamily, rawTokenAddress, selectedToken, formData.amount, approveToken]);
-
-  const handleCreateConsignment = useCallback(async (
-    onTxSubmitted?: (txHash: string) => void,
-  ): Promise<{
-    txHash: string;
-    consignmentId: string;
-  }> => {
-    const decimals = selectedToken?.decimals ?? 18;
-
-    // Solana path
-    if (activeFamily === "solana") {
-      if (!SOLANA_DESK) {
-        throw new Error("SOLANA_DESK address not configured in environment.");
-      }
-      if (!solanaWallet || !solanaWallet.publicKey) {
-        throw new Error("Connect a Solana wallet to continue.");
-      }
-      if (!rawTokenAddress) {
-        throw new Error("Token address not found");
-      }
-
-      const connection = new Connection(SOLANA_RPC, "confirmed");
-
-      // Adapt our wallet adapter to Anchor's Wallet interface
-      const anchorWallet = {
-        publicKey: new SolPubkey(solanaWallet.publicKey.toBase58()),
-        signTransaction: solanaWallet.signTransaction,
-        signAllTransactions: solanaWallet.signAllTransactions,
-      } as Wallet;
-
-      const provider = new anchor.AnchorProvider(connection, anchorWallet, {
-        commitment: "confirmed",
-      });
-
-      console.log("[ConsignPage] Fetching Solana IDL...");
-      const idl = await fetchSolanaIdl();
-      console.log("[ConsignPage] IDL loaded, creating program...");
-      const program = new anchor.Program(idl, provider);
-
-      const desk = new SolPubkey(SOLANA_DESK);
-      const tokenMintPk = new SolPubkey(rawTokenAddress);
-      const consignerPk = new SolPubkey(solanaWallet.publicKey.toBase58());
-
-      // Get consigner's token ATA
-      const consignerTokenAta = await getAssociatedTokenAddress(tokenMintPk, consignerPk, false);
-
-      // Get desk's token treasury
-      const deskTokenTreasury = await getAssociatedTokenAddress(tokenMintPk, desk, true);
-
-      // Generate consignment keypair (required as signer in the program)
-      const consignmentKeypair = Keypair.generate();
-
-      // Convert amounts to raw values
-      const rawAmount = new anchor.BN(
-        Math.floor(parseFloat(formData.amount) * Math.pow(10, decimals)).toString(),
-      );
-      const rawMinDeal = new anchor.BN(
-        Math.floor(parseFloat(formData.minDealAmount) * Math.pow(10, decimals)).toString(),
-      );
-      const rawMaxDeal = new anchor.BN(
-        Math.floor(parseFloat(formData.maxDealAmount) * Math.pow(10, decimals)).toString(),
-      );
-
-      // Call createConsignment instruction
-      const txSignature = await program.methods
-        .createConsignment(
-          rawAmount,
-          formData.isNegotiable,
-          formData.fixedDiscountBps ?? 0,
-          formData.fixedLockupDays ?? 0,
-          formData.minDiscountBps,
-          formData.maxDiscountBps,
-          formData.minLockupDays,
-          formData.maxLockupDays,
-          rawMinDeal,
-          rawMaxDeal,
-          formData.isFractionalized,
-          formData.isPrivate,
-          formData.maxPriceVolatilityBps,
-          new anchor.BN(formData.maxTimeToExecuteSeconds),
-        )
-        .accounts({
-          desk: desk,
-          consigner: consignerPk,
-          tokenMint: tokenMintPk,
-          consignerTokenAta: consignerTokenAta,
-          deskTokenTreasury: deskTokenTreasury,
-          consignment: consignmentKeypair.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SolSystemProgram.programId,
-        })
-        .signers([consignmentKeypair])
-        .rpc();
-
-      // Notify that tx was submitted (Solana confirms fast so this is immediate)
-      if (onTxSubmitted) {
-        onTxSubmitted(txSignature);
-      }
-
-      return {
-        txHash: txSignature,
-        consignmentId: consignmentKeypair.publicKey.toString(),
-      };
-    }
-
-    // EVM path - use cached gas deposit or fetch with retry
-    let currentGasDeposit = gasDeposit;
-    if (!currentGasDeposit) {
-      console.log("[ConsignPage] Gas deposit not cached, fetching...");
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          currentGasDeposit = await getRequiredGasDeposit();
-          if (currentGasDeposit) {
-            console.log("[ConsignPage] Gas deposit fetched:", currentGasDeposit.toString());
-            break;
-          }
-        } catch (err) {
-          console.error("[ConsignPage] Gas deposit fetch failed:", err);
-        }
-        if (attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-        }
-      }
-      currentGasDeposit ??= DEFAULT_GAS_DEPOSIT;
-    }
-
-    // Convert human-readable amounts to raw amounts with decimals
-    const rawAmount = BigInt(Math.floor(parseFloat(formData.amount) * Math.pow(10, decimals)));
-    const rawMinDeal = BigInt(
-      Math.floor(parseFloat(formData.minDealAmount) * Math.pow(10, decimals)),
-    );
-    const rawMaxDeal = BigInt(
-      Math.floor(parseFloat(formData.maxDealAmount) * Math.pow(10, decimals)),
-    );
-
-    const result = await createConsignmentOnChain(
-      {
-        tokenId: formData.tokenId,
-        tokenSymbol: selectedToken?.symbol ?? "TOKEN",
-        amount: rawAmount,
-        isNegotiable: formData.isNegotiable,
-        fixedDiscountBps: formData.fixedDiscountBps ?? 0,
-        fixedLockupDays: formData.fixedLockupDays ?? 0,
-        minDiscountBps: formData.minDiscountBps,
-        maxDiscountBps: formData.maxDiscountBps,
-        minLockupDays: formData.minLockupDays,
-        maxLockupDays: formData.maxLockupDays,
-        minDealAmount: rawMinDeal,
-        maxDealAmount: rawMaxDeal,
-        isFractionalized: formData.isFractionalized,
-        isPrivate: formData.isPrivate,
-        maxPriceVolatilityBps: formData.maxPriceVolatilityBps,
-        maxTimeToExecute: formData.maxTimeToExecuteSeconds,
-        gasDeposit: currentGasDeposit,
-      },
-      onTxSubmitted,
-    );
-
-    return {
-      txHash: result.txHash,
-      consignmentId: result.consignmentId.toString(),
-    };
   }, [
     activeFamily,
-    solanaWallet,
     rawTokenAddress,
     selectedToken,
-    formData,
-    gasDeposit,
-    createConsignmentOnChain,
-    getRequiredGasDeposit,
+    formData.amount,
+    approveToken,
   ]);
+
+  const handleCreateConsignment = useCallback(
+    async (
+      onTxSubmitted?: (txHash: string) => void,
+    ): Promise<{
+      txHash: string;
+      consignmentId: string;
+    }> => {
+      const decimals = selectedToken?.decimals ?? 18;
+
+      // Solana path
+      if (activeFamily === "solana") {
+        if (!SOLANA_DESK) {
+          throw new Error("SOLANA_DESK address not configured in environment.");
+        }
+        if (!solanaWallet || !solanaWallet.publicKey) {
+          throw new Error("Connect a Solana wallet to continue.");
+        }
+        if (!rawTokenAddress) {
+          throw new Error("Token address not found");
+        }
+
+        const connection = new Connection(SOLANA_RPC, "confirmed");
+
+        // Adapt our wallet adapter to Anchor's Wallet interface
+        const anchorWallet = {
+          publicKey: new SolPubkey(solanaWallet.publicKey.toBase58()),
+          signTransaction: solanaWallet.signTransaction,
+          signAllTransactions: solanaWallet.signAllTransactions,
+        } as Wallet;
+
+        const provider = new anchor.AnchorProvider(connection, anchorWallet, {
+          commitment: "confirmed",
+        });
+
+        console.log("[ConsignPage] Fetching Solana IDL...");
+        const idl = await fetchSolanaIdl();
+        console.log("[ConsignPage] IDL loaded, creating program...");
+        const program = new anchor.Program(idl, provider);
+
+        const desk = new SolPubkey(SOLANA_DESK);
+        const tokenMintPk = new SolPubkey(rawTokenAddress);
+        const consignerPk = new SolPubkey(solanaWallet.publicKey.toBase58());
+
+        // Get consigner's token ATA
+        const consignerTokenAta = await getAssociatedTokenAddress(
+          tokenMintPk,
+          consignerPk,
+          false,
+        );
+
+        // Get desk's token treasury
+        const deskTokenTreasury = await getAssociatedTokenAddress(
+          tokenMintPk,
+          desk,
+          true,
+        );
+
+        // Generate consignment keypair (required as signer in the program)
+        const consignmentKeypair = Keypair.generate();
+
+        // Convert amounts to raw values
+        const rawAmount = new anchor.BN(
+          Math.floor(
+            parseFloat(formData.amount) * Math.pow(10, decimals),
+          ).toString(),
+        );
+        const rawMinDeal = new anchor.BN(
+          Math.floor(
+            parseFloat(formData.minDealAmount) * Math.pow(10, decimals),
+          ).toString(),
+        );
+        const rawMaxDeal = new anchor.BN(
+          Math.floor(
+            parseFloat(formData.maxDealAmount) * Math.pow(10, decimals),
+          ).toString(),
+        );
+
+        // Call createConsignment instruction
+        const txSignature = await program.methods
+          .createConsignment(
+            rawAmount,
+            formData.isNegotiable,
+            formData.fixedDiscountBps ?? 0,
+            formData.fixedLockupDays ?? 0,
+            formData.minDiscountBps,
+            formData.maxDiscountBps,
+            formData.minLockupDays,
+            formData.maxLockupDays,
+            rawMinDeal,
+            rawMaxDeal,
+            formData.isFractionalized,
+            formData.isPrivate,
+            formData.maxPriceVolatilityBps,
+            new anchor.BN(formData.maxTimeToExecuteSeconds),
+          )
+          .accounts({
+            desk: desk,
+            consigner: consignerPk,
+            tokenMint: tokenMintPk,
+            consignerTokenAta: consignerTokenAta,
+            deskTokenTreasury: deskTokenTreasury,
+            consignment: consignmentKeypair.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SolSystemProgram.programId,
+          })
+          .signers([consignmentKeypair])
+          .rpc();
+
+        // Notify that tx was submitted (Solana confirms fast so this is immediate)
+        if (onTxSubmitted) {
+          onTxSubmitted(txSignature);
+        }
+
+        return {
+          txHash: txSignature,
+          consignmentId: consignmentKeypair.publicKey.toString(),
+        };
+      }
+
+      // EVM path - use cached gas deposit or fetch with retry
+      let currentGasDeposit = gasDeposit;
+      if (!currentGasDeposit) {
+        console.log("[ConsignPage] Gas deposit not cached, fetching...");
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            currentGasDeposit = await getRequiredGasDeposit();
+            if (currentGasDeposit) {
+              console.log(
+                "[ConsignPage] Gas deposit fetched:",
+                currentGasDeposit.toString(),
+              );
+              break;
+            }
+          } catch (err) {
+            console.error("[ConsignPage] Gas deposit fetch failed:", err);
+          }
+          if (attempt < 2) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, Math.pow(2, attempt) * 1000),
+            );
+          }
+        }
+        currentGasDeposit ??= DEFAULT_GAS_DEPOSIT;
+      }
+
+      // Convert human-readable amounts to raw amounts with decimals
+      const rawAmount = BigInt(
+        Math.floor(parseFloat(formData.amount) * Math.pow(10, decimals)),
+      );
+      const rawMinDeal = BigInt(
+        Math.floor(parseFloat(formData.minDealAmount) * Math.pow(10, decimals)),
+      );
+      const rawMaxDeal = BigInt(
+        Math.floor(parseFloat(formData.maxDealAmount) * Math.pow(10, decimals)),
+      );
+
+      const result = await createConsignmentOnChain(
+        {
+          tokenId: formData.tokenId,
+          tokenSymbol: selectedToken?.symbol ?? "TOKEN",
+          amount: rawAmount,
+          isNegotiable: formData.isNegotiable,
+          fixedDiscountBps: formData.fixedDiscountBps ?? 0,
+          fixedLockupDays: formData.fixedLockupDays ?? 0,
+          minDiscountBps: formData.minDiscountBps,
+          maxDiscountBps: formData.maxDiscountBps,
+          minLockupDays: formData.minLockupDays,
+          maxLockupDays: formData.maxLockupDays,
+          minDealAmount: rawMinDeal,
+          maxDealAmount: rawMaxDeal,
+          isFractionalized: formData.isFractionalized,
+          isPrivate: formData.isPrivate,
+          maxPriceVolatilityBps: formData.maxPriceVolatilityBps,
+          maxTimeToExecute: formData.maxTimeToExecuteSeconds,
+          gasDeposit: currentGasDeposit,
+        },
+        onTxSubmitted,
+      );
+
+      return {
+        txHash: result.txHash,
+        consignmentId: result.consignmentId.toString(),
+      };
+    },
+    [
+      activeFamily,
+      solanaWallet,
+      rawTokenAddress,
+      selectedToken,
+      formData,
+      gasDeposit,
+      createConsignmentOnChain,
+      getRequiredGasDeposit,
+    ],
+  );
 
   return (
     <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8">
@@ -509,9 +553,13 @@ export default function ConsignPageClient() {
             <SubmissionStepComponent
               formData={formData}
               consignerAddress={
-                activeFamily === "solana" ? solanaPublicKey || "" : evmAddress || ""
+                activeFamily === "solana"
+                  ? solanaPublicKey || ""
+                  : evmAddress || ""
               }
-              chain={tokenChain || (activeFamily === "solana" ? "solana" : "base")}
+              chain={
+                tokenChain || (activeFamily === "solana" ? "solana" : "base")
+              }
               activeFamily={activeFamily}
               selectedTokenDecimals={selectedToken?.decimals ?? 18}
               selectedTokenSymbol={selectedToken?.symbol ?? "TOKEN"}

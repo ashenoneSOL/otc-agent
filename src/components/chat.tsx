@@ -127,7 +127,10 @@ interface RawRoomMessage {
 }
 
 // --- Helper: Parse room message into ChatMessage format ---
-function parseRoomMessage(msg: RawRoomMessage, roomId: string): ChatMessage | null {
+function parseRoomMessage(
+  msg: RawRoomMessage,
+  roomId: string,
+): ChatMessage | null {
   // Parse message text from various possible formats
   let messageText = "";
   const content = msg.content;
@@ -177,7 +180,11 @@ const initialChatState: ChatState = {
   showClearChatModal: false,
 };
 
-export const Chat = ({ roomId: initialRoomId, token, marketData }: ChatProps = {}) => {
+export const Chat = ({
+  roomId: initialRoomId,
+  token,
+  marketData,
+}: ChatProps = {}) => {
   // --- Consolidated State ---
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialChatState,
@@ -1048,7 +1055,9 @@ function ChatBody({
               <div className="flex items-center justify-center min-h-full">
                 <div className="flex items-center gap-2">
                   <LoadingSpinner />
-                  <span className="text-zinc-600 dark:text-zinc-400">Loading conversation...</span>
+                  <span className="text-zinc-600 dark:text-zinc-400">
+                    Loading conversation...
+                  </span>
                 </div>
               </div>
             ) : messages.length === 0 ? (

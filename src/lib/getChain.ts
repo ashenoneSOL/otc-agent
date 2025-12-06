@@ -89,4 +89,3 @@ export function getRpcUrl(): string {
       return process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://sepolia.base.org";
   }
 }
-

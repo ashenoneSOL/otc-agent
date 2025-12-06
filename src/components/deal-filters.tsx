@@ -20,20 +20,32 @@ interface DealFiltersProps {
 
 type DealType = "all" | "negotiable" | "fixed";
 
-export const DealFilters = memo(function DealFilters({ filters, onFiltersChange }: DealFiltersProps) {
+export const DealFilters = memo(function DealFilters({
+  filters,
+  onFiltersChange,
+}: DealFiltersProps) {
   useRenderTracker("DealFilters");
 
-  const handleTypeChange = useCallback((type: DealType) => {
-    if (type === "all") {
-      onFiltersChange({ ...filters, negotiableTypes: ["negotiable", "fixed"] });
-    } else {
-      onFiltersChange({ ...filters, negotiableTypes: [type] });
-    }
-  }, [filters, onFiltersChange]);
+  const handleTypeChange = useCallback(
+    (type: DealType) => {
+      if (type === "all") {
+        onFiltersChange({
+          ...filters,
+          negotiableTypes: ["negotiable", "fixed"],
+        });
+      } else {
+        onFiltersChange({ ...filters, negotiableTypes: [type] });
+      }
+    },
+    [filters, onFiltersChange],
+  );
 
-  const handleTypeSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    handleTypeChange(e.target.value as DealType);
-  }, [handleTypeChange]);
+  const handleTypeSelectChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      handleTypeChange(e.target.value as DealType);
+    },
+    [handleTypeChange],
+  );
 
   // Determine current type selection
   const currentType: DealType =
@@ -87,15 +99,15 @@ export const DealFilters = memo(function DealFilters({ filters, onFiltersChange 
             Type:
           </label>
           <div className="relative">
-          <select
-            value={currentType}
-            onChange={handleTypeSelectChange}
+            <select
+              value={currentType}
+              onChange={handleTypeSelectChange}
               className="appearance-none rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 pl-3 pr-9 py-2 text-sm cursor-pointer"
-          >
-            <option value="all">All Types</option>
-            <option value="negotiable">Negotiable</option>
-            <option value="fixed">Fixed Price</option>
-          </select>
+            >
+              <option value="all">All Types</option>
+              <option value="negotiable">Negotiable</option>
+              <option value="fixed">Fixed Price</option>
+            </select>
             <svg
               className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500"
               fill="none"

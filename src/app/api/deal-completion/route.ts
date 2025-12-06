@@ -216,11 +216,11 @@ export async function POST(request: NextRequest) {
 
       const tokenAmount = BigInt(tokenAmountStr);
       const discountBps = quote.discountBps || 1000;
-      
+
       // Fetch real prices from market data and price feeds
       let tokenPrice = 0;
       let solPrice = 0;
-      
+
       // Try to get actual token price from market data
       if (quote.tokenId) {
         try {
@@ -228,30 +228,50 @@ export async function POST(request: NextRequest) {
           const marketData = await MarketDataDB.getMarketData(quote.tokenId);
           if (marketData?.priceUsd && marketData.priceUsd > 0) {
             tokenPrice = marketData.priceUsd;
-            console.log("[DealCompletion] Using market data token price:", tokenPrice);
+            console.log(
+              "[DealCompletion] Using market data token price:",
+              tokenPrice,
+            );
           }
         } catch (err) {
-          console.warn("[DealCompletion] Failed to fetch token market data:", err);
+          console.warn(
+            "[DealCompletion] Failed to fetch token market data:",
+            err,
+          );
         }
       }
-      
+
       // Fallback to quote's stored price if market data unavailable
-      if (tokenPrice === 0 && quote.priceUsdPerToken && quote.priceUsdPerToken > 0) {
+      if (
+        tokenPrice === 0 &&
+        quote.priceUsdPerToken &&
+        quote.priceUsdPerToken > 0
+      ) {
         tokenPrice = quote.priceUsdPerToken;
-        console.log("[DealCompletion] Using quote stored token price:", tokenPrice);
+        console.log(
+          "[DealCompletion] Using quote stored token price:",
+          tokenPrice,
+        );
       }
-      
+
       // Get SOL price from price feed API
       try {
-        const { getSolPriceUsd } = await import("@/lib/plugin-otc-desk/services/priceFeed");
+        const { getSolPriceUsd } = await import(
+          "@/lib/plugin-otc-desk/services/priceFeed"
+        );
         solPrice = await getSolPriceUsd();
         console.log("[DealCompletion] Using SOL price from API:", solPrice);
       } catch (err) {
-        console.warn("[DealCompletion] Failed to fetch SOL price from API:", err);
+        console.warn(
+          "[DealCompletion] Failed to fetch SOL price from API:",
+          err,
+        );
         // Try market data as fallback
         try {
           const { MarketDataDB } = await import("@/services/database");
-          const solMarketData = await MarketDataDB.getMarketData("token-solana-So11111111111111111111111111111111111111112");
+          const solMarketData = await MarketDataDB.getMarketData(
+            "token-solana-So11111111111111111111111111111111111111112",
+          );
           if (solMarketData?.priceUsd && solMarketData.priceUsd > 0) {
             solPrice = solMarketData.priceUsd;
           }
@@ -264,20 +284,27 @@ export async function POST(request: NextRequest) {
         }
         console.log("[DealCompletion] Using fallback SOL price:", solPrice);
       }
-      
+
       // Validate we have real prices
       if (tokenPrice === 0) {
-        console.error("[DealCompletion] CRITICAL: Token price is $0 - deal value cannot be calculated");
+        console.error(
+          "[DealCompletion] CRITICAL: Token price is $0 - deal value cannot be calculated",
+        );
         return NextResponse.json(
-          { error: "Token price unavailable - please ensure token has market data" },
-          { status: 400 }
+          {
+            error:
+              "Token price unavailable - please ensure token has market data",
+          },
+          { status: 400 },
         );
       }
       if (body.paymentCurrency === "SOL" && solPrice === 0) {
-        console.error("[DealCompletion] CRITICAL: SOL price is $0 - cannot calculate SOL payment");
+        console.error(
+          "[DealCompletion] CRITICAL: SOL price is $0 - cannot calculate SOL payment",
+        );
         return NextResponse.json(
           { error: "SOL price unavailable - please try again later" },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -460,7 +487,7 @@ export async function POST(request: NextRequest) {
     // Calculate priceUsdPerToken from totalUsd / tokenAmount
     const tokenAmountNum = parseFloat(tokenAmountStr);
     const priceUsdPerToken = tokenAmountNum > 0 ? totalUsd / tokenAmountNum : 0;
-    
+
     console.log("[DealCompletion] Calling updateQuoteExecution with:", {
       quoteId,
       tokenAmount: tokenAmountStr,
@@ -610,7 +637,9 @@ export async function GET(request: NextRequest) {
 
   // ALSO search by beneficiary address (for quotes indexed under wrong entityId)
   // Use beneficiary index if available, otherwise do a limited parallel search
-  const beneficiaryQuoteIds = await getRuntime.getCache<string[]>(`beneficiary_quotes:${normalizedWallet}`);
+  const beneficiaryQuoteIds = await getRuntime.getCache<string[]>(
+    `beneficiary_quotes:${normalizedWallet}`,
+  );
   const quotesSet = new Set(quotes.map((q) => q.quoteId));
 
   if (beneficiaryQuoteIds) {
@@ -618,19 +647,22 @@ export async function GET(request: NextRequest) {
     const additionalQuotes = await Promise.all(
       beneficiaryQuoteIds
         .filter((id) => !quotesSet.has(id))
-        .map((id) => getRuntime.getCache<QuoteMemory>(`quote:${id}`))
+        .map((id) => getRuntime.getCache<QuoteMemory>(`quote:${id}`)),
     );
     for (const quote of additionalQuotes) {
       if (quote) quotes.push(quote);
     }
   } else {
     // Slow path fallback: parallel search (limited to 50 for performance)
-    const allQuoteIds = (await getRuntime.getCache<string[]>("all_quotes")) ?? [];
-    const idsToCheck = allQuoteIds.filter((id) => !quotesSet.has(id)).slice(0, 50);
-    
+    const allQuoteIds =
+      (await getRuntime.getCache<string[]>("all_quotes")) ?? [];
+    const idsToCheck = allQuoteIds
+      .filter((id) => !quotesSet.has(id))
+      .slice(0, 50);
+
     if (idsToCheck.length > 0) {
       const additionalQuotes = await Promise.all(
-        idsToCheck.map((id) => getRuntime.getCache<QuoteMemory>(`quote:${id}`))
+        idsToCheck.map((id) => getRuntime.getCache<QuoteMemory>(`quote:${id}`)),
       );
       for (const quote of additionalQuotes) {
         if (quote && quote.beneficiary === normalizedWallet) {
@@ -657,11 +689,11 @@ export async function GET(request: NextRequest) {
 
   // Enrich deals with token metadata - batch fetch to avoid N+1 queries
   const { TokenDB, ConsignmentDB } = await import("@/services/database");
-  
+
   // Collect unique IDs that need fetching
   const consignmentIdsToFetch = new Set<string>();
   const tokenIdsToFetch = new Set<string>();
-  
+
   for (const deal of deals) {
     const quoteData = deal as QuoteMemory;
     if (!quoteData.tokenId && quoteData.consignmentId) {
@@ -671,7 +703,7 @@ export async function GET(request: NextRequest) {
       tokenIdsToFetch.add(quoteData.tokenId);
     }
   }
-  
+
   // Batch fetch consignments and tokens in parallel
   const [consignmentResults, tokenResults] = await Promise.all([
     Promise.all(
@@ -682,7 +714,7 @@ export async function GET(request: NextRequest) {
         } catch {
           return { id, data: null };
         }
-      })
+      }),
     ),
     Promise.all(
       [...tokenIdsToFetch].map(async (id) => {
@@ -692,28 +724,26 @@ export async function GET(request: NextRequest) {
         } catch {
           return { id, data: null };
         }
-      })
+      }),
     ),
   ]);
-  
+
   // Build lookup maps
-  const consignmentMap = new Map(
-    consignmentResults.map((r) => [r.id, r.data])
-  );
-  const tokenMap = new Map(
-    tokenResults.map((r) => [r.id, r.data])
-  );
-  
+  const consignmentMap = new Map(consignmentResults.map((r) => [r.id, r.data]));
+  const tokenMap = new Map(tokenResults.map((r) => [r.id, r.data]));
+
   // Also add tokens found via consignments
   for (const result of consignmentResults) {
     if (result.data?.tokenId && !tokenMap.has(result.data.tokenId)) {
       tokenIdsToFetch.add(result.data.tokenId);
     }
   }
-  
+
   // Fetch any additional tokens found via consignments
   if (tokenIdsToFetch.size > tokenMap.size) {
-    const additionalTokenIds = [...tokenIdsToFetch].filter((id) => !tokenMap.has(id));
+    const additionalTokenIds = [...tokenIdsToFetch].filter(
+      (id) => !tokenMap.has(id),
+    );
     const additionalTokens = await Promise.all(
       additionalTokenIds.map(async (id) => {
         try {
@@ -722,13 +752,13 @@ export async function GET(request: NextRequest) {
         } catch {
           return { id, data: null };
         }
-      })
+      }),
     );
     for (const { id, data } of additionalTokens) {
       tokenMap.set(id, data);
     }
   }
-  
+
   // Enrich deals using pre-fetched data
   const enrichedDeals = deals.map((deal) => {
     const quoteData = deal as QuoteMemory;
@@ -776,6 +806,6 @@ export async function GET(request: NextRequest) {
       headers: {
         "Cache-Control": "private, s-maxage=30, stale-while-revalidate=60",
       },
-    }
+    },
   );
 }

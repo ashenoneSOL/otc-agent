@@ -12,17 +12,23 @@ interface ChainSelectorProps {
 
 const allChains = Object.keys(SUPPORTED_CHAINS) as Chain[];
 
-export const ChainSelector = memo(function ChainSelector({ selected, onChange }: ChainSelectorProps) {
+export const ChainSelector = memo(function ChainSelector({
+  selected,
+  onChange,
+}: ChainSelectorProps) {
   useRenderTracker("ChainSelector");
-  
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    if (value === "all") {
-      onChange(allChains);
-    } else {
-      onChange([value as Chain]);
-    }
-  }, [onChange]);
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const value = e.target.value;
+      if (value === "all") {
+        onChange(allChains);
+      } else {
+        onChange([value as Chain]);
+      }
+    },
+    [onChange],
+  );
 
   const currentValue =
     selected.length === allChains.length ? "all" : selected[0] || "all";

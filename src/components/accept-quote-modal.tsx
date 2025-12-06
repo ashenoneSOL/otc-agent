@@ -54,21 +54,33 @@ interface TokenMetadata {
 // Client-side token metadata cache (permanent - token metadata doesn't change)
 const tokenMetadataCache = new Map<string, TokenMetadata>();
 
-function getCachedTokenMetadata(chain: string, symbol: string): TokenMetadata | null {
+function getCachedTokenMetadata(
+  chain: string,
+  symbol: string,
+): TokenMetadata | null {
   const key = `${chain}:${symbol.toUpperCase()}`;
   return tokenMetadataCache.get(key) || null;
 }
 
-function setCachedTokenMetadata(chain: string, symbol: string, metadata: TokenMetadata): void {
+function setCachedTokenMetadata(
+  chain: string,
+  symbol: string,
+  metadata: TokenMetadata,
+): void {
   const key = `${chain}:${symbol.toUpperCase()}`;
   tokenMetadataCache.set(key, metadata);
   // Also persist to sessionStorage for page reloads
   try {
     sessionStorage.setItem(`token-meta:${key}`, JSON.stringify(metadata));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
-function loadCachedTokenMetadata(chain: string, symbol: string): TokenMetadata | null {
+function loadCachedTokenMetadata(
+  chain: string,
+  symbol: string,
+): TokenMetadata | null {
   // Check memory cache first
   const cached = getCachedTokenMetadata(chain, symbol);
   if (cached) return cached;
@@ -81,7 +93,9 @@ function loadCachedTokenMetadata(chain: string, symbol: string): TokenMetadata |
       tokenMetadataCache.set(key, metadata);
       return metadata;
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return null;
 }
 
@@ -133,7 +147,10 @@ type ModalAction =
   | { type: "SET_CONTRACT_VALID"; payload: boolean }
   | { type: "SET_SOLANA_TOKEN_MINT"; payload: string | null }
   | { type: "SET_TOKEN_METADATA"; payload: TokenMetadata | null }
-  | { type: "SET_COMPLETED"; payload: { txHash: string | null; offerId: string } }
+  | {
+      type: "SET_COMPLETED";
+      payload: { txHash: string | null; offerId: string };
+    }
   | {
       type: "RESET";
       payload: { tokenAmount: number; currency: "ETH" | "USDC" | "SOL" };
@@ -358,7 +375,8 @@ export function AcceptQuoteModal({
   useEffect(() => {
     if (!isOpen || !initialQuote?.tokenSymbol) return;
 
-    const chain = initialQuote?.tokenChain || (isSolanaActive ? "solana" : "base");
+    const chain =
+      initialQuote?.tokenChain || (isSolanaActive ? "solana" : "base");
     const symbol = initialQuote.tokenSymbol;
 
     // Check cache first (memory + sessionStorage)
@@ -367,7 +385,10 @@ export function AcceptQuoteModal({
       console.log("[AcceptQuote] Using cached token metadata for", symbol);
       dispatch({ type: "SET_TOKEN_METADATA", payload: cached });
       if (chain === "solana") {
-        dispatch({ type: "SET_SOLANA_TOKEN_MINT", payload: cached.contractAddress });
+        dispatch({
+          type: "SET_SOLANA_TOKEN_MINT",
+          payload: cached.contractAddress,
+        });
       }
       return;
     }
@@ -379,8 +400,12 @@ export function AcceptQuoteModal({
         const data = await res.json();
         if (data.success && data.tokens) {
           const token = data.tokens.find(
-            (t: { symbol: string; name: string; logoUrl: string; contractAddress: string }) =>
-              t.symbol.toUpperCase() === symbol.toUpperCase(),
+            (t: {
+              symbol: string;
+              name: string;
+              logoUrl: string;
+              contractAddress: string;
+            }) => t.symbol.toUpperCase() === symbol.toUpperCase(),
           );
           if (token) {
             const metadata: TokenMetadata = {
@@ -393,7 +418,10 @@ export function AcceptQuoteModal({
             setCachedTokenMetadata(chain, symbol, metadata);
             dispatch({ type: "SET_TOKEN_METADATA", payload: metadata });
             if (chain === "solana") {
-              dispatch({ type: "SET_SOLANA_TOKEN_MINT", payload: token.contractAddress });
+              dispatch({
+                type: "SET_SOLANA_TOKEN_MINT",
+                payload: token.contractAddress,
+              });
             }
           }
         }
@@ -401,7 +429,12 @@ export function AcceptQuoteModal({
         console.error("[AcceptQuote] Failed to look up token:", err);
       }
     })();
-  }, [isOpen, isSolanaActive, initialQuote?.tokenSymbol, initialQuote?.tokenChain]);
+  }, [
+    isOpen,
+    isSolanaActive,
+    initialQuote?.tokenSymbol,
+    initialQuote?.tokenChain,
+  ]);
 
   // Keep currency coherent with active family when modal opens
   useEffect(() => {
@@ -427,7 +460,7 @@ export function AcceptQuoteModal({
       }
 
       const cacheKey = `${otcAddress}:${readChain.id}`;
-      
+
       // Check cache first (with TTL)
       const cachedExists = getContractExists(cacheKey);
       if (cachedExists !== null) {
@@ -435,7 +468,8 @@ export function AcceptQuoteModal({
         if (!cachedExists) {
           dispatch({
             type: "SET_ERROR",
-            payload: "Contract not found. Ensure Anvil node is running and contracts are deployed.",
+            payload:
+              "Contract not found. Ensure Anvil node is running and contracts are deployed.",
           });
         }
         return;
@@ -456,7 +490,8 @@ export function AcceptQuoteModal({
         dispatch({ type: "SET_CONTRACT_VALID", payload: false });
         dispatch({
           type: "SET_ERROR",
-          payload: "Contract not found. Ensure Anvil node is running and contracts are deployed.",
+          payload:
+            "Contract not found. Ensure Anvil node is running and contracts are deployed.",
         });
         return;
       }
@@ -622,9 +657,11 @@ export function AcceptQuoteModal({
     // Wait for transaction to be mined with timeout
     if (txHash) {
       console.log("[AcceptQuote] Waiting for transaction to be mined:", txHash);
-      console.log("[AcceptQuote] View on explorer: https://basescan.org/tx/" + txHash);
+      console.log(
+        "[AcceptQuote] View on explorer: https://basescan.org/tx/" + txHash,
+      );
       try {
-        const receipt = await publicClient.waitForTransactionReceipt({ 
+        const receipt = await publicClient.waitForTransactionReceipt({
           hash: txHash,
           timeout: 120_000, // 2 minute timeout
           confirmations: 1,
@@ -632,12 +669,21 @@ export function AcceptQuoteModal({
         if (receipt.status === "reverted") {
           throw new Error(`Payment transaction reverted. Tx: ${txHash}`);
         }
-        console.log("[AcceptQuote] Transaction mined, block:", receipt.blockNumber);
+        console.log(
+          "[AcceptQuote] Transaction mined, block:",
+          receipt.blockNumber,
+        );
       } catch (receiptError) {
-        const errorMessage = receiptError instanceof Error ? receiptError.message : String(receiptError);
-        if (errorMessage.includes("timeout") || errorMessage.includes("Timed out")) {
+        const errorMessage =
+          receiptError instanceof Error
+            ? receiptError.message
+            : String(receiptError);
+        if (
+          errorMessage.includes("timeout") ||
+          errorMessage.includes("Timed out")
+        ) {
           throw new Error(
-            `Payment transaction timed out. Check status at: https://basescan.org/tx/${txHash}`
+            `Payment transaction timed out. Check status at: https://basescan.org/tx/${txHash}`,
           );
         }
         throw receiptError;
@@ -987,9 +1033,9 @@ export function AcceptQuoteModal({
 
       console.log("✅ VERIFIED deal is in database as executed");
 
-      dispatch({ 
-        type: "SET_COMPLETED", 
-        payload: { 
+      dispatch({
+        type: "SET_COMPLETED",
+        payload: {
           txHash: null, // Solana tx hashes handled differently
           offerId: nextOfferId.toString(),
         },
@@ -1059,15 +1105,17 @@ export function AcceptQuoteModal({
     // Don't wait for receipt - immediately trigger backend approval
     // Backend will verify on-chain state directly via Alchemy (faster than frontend polling)
     console.log("[AcceptQuote] Transaction hash:", createTxHash);
-    console.log("[AcceptQuote] View on explorer: https://basescan.org/tx/" + createTxHash);
+    console.log(
+      "[AcceptQuote] View on explorer: https://basescan.org/tx/" + createTxHash,
+    );
 
     // Step 2: Immediately trigger backend approval
     console.log("[AcceptQuote] Updating UI to await_approval step...");
     dispatch({ type: "SET_STEP", payload: "await_approval" });
-    
+
     // Small delay for UI update
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     console.log(
       `[AcceptQuote] Triggering backend approval for offer ${newOfferId}...`,
     );
@@ -1076,39 +1124,49 @@ export function AcceptQuoteModal({
     let approveRes;
     let lastApproveError: unknown;
     const maxApproveAttempts = 5;
-    
+
     for (let attempt = 1; attempt <= maxApproveAttempts; attempt++) {
       try {
-        console.log(`[AcceptQuote] Calling /api/otc/approve (attempt ${attempt}/${maxApproveAttempts})...`);
+        console.log(
+          `[AcceptQuote] Calling /api/otc/approve (attempt ${attempt}/${maxApproveAttempts})...`,
+        );
         approveRes = await fetch("/api/otc/approve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             offerId: newOfferId.toString(),
             txHash: createTxHash,
           }),
         });
-        
-        console.log("[AcceptQuote] /api/otc/approve response status:", approveRes.status);
-        
+
+        console.log(
+          "[AcceptQuote] /api/otc/approve response status:",
+          approveRes.status,
+        );
+
         if (approveRes.ok) break;
         if (approveRes.status >= 400 && approveRes.status < 500) break; // Don't retry client errors
-        
+
         lastApproveError = `HTTP ${approveRes.status}`;
       } catch (fetchError) {
-        console.warn(`[AcceptQuote] Approve attempt ${attempt} failed:`, fetchError);
+        console.warn(
+          `[AcceptQuote] Approve attempt ${attempt} failed:`,
+          fetchError,
+        );
         lastApproveError = fetchError;
       }
-      
+
       if (attempt < maxApproveAttempts) {
         const delay = Math.pow(2, attempt) * 1000;
         console.log(`[AcceptQuote] Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
-    
+
     if (!approveRes) {
-      throw new Error(`Network error calling approval API: ${lastApproveError}`);
+      throw new Error(
+        `Network error calling approval API: ${lastApproveError}`,
+      );
     }
 
     if (!approveRes.ok) {
@@ -1217,9 +1275,9 @@ export function AcceptQuoteModal({
     console.log("[AcceptQuote] ✅ Deal completion saved:", saveData);
 
     // NOW show success (everything confirmed)
-    dispatch({ 
-      type: "SET_COMPLETED", 
-      payload: { 
+    dispatch({
+      type: "SET_COMPLETED",
+      payload: {
         txHash: paymentTxHash,
         offerId: newOfferId.toString(),
       },
@@ -1327,7 +1385,14 @@ export function AcceptQuoteModal({
       }
     }
     return ONE_MILLION;
-  }, [isSolanaActive, estPerTokenUsd, currency, usdcBalance.data?.formatted, ethBalance.data?.formatted, initialQuote?.ethPrice]);
+  }, [
+    isSolanaActive,
+    estPerTokenUsd,
+    currency,
+    usdcBalance.data?.formatted,
+    ethBalance.data?.formatted,
+    initialQuote?.ethPrice,
+  ]);
 
   // Validation: enforce token amount limits and check affordability
   const validationError = useMemo(() => {
@@ -1345,7 +1410,8 @@ export function AcceptQuoteModal({
 
   // Estimate payment amount for display
   const estimatedPayment = useMemo(() => {
-    if (estPerTokenUsd <= 0) return { usdc: undefined, eth: undefined, sol: undefined };
+    if (estPerTokenUsd <= 0)
+      return { usdc: undefined, eth: undefined, sol: undefined };
     const totalUsd = tokenAmount * estPerTokenUsd;
     if (currency === "USDC") {
       return { usdc: totalUsd.toFixed(2), eth: undefined, sol: undefined };
@@ -1355,7 +1421,11 @@ export function AcceptQuoteModal({
     } else {
       const ethUsd = initialQuote?.ethPrice || 0;
       if (ethUsd > 0) {
-        return { usdc: undefined, eth: (totalUsd / ethUsd).toFixed(6), sol: undefined };
+        return {
+          usdc: undefined,
+          eth: (totalUsd / ethUsd).toFixed(6),
+          sol: undefined,
+        };
       }
     }
     return { usdc: undefined, eth: undefined, sol: undefined };
@@ -1493,14 +1563,14 @@ export function AcceptQuoteModal({
                   {/* Token Logo */}
                   <div className="h-10 w-10 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden ring-1 ring-white/10">
                     {tokenMetadata?.logoUrl ? (
-                      <img 
-                        src={tokenMetadata.logoUrl} 
-                        alt={tokenMetadata.symbol} 
+                      <img
+                        src={tokenMetadata.logoUrl}
+                        alt={tokenMetadata.symbol}
                         className="h-full w-full object-cover"
                         onError={(e) => {
                           // Fallback to symbol if image fails
-                          e.currentTarget.style.display = 'none';
-                          e.currentTarget.parentElement!.innerHTML = `<span class="text-brand-400 text-sm font-bold">${tokenMetadata?.symbol?.slice(0, 2) || '₣'}</span>`;
+                          e.currentTarget.style.display = "none";
+                          e.currentTarget.parentElement!.innerHTML = `<span class="text-brand-400 text-sm font-bold">${tokenMetadata?.symbol?.slice(0, 2) || "₣"}</span>`;
                         }}
                       />
                     ) : (
@@ -1512,7 +1582,9 @@ export function AcceptQuoteModal({
                   {/* Token Name & Symbol */}
                   <div className="text-right min-w-0">
                     <div className="text-sm font-semibold truncate">
-                      {tokenMetadata?.symbol || initialQuote?.tokenSymbol || "TOKEN"}
+                      {tokenMetadata?.symbol ||
+                        initialQuote?.tokenSymbol ||
+                        "TOKEN"}
                     </div>
                     <div className="text-xs text-zinc-400 truncate max-w-[120px]">
                       {tokenMetadata?.name || "Token"}
@@ -1569,10 +1641,10 @@ export function AcceptQuoteModal({
                   {currency === "USDC" && estimatedPayment.usdc
                     ? `$${Number(estimatedPayment.usdc).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
                     : currency === "ETH" && estimatedPayment.eth
-                    ? `${estimatedPayment.eth} ETH`
-                    : currency === "SOL" && estimatedPayment.usdc
-                    ? `~$${Number(estimatedPayment.usdc).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
-                    : "—"}
+                      ? `${estimatedPayment.eth} ETH`
+                      : currency === "SOL" && estimatedPayment.usdc
+                        ? `~$${Number(estimatedPayment.usdc).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                        : "—"}
                 </div>
               </div>
             </div>
@@ -1651,10 +1723,7 @@ export function AcceptQuoteModal({
                 </div>
               </div>
               <div className="flex items-center justify-end gap-2 sm:gap-3 mt-3 sm:mt-4">
-                <Button
-                  onClick={onClose}
-                  color="dark"
-                >
+                <Button onClick={onClose} color="dark">
                   <div className="px-3 sm:px-4 py-2">Cancel</div>
                 </Button>
               </div>

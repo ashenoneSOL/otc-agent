@@ -55,7 +55,9 @@ export function ReviewStep({
     return { chain, address };
   };
 
-  const { chain: tokenChain, address: rawTokenAddress } = getTokenInfo(formData.tokenId);
+  const { chain: tokenChain, address: rawTokenAddress } = getTokenInfo(
+    formData.tokenId,
+  );
 
   const getDisplayAddress = (addr: string) => {
     if (!addr || addr.length <= 12) return addr;
@@ -70,7 +72,8 @@ export function ReviewStep({
 
   const handleProceed = () => {
     setError(null);
-    const consignerAddress = activeFamily === "solana" ? solanaPublicKey : evmAddress;
+    const consignerAddress =
+      activeFamily === "solana" ? solanaPublicKey : evmAddress;
 
     if (!consignerAddress) {
       setError("Please connect your wallet before creating a consignment");
@@ -103,7 +106,9 @@ export function ReviewStep({
         <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
           Review Your Listing
         </h3>
-        <p className="text-sm text-zinc-500">Confirm the details before creating</p>
+        <p className="text-sm text-zinc-500">
+          Confirm the details before creating
+        </p>
       </div>
 
       {/* Token Info */}
@@ -151,13 +156,18 @@ export function ReviewStep({
         {formData.isNegotiable ? (
           <>
             <div className="flex justify-between items-center p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
-              <span className="text-zinc-600 dark:text-zinc-400">Discount Range</span>
+              <span className="text-zinc-600 dark:text-zinc-400">
+                Discount Range
+              </span>
               <span className="font-medium text-zinc-900 dark:text-zinc-100">
-                {formData.minDiscountBps / 100}% – {formData.maxDiscountBps / 100}%
+                {formData.minDiscountBps / 100}% –{" "}
+                {formData.maxDiscountBps / 100}%
               </span>
             </div>
             <div className="flex justify-between items-center p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
-              <span className="text-zinc-600 dark:text-zinc-400">Lockup Range</span>
+              <span className="text-zinc-600 dark:text-zinc-400">
+                Lockup Range
+              </span>
               <span className="font-medium text-zinc-900 dark:text-zinc-100">
                 {formData.minLockupDays} – {formData.maxLockupDays} days
               </span>
@@ -181,10 +191,12 @@ export function ReviewStep({
         )}
 
         <div className="flex justify-between items-center p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
-          <span className="text-zinc-600 dark:text-zinc-400">Deal Size Range</span>
+          <span className="text-zinc-600 dark:text-zinc-400">
+            Deal Size Range
+          </span>
           <span className="font-medium text-zinc-900 dark:text-zinc-100">
-            {formatAmount(formData.minDealAmount)} – {formatAmount(formData.maxDealAmount)}{" "}
-            {selectedTokenSymbol}
+            {formatAmount(formData.minDealAmount)} –{" "}
+            {formatAmount(formData.maxDealAmount)} {selectedTokenSymbol}
           </span>
         </div>
 
@@ -218,7 +230,11 @@ export function ReviewStep({
           <Button
             onClick={onConnect}
             disabled={!privyReady}
-            color={requiredChain === "solana" ? "purple" as const : "blue" as const}
+            color={
+              requiredChain === "solana"
+                ? ("purple" as const)
+                : ("blue" as const)
+            }
             className="flex-1 py-3"
           >
             {privyReady
@@ -226,11 +242,7 @@ export function ReviewStep({
               : "Loading..."}
           </Button>
         ) : (
-          <Button
-            onClick={handleProceed}
-            color="brand"
-            className="flex-1 py-3"
-          >
+          <Button onClick={handleProceed} color="brand" className="flex-1 py-3">
             Create Listing
           </Button>
         )}

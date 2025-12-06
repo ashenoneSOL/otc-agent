@@ -180,4 +180,3 @@ export async function backfillSolanaEvents(signatures?: string[]) {
 
   console.log("[Solana Backfill] ✅ Backfill complete");
 }
-

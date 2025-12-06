@@ -165,7 +165,7 @@ describe("OTC Security Audit Tests", () => {
         new anchor.BN(0),
         new anchor.BN(3600)
       )
-      .accounts({ desk: victimDesk.publicKey, owner: victim.publicKey })
+      .accounts({ desk: victimDesk.publicKey })
       .signers([victim])
       .rpc();
 
@@ -185,7 +185,7 @@ describe("OTC Security Audit Tests", () => {
     // Add victim as approver
     await program.methods
       .setApprover(victim.publicKey, true)
-      .accounts({ desk: victimDesk.publicKey, owner: victim.publicKey })
+      .accounts({ desk: victimDesk.publicKey })
       .signers([victim])
       .rpc();
 
@@ -231,7 +231,7 @@ describe("OTC Security Audit Tests", () => {
     // Attacker adds themselves as approver
     await program.methods
       .setApprover(attacker.publicKey, true)
-      .accounts({ desk: attackerDesk.publicKey, owner: attacker.publicKey })
+      .accounts({ desk: attackerDesk.publicKey })
       .signers([attacker])
       .rpc();
 
@@ -500,7 +500,7 @@ describe("OTC Security Audit Tests", () => {
             new anchor.BN(0),
             new anchor.BN(365 * 86400)
           )
-          .accounts({ desk: victimDesk.publicKey, owner: victim.publicKey })
+          .accounts({ desk: victimDesk.publicKey })
           .signers([victim])
           .rpc();
 
@@ -519,7 +519,7 @@ describe("OTC Security Audit Tests", () => {
           new anchor.BN(0),
           new anchor.BN(365 * 86400)
         )
-        .accounts({ desk: victimDesk.publicKey, owner: victim.publicKey })
+        .accounts({ desk: victimDesk.publicKey })
         .signers([victim])
         .rpc();
 
@@ -544,7 +544,7 @@ describe("OTC Security Audit Tests", () => {
           new anchor.BN(0),
           new anchor.BN(365 * 86400)
         )
-        .accounts({ desk: victimDesk.publicKey, owner: victim.publicKey })
+        .accounts({ desk: victimDesk.publicKey })
         .signers([victim])
         .rpc();
 
@@ -686,7 +686,7 @@ describe("OTC Security Audit Tests", () => {
             new anchor.BN(0),
             new anchor.BN(3600)
           )
-          .accounts({ desk: victimDesk.publicKey, owner: attacker.publicKey })
+          .accounts({ desk: victimDesk.publicKey })
           .signers([attacker])
           .rpc();
 
@@ -706,7 +706,7 @@ describe("OTC Security Audit Tests", () => {
             new anchor.BN(0),
             new anchor.BN(365 * 86400)
           )
-          .accounts({ desk: victimDesk.publicKey, owner: attacker.publicKey })
+          .accounts({ desk: victimDesk.publicKey })
           .signers([attacker])
           .rpc();
 
@@ -758,7 +758,7 @@ describe("OTC Security Audit Tests", () => {
       // Pause
       await program.methods
         .pause()
-        .accounts({ desk: victimDesk.publicKey, owner: victim.publicKey })
+        .accounts({ desk: victimDesk.publicKey })
         .signers([victim])
         .rpc();
 
@@ -768,7 +768,7 @@ describe("OTC Security Audit Tests", () => {
       // Unpause
       await program.methods
         .unpause()
-        .accounts({ desk: victimDesk.publicKey, owner: victim.publicKey })
+        .accounts({ desk: victimDesk.publicKey })
         .signers([victim])
         .rpc();
 
@@ -779,7 +779,7 @@ describe("OTC Security Audit Tests", () => {
     it("should REJECT creating offers when paused", async () => {
       await program.methods
         .pause()
-        .accounts({ desk: victimDesk.publicKey, owner: victim.publicKey })
+        .accounts({ desk: victimDesk.publicKey })
         .signers([victim])
         .rpc();
 
@@ -808,7 +808,7 @@ describe("OTC Security Audit Tests", () => {
       // Unpause for other tests
       await program.methods
         .unpause()
-        .accounts({ desk: victimDesk.publicKey, owner: victim.publicKey })
+        .accounts({ desk: victimDesk.publicKey })
         .signers([victim])
         .rpc();
     });

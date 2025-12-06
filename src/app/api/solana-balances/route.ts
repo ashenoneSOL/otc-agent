@@ -15,13 +15,20 @@ const SOLANA_NETWORK_ID = 1399811149;
 
 // Bulk metadata cache for Solana tokens (permanent - metadata doesn't change)
 interface SolanaMetadataCache {
-  metadata: Record<string, { symbol: string; name: string; logoURI: string | null }>;
+  metadata: Record<
+    string,
+    { symbol: string; name: string; logoURI: string | null }
+  >;
 }
 
-async function getSolanaMetadataCache(): Promise<Record<string, { symbol: string; name: string; logoURI: string | null }>> {
+async function getSolanaMetadataCache(): Promise<
+  Record<string, { symbol: string; name: string; logoURI: string | null }>
+> {
   try {
     const runtime = await agentRuntime.getRuntime();
-    const cached = await runtime.getCache<SolanaMetadataCache>("solana-metadata-bulk");
+    const cached = await runtime.getCache<SolanaMetadataCache>(
+      "solana-metadata-bulk",
+    );
     return cached?.metadata || {};
   } catch {
     return {};
@@ -29,7 +36,10 @@ async function getSolanaMetadataCache(): Promise<Record<string, { symbol: string
 }
 
 async function setSolanaMetadataCache(
-  metadata: Record<string, { symbol: string; name: string; logoURI: string | null }>,
+  metadata: Record<
+    string,
+    { symbol: string; name: string; logoURI: string | null }
+  >,
 ): Promise<void> {
   try {
     const runtime = await agentRuntime.getRuntime();
@@ -48,20 +58,28 @@ interface SolanaPriceCache {
 async function getSolanaPriceCache(): Promise<Record<string, number>> {
   try {
     const runtime = await agentRuntime.getRuntime();
-    const cached = await runtime.getCache<SolanaPriceCache>("solana-prices-bulk");
+    const cached =
+      await runtime.getCache<SolanaPriceCache>("solana-prices-bulk");
     if (!cached) return {};
     if (Date.now() - cached.cachedAt >= PRICE_CACHE_TTL_MS) return {};
-    console.log(`[Solana Balances] Using cached prices (${Object.keys(cached.prices).length} tokens)`);
+    console.log(
+      `[Solana Balances] Using cached prices (${Object.keys(cached.prices).length} tokens)`,
+    );
     return cached.prices;
   } catch {
     return {};
   }
 }
 
-async function setSolanaPriceCache(prices: Record<string, number>): Promise<void> {
+async function setSolanaPriceCache(
+  prices: Record<string, number>,
+): Promise<void> {
   try {
     const runtime = await agentRuntime.getRuntime();
-    await runtime.setCache("solana-prices-bulk", { prices, cachedAt: Date.now() });
+    await runtime.setCache("solana-prices-bulk", {
+      prices,
+      cachedAt: Date.now(),
+    });
   } catch {
     // Ignore
   }
@@ -574,12 +592,17 @@ export async function GET(request: NextRequest) {
       }
 
       // Update bulk metadata cache (merge with existing to handle concurrent requests)
-      getSolanaMetadataCache().then(existing => {
-        const merged = { ...existing, ...metadata };
-        setSolanaMetadataCache(merged).catch((err) =>
-          console.debug("[Solana Balances] Metadata cache write failed:", err)
-        );
-      }).catch(() => {});
+      getSolanaMetadataCache()
+        .then((existing) => {
+          const merged = { ...existing, ...metadata };
+          setSolanaMetadataCache(merged).catch((err) =>
+            console.debug(
+              "[Solana Balances] Metadata cache write failed:",
+              err,
+            ),
+          );
+        })
+        .catch(() => {});
     }
 
     console.log(
@@ -592,7 +615,9 @@ export async function GET(request: NextRequest) {
     const prices: Record<string, number> = { ...cachedPrices };
 
     // Find mints that need prices
-    const mintsNeedingPrices = mints.filter((mint) => prices[mint] === undefined);
+    const mintsNeedingPrices = mints.filter(
+      (mint) => prices[mint] === undefined,
+    );
     console.log(
       `[Solana Balances] ${Object.keys(cachedPrices).length} prices cached, ${mintsNeedingPrices.length} need fetch`,
     );
@@ -629,12 +654,14 @@ export async function GET(request: NextRequest) {
       }
 
       // Update bulk price cache (merge with existing to handle concurrent requests)
-      getSolanaPriceCache().then(existing => {
-        const merged = { ...existing, ...prices };
-        setSolanaPriceCache(merged).catch((err) =>
-          console.debug("[Solana Balances] Price cache write failed:", err)
-        );
-      }).catch(() => {});
+      getSolanaPriceCache()
+        .then((existing) => {
+          const merged = { ...existing, ...prices };
+          setSolanaPriceCache(merged).catch((err) =>
+            console.debug("[Solana Balances] Price cache write failed:", err),
+          );
+        })
+        .catch(() => {});
     }
     console.log(
       `[Solana Balances] Have prices for ${Object.keys(prices).length} tokens`,

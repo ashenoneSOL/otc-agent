@@ -123,38 +123,46 @@ function parseNegotiationRequest(text: string): {
 async function extractTokenContext(text: string): Promise<string | null> {
   const allTokens = await TokenDB.getAllTokens();
   if (allTokens.length === 0) return null;
-  
+
   // Normalize text for matching
   const normalizedText = text.toLowerCase();
-  
+
   // Try to find a token symbol mentioned in the text
   // Sort by symbol length descending to match longer symbols first (e.g., "ELIZA" before "ELI")
-  const sortedTokens = [...allTokens].sort((a, b) => b.symbol.length - a.symbol.length);
-  
+  const sortedTokens = [...allTokens].sort(
+    (a, b) => b.symbol.length - a.symbol.length,
+  );
+
   for (const token of sortedTokens) {
     // Match symbol as a word boundary (case-insensitive)
-    const symbolRegex = new RegExp(`\\b${token.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    const symbolRegex = new RegExp(
+      `\\b${token.symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      "i",
+    );
     if (symbolRegex.test(text)) {
       return token.id;
     }
-    
+
     // Also try matching with $ prefix (e.g., "$ELIZA")
-    const dollarRegex = new RegExp(`\\$${token.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    const dollarRegex = new RegExp(
+      `\\$${token.symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      "i",
+    );
     if (dollarRegex.test(text)) {
       return token.id;
     }
-    
+
     // Also match by name (case-insensitive)
     if (token.name && normalizedText.includes(token.name.toLowerCase())) {
       return token.id;
     }
   }
-  
+
   // Fallback: if only one token is registered, use it
   if (allTokens.length === 1) {
     return allTokens[0].id;
   }
-  
+
   return null;
 }
 
@@ -225,7 +233,9 @@ async function negotiateTerms(
   }
 
   let discountBps =
-    request.requestedDiscountBps ?? existingQuote?.discountBps ?? DEFAULT_MIN_DISCOUNT_BPS;
+    request.requestedDiscountBps ??
+    existingQuote?.discountBps ??
+    DEFAULT_MIN_DISCOUNT_BPS;
   discountBps = Math.max(minDiscountBps, Math.min(maxDiscountBps, discountBps));
 
   if (discountBps >= 2000 && lockupMonths < 6) lockupMonths = 6;
@@ -319,7 +329,8 @@ export const quoteAction: Action = {
 
     let consignment: OTCConsignment | null = null;
     if (tokenId && negotiationRequest.tokenAmount) {
-      const lockupDays = (negotiationRequest.lockupMonths || DEFAULT_MAX_LOCKUP_MONTHS) * 30;
+      const lockupDays =
+        (negotiationRequest.lockupMonths || DEFAULT_MAX_LOCKUP_MONTHS) * 30;
       consignment = await findSuitableConsignment(
         tokenId,
         negotiationRequest.tokenAmount,
@@ -412,7 +423,9 @@ export const quoteAction: Action = {
 
     // ------------- Simple discount-based quote -------------
     const discountBps =
-      request.discountBps ?? existingQuote?.discountBps ?? DEFAULT_MIN_DISCOUNT_BPS; // Default worst deal (1%)
+      request.discountBps ??
+      existingQuote?.discountBps ??
+      DEFAULT_MIN_DISCOUNT_BPS; // Default worst deal (1%)
     const paymentCurrency =
       request.paymentCurrency || existingQuote?.paymentCurrency || "USDC";
 

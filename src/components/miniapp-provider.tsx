@@ -7,7 +7,7 @@ import { useRenderTracker } from "@/utils/render-tracker";
 
 export function MiniappProvider({ children }: { children: React.ReactNode }) {
   useRenderTracker("MiniappProvider");
-  
+
   const [isInitialized, setIsInitialized] = useState(false);
   const initStartedRef = useRef(false);
 

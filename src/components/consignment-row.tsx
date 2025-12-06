@@ -20,7 +20,9 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [withdrawTxHash, setWithdrawTxHash] = useState<string | null>(null);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
-  const [isWithdrawn, setIsWithdrawn] = useState(consignment.status === "withdrawn");
+  const [isWithdrawn, setIsWithdrawn] = useState(
+    consignment.status === "withdrawn",
+  );
   const fetchedTokenId = useRef<string | null>(null);
   const { withdrawConsignment } = useOTC();
   const { address } = useAccount();
@@ -46,11 +48,25 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
           if (tokenAddress?.startsWith("0x")) {
             try {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const readContract = publicClient.readContract.bind(publicClient) as any;
+              const readContract = publicClient.readContract.bind(
+                publicClient,
+              ) as any;
               const [symbol, name, decimals] = await Promise.all([
-                readContract({ address: tokenAddress, abi: erc20Abi, functionName: "symbol" }),
-                readContract({ address: tokenAddress, abi: erc20Abi, functionName: "name" }),
-                readContract({ address: tokenAddress, abi: erc20Abi, functionName: "decimals" }),
+                readContract({
+                  address: tokenAddress,
+                  abi: erc20Abi,
+                  functionName: "symbol",
+                }),
+                readContract({
+                  address: tokenAddress,
+                  abi: erc20Abi,
+                  functionName: "name",
+                }),
+                readContract({
+                  address: tokenAddress,
+                  abi: erc20Abi,
+                  functionName: "decimals",
+                }),
               ]);
 
               setToken({
@@ -67,7 +83,10 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
                 updatedAt: Date.now(),
               });
             } catch (err) {
-              console.error("[ConsignmentRow] Failed to fetch token from chain:", err);
+              console.error(
+                "[ConsignmentRow] Failed to fetch token from chain:",
+                err,
+              );
             }
           }
         }
@@ -77,7 +96,8 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
         const soldAmount = totalAmount - remainingAmount;
         if (soldAmount > 0n && consignment.isFractionalized) {
           const avgDealSize =
-            BigInt(consignment.minDealAmount) + BigInt(consignment.maxDealAmount);
+            BigInt(consignment.minDealAmount) +
+            BigInt(consignment.maxDealAmount);
           const estimatedDeals = Number(soldAmount / (avgDealSize / 2n));
           setDealCount(Math.max(1, estimatedDeals));
         }
@@ -221,7 +241,9 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
   }
 
   return (
-    <div className={`rounded-lg border p-4 sm:p-6 ${isWithdrawnStatus ? "border-zinc-300 dark:border-zinc-700 opacity-60" : "border-zinc-200 dark:border-zinc-800"}`}>
+    <div
+      className={`rounded-lg border p-4 sm:p-6 ${isWithdrawnStatus ? "border-zinc-300 dark:border-zinc-700 opacity-60" : "border-zinc-200 dark:border-zinc-800"}`}
+    >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           {token?.logoUrl ? (
@@ -239,7 +261,9 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
           )}
           <div className="min-w-0">
             <h3 className="font-semibold truncate">{tokenSymbol}</h3>
-            <p className="text-sm text-zinc-500 truncate">{token?.name || "Token"}</p>
+            <p className="text-sm text-zinc-500 truncate">
+              {token?.name || "Token"}
+            </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 items-center flex-shrink-0 sm:ml-auto">
@@ -267,7 +291,9 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
             <Button
               color="red"
               onClick={handleWithdraw}
-              disabled={isWithdrawing || !address || !consignment.contractConsignmentId}
+              disabled={
+                isWithdrawing || !address || !consignment.contractConsignmentId
+              }
               className="!py-2 !px-3 sm:!px-4 !text-xs"
               title={
                 !consignment.contractConsignmentId

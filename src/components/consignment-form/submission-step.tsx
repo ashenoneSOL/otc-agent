@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Check, AlertCircle, Loader2, ArrowLeft, ExternalLink } from "lucide-react";
+import {
+  Check,
+  AlertCircle,
+  Loader2,
+  ArrowLeft,
+  ExternalLink,
+} from "lucide-react";
 import { Button } from "../button";
 
 interface StepState {
@@ -42,7 +48,9 @@ interface SubmissionStepProps {
   selectedTokenAddress?: string;
   selectedTokenLogoUrl?: string | null;
   onApproveToken: () => Promise<string>;
-  onCreateConsignment: (onTxSubmitted?: (txHash: string) => void) => Promise<{ txHash: string; consignmentId: string }>;
+  onCreateConsignment: (
+    onTxSubmitted?: (txHash: string) => void,
+  ) => Promise<{ txHash: string; consignmentId: string }>;
   getBlockExplorerUrl: (txHash: string) => string;
   onBack: () => void;
 }
@@ -63,15 +71,15 @@ export function SubmissionStepComponent({
   onBack,
 }: SubmissionStepProps) {
   const router = useRouter();
-  
+
   // Use refs to avoid stale closure issues in async callbacks
   const contractConsignmentIdRef = useRef<string | null>(null);
   const isProcessingRef = useRef(false);
   const hasStartedRef = useRef(false);
-  
+
   const [isComplete, setIsComplete] = useState(false);
   const [, forceUpdate] = useState(0);
-  
+
   // Define steps - use ref so it's stable and doesn't cause stale closure issues
   const stepsRef = useRef<StepState[]>([
     // Solana: Token transfer is part of the createConsignment instruction (no separate approval)
@@ -100,52 +108,63 @@ export function SubmissionStepComponent({
     },
   ]);
 
-  const updateStepStatus = useCallback((stepId: string, updates: Partial<StepState>) => {
-    const step = stepsRef.current.find(s => s.id === stepId);
-    if (step) {
-      Object.assign(step, updates);
-      forceUpdate(n => n + 1); // Trigger re-render
-    }
-  }, []);
+  const updateStepStatus = useCallback(
+    (stepId: string, updates: Partial<StepState>) => {
+      const step = stepsRef.current.find((s) => s.id === stepId);
+      if (step) {
+        Object.assign(step, updates);
+        forceUpdate((n) => n + 1); // Trigger re-render
+      }
+    },
+    [],
+  );
 
   // Retry transient errors with exponential backoff
-  const executeWithRetry = useCallback(async <T,>(
-    action: () => Promise<T>,
-    stepId: string,
-  ): Promise<T> => {
-    const MAX_RETRIES = 3;
-    const NON_RETRYABLE = ["rejected", "denied", "cancelled", "user"];
-    const RETRYABLE = ["network", "timeout", "fetch", "connection", "rate"];
-    
-    let lastError: Error | null = null;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        return await action();
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        const msg = lastError.message.toLowerCase();
-        
-        // Never retry user rejections
-        if (NON_RETRYABLE.some(p => msg.includes(p))) throw lastError;
-        
-        // Only retry transient errors, and only if we have retries left
-        const canRetry = RETRYABLE.some(p => msg.includes(p)) && attempt < MAX_RETRIES - 1;
-        if (!canRetry) throw lastError;
-        
-        const delayMs = Math.pow(2, attempt) * 1000;
-        console.log(`[SubmissionStep] ${stepId} failed, retrying in ${delayMs}ms:`, msg);
-        updateStepStatus(stepId, { statusMessage: `Retrying... (${attempt + 2}/${MAX_RETRIES})` });
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+  const executeWithRetry = useCallback(
+    async <T,>(action: () => Promise<T>, stepId: string): Promise<T> => {
+      const MAX_RETRIES = 3;
+      const NON_RETRYABLE = ["rejected", "denied", "cancelled", "user"];
+      const RETRYABLE = ["network", "timeout", "fetch", "connection", "rate"];
+
+      let lastError: Error | null = null;
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+          return await action();
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          const msg = lastError.message.toLowerCase();
+
+          // Never retry user rejections
+          if (NON_RETRYABLE.some((p) => msg.includes(p))) throw lastError;
+
+          // Only retry transient errors, and only if we have retries left
+          const canRetry =
+            RETRYABLE.some((p) => msg.includes(p)) && attempt < MAX_RETRIES - 1;
+          if (!canRetry) throw lastError;
+
+          const delayMs = Math.pow(2, attempt) * 1000;
+          console.log(
+            `[SubmissionStep] ${stepId} failed, retrying in ${delayMs}ms:`,
+            msg,
+          );
+          updateStepStatus(stepId, {
+            statusMessage: `Retrying... (${attempt + 2}/${MAX_RETRIES})`,
+          });
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
       }
-    }
-    throw lastError;
-  }, [updateStepStatus]);
+      throw lastError;
+    },
+    [updateStepStatus],
+  );
 
   const saveToDatabase = useCallback(async () => {
     // Convert human-readable amounts to raw amounts with decimals
     const toRawAmount = (humanAmount: string): string => {
       const parsed = parseFloat(humanAmount) || 0;
-      const raw = BigInt(Math.floor(parsed * Math.pow(10, selectedTokenDecimals)));
+      const raw = BigInt(
+        Math.floor(parsed * Math.pow(10, selectedTokenDecimals)),
+      );
       return raw.toString();
     };
 
@@ -170,10 +189,12 @@ export function SubmissionStepComponent({
     });
 
     if (!response.ok) {
-      const data = await response.json().catch(() => ({ error: "Unknown error" }));
+      const data = await response
+        .json()
+        .catch(() => ({ error: "Unknown error" }));
       if (contractConsignmentIdRef.current) {
         throw new Error(
-          `Your consignment is on-chain (ID: ${contractConsignmentIdRef.current}) but failed to save to our database. Click retry to try saving again.`
+          `Your consignment is on-chain (ID: ${contractConsignmentIdRef.current}) but failed to save to our database. Click retry to try saving again.`,
         );
       }
       throw new Error(data.error || "Failed to save to database");
@@ -183,80 +204,127 @@ export function SubmissionStepComponent({
     if (!data.success) {
       throw new Error(data.error || "Failed to save to database");
     }
-  }, [formData, consignerAddress, chain, selectedTokenDecimals, selectedTokenSymbol, selectedTokenName, selectedTokenAddress, selectedTokenLogoUrl]);
+  }, [
+    formData,
+    consignerAddress,
+    chain,
+    selectedTokenDecimals,
+    selectedTokenSymbol,
+    selectedTokenName,
+    selectedTokenAddress,
+    selectedTokenLogoUrl,
+  ]);
 
-  const processStep = useCallback(async (stepIndex: number): Promise<void> => {
-    const steps = stepsRef.current;
-    const currentStep = steps[stepIndex];
-    
-    if (!currentStep) {
-      console.log("[SubmissionStep] No step at index:", stepIndex, "- completing");
-      isProcessingRef.current = false;
-      setIsComplete(true);
-      return;
-    }
+  const processStep = useCallback(
+    async (stepIndex: number): Promise<void> => {
+      const steps = stepsRef.current;
+      const currentStep = steps[stepIndex];
 
-    console.log("[SubmissionStep] Processing step:", currentStep.id, "index:", stepIndex);
-    updateStepStatus(currentStep.id, { 
-      status: "processing",
-      statusMessage: "Please confirm in your wallet..."
-    });
-
-    try {
-      // Execute the step
-      if (currentStep.id === "approve") {
-        const txHash = await executeWithRetry(() => onApproveToken(), "approve");
-        updateStepStatus("approve", { txHash, statusMessage: "Confirmed" });
-      } else if (currentStep.id === "create-onchain") {
-        const result = await executeWithRetry(
-          () => onCreateConsignment((txHash) => {
-            updateStepStatus("create-onchain", { txHash, statusMessage: "Confirming..." });
-          }),
-          "create-onchain"
+      if (!currentStep) {
+        console.log(
+          "[SubmissionStep] No step at index:",
+          stepIndex,
+          "- completing",
         );
-        contractConsignmentIdRef.current = result.consignmentId;
-        updateStepStatus("create-onchain", { txHash: result.txHash, statusMessage: "Confirmed" });
-      } else if (currentStep.id === "save-db") {
-        updateStepStatus("save-db", { statusMessage: "Saving..." });
-        await executeWithRetry(() => saveToDatabase(), "save-db");
-      }
-
-      // Mark complete
-      updateStepStatus(currentStep.id, { status: "complete", statusMessage: undefined });
-
-      // Process next step
-      const nextIndex = stepIndex + 1;
-      if (nextIndex < steps.length) {
-        console.log("[SubmissionStep] Moving to next step:", nextIndex);
-        // Small delay for UI feedback, then process next
-        await new Promise(resolve => setTimeout(resolve, 300));
-        await processStep(nextIndex);
-      } else {
-        console.log("[SubmissionStep] All steps complete");
         isProcessingRef.current = false;
         setIsComplete(true);
+        return;
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      console.error("[SubmissionStep] Step failed:", currentStep.id, errorMessage);
-      isProcessingRef.current = false;
-      
-      let displayError = errorMessage;
-      if (errorMessage.includes("rejected")) {
-        if (currentStep.id === "approve") {
-          displayError = "Token approval was rejected. Click retry to try again.";
-        } else if (currentStep.id === "create-onchain") {
-          displayError = "Consignment creation was rejected. Your token approval is still active. Click retry to try again.";
-        }
-      }
-      
+
+      console.log(
+        "[SubmissionStep] Processing step:",
+        currentStep.id,
+        "index:",
+        stepIndex,
+      );
       updateStepStatus(currentStep.id, {
-        status: "error",
-        statusMessage: undefined,
-        errorMessage: displayError,
+        status: "processing",
+        statusMessage: "Please confirm in your wallet...",
       });
-    }
-  }, [onApproveToken, onCreateConsignment, updateStepStatus, executeWithRetry, saveToDatabase]);
+
+      try {
+        // Execute the step
+        if (currentStep.id === "approve") {
+          const txHash = await executeWithRetry(
+            () => onApproveToken(),
+            "approve",
+          );
+          updateStepStatus("approve", { txHash, statusMessage: "Confirmed" });
+        } else if (currentStep.id === "create-onchain") {
+          const result = await executeWithRetry(
+            () =>
+              onCreateConsignment((txHash) => {
+                updateStepStatus("create-onchain", {
+                  txHash,
+                  statusMessage: "Confirming...",
+                });
+              }),
+            "create-onchain",
+          );
+          contractConsignmentIdRef.current = result.consignmentId;
+          updateStepStatus("create-onchain", {
+            txHash: result.txHash,
+            statusMessage: "Confirmed",
+          });
+        } else if (currentStep.id === "save-db") {
+          updateStepStatus("save-db", { statusMessage: "Saving..." });
+          await executeWithRetry(() => saveToDatabase(), "save-db");
+        }
+
+        // Mark complete
+        updateStepStatus(currentStep.id, {
+          status: "complete",
+          statusMessage: undefined,
+        });
+
+        // Process next step
+        const nextIndex = stepIndex + 1;
+        if (nextIndex < steps.length) {
+          console.log("[SubmissionStep] Moving to next step:", nextIndex);
+          // Small delay for UI feedback, then process next
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          await processStep(nextIndex);
+        } else {
+          console.log("[SubmissionStep] All steps complete");
+          isProcessingRef.current = false;
+          setIsComplete(true);
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        console.error(
+          "[SubmissionStep] Step failed:",
+          currentStep.id,
+          errorMessage,
+        );
+        isProcessingRef.current = false;
+
+        let displayError = errorMessage;
+        if (errorMessage.includes("rejected")) {
+          if (currentStep.id === "approve") {
+            displayError =
+              "Token approval was rejected. Click retry to try again.";
+          } else if (currentStep.id === "create-onchain") {
+            displayError =
+              "Consignment creation was rejected. Your token approval is still active. Click retry to try again.";
+          }
+        }
+
+        updateStepStatus(currentStep.id, {
+          status: "error",
+          statusMessage: undefined,
+          errorMessage: displayError,
+        });
+      }
+    },
+    [
+      onApproveToken,
+      onCreateConsignment,
+      updateStepStatus,
+      executeWithRetry,
+      saveToDatabase,
+    ],
+  );
 
   // Start processing on mount
   useEffect(() => {
@@ -268,20 +336,27 @@ export function SubmissionStepComponent({
     }
   }, [processStep]);
 
-  const retryStep = useCallback((stepId: string) => {
-    if (isProcessingRef.current) {
-      console.log("[SubmissionStep] Already processing, ignoring retry");
-      return;
-    }
+  const retryStep = useCallback(
+    (stepId: string) => {
+      if (isProcessingRef.current) {
+        console.log("[SubmissionStep] Already processing, ignoring retry");
+        return;
+      }
 
-    const stepIndex = stepsRef.current.findIndex((s) => s.id === stepId);
-    if (stepIndex === -1) return;
+      const stepIndex = stepsRef.current.findIndex((s) => s.id === stepId);
+      if (stepIndex === -1) return;
 
-    console.log("[SubmissionStep] Retrying step:", stepId);
-    isProcessingRef.current = true;
-    updateStepStatus(stepId, { status: "pending", errorMessage: undefined, statusMessage: undefined });
-    processStep(stepIndex);
-  }, [processStep, updateStepStatus]);
+      console.log("[SubmissionStep] Retrying step:", stepId);
+      isProcessingRef.current = true;
+      updateStepStatus(stepId, {
+        status: "pending",
+        errorMessage: undefined,
+        statusMessage: undefined,
+      });
+      processStep(stepIndex);
+    },
+    [processStep, updateStepStatus],
+  );
 
   const handleGoToDeals = () => {
     router.push("/my-deals");
@@ -391,7 +466,9 @@ export function SubmissionStepComponent({
             <div className="flex items-center gap-2">
               <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
               <div>
-                <p className="font-medium text-green-900 dark:text-green-100">Success</p>
+                <p className="font-medium text-green-900 dark:text-green-100">
+                  Success
+                </p>
                 <p className="text-sm text-green-700 dark:text-green-300">
                   Your consignment has been created and is now live.
                 </p>

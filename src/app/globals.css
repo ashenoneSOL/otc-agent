@@ -5,12 +5,12 @@
 @layer base {
   :root {
     /* Brand colors */
-    --brand-primary: #F75B1E;
-    --brand-light: #FFB79B;
+    --brand-primary: #f75b1e;
+    --brand-light: #ffb79b;
     --brand-dark: #c2410c;
-    
+
     /* Tailwind-style color variables (for button component) */
-    --color-brand-500: #F75B1E;
+    --color-brand-500: #f75b1e;
     --color-brand-600: #ea580c;
     --color-white: #ffffff;
     --color-zinc-300: #d4d4d8;
@@ -73,15 +73,15 @@
     --color-rose-600: #e11d48;
     --color-rose-200: #fecdd3;
     --color-rose-300: #fda4af;
-    
+
     /* Surface colors */
     --surface-dark: #020818;
-    
+
     /* Chain colors */
-    --solana-purple: #9945FF;
-    --solana-green: #14F195;
+    --solana-purple: #9945ff;
+    --solana-green: #14f195;
     --coinbase-blue: #0052ff;
-    
+
     /* Selection colors */
     --selection-light: #fff0dd;
     --selection-dark: #3d2b15;

@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
       // Batch fetch all unique tokens at once to avoid N+1 queries
       const uniqueTokenIds = [...new Set(consignments.map((c) => c.tokenId))];
       const tokenMap = new Map<string, { decimals: number }>();
-      
+
       // Fetch all tokens in parallel
       const tokenResults = await Promise.all(
         uniqueTokenIds.map(async (tokenId) => {
@@ -89,16 +89,16 @@ export async function GET(request: NextRequest) {
           } catch {
             return null;
           }
-        })
+        }),
       );
-      
+
       // Build lookup map
       for (const result of tokenResults) {
         if (result) {
           tokenMap.set(result.tokenId, { decimals: result.decimals });
         }
       }
-      
+
       // Filter consignments using the pre-fetched token data
       consignments = consignments.filter((c) => {
         const tokenData = tokenMap.get(c.tokenId);
@@ -125,7 +125,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to fetch consignments",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch consignments",
         consignments: [],
       },
       { status: 500 },
@@ -185,7 +188,11 @@ export async function POST(request: NextRequest) {
           description: "",
           isActive: true,
         });
-        console.log("[Consignments] Token saved:", { tokenId, tokenSymbol, tokenDecimals });
+        console.log("[Consignments] Token saved:", {
+          tokenId,
+          tokenSymbol,
+          tokenDecimals,
+        });
       } catch (err) {
         // Token might already exist, that's fine
         console.log("[Consignments] Token already exists or save failed:", err);

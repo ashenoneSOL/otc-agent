@@ -31,7 +31,9 @@ interface TokenGroup {
 }
 
 // --- Helper: Filter valid consignments (active with remaining amount) ---
-function filterValidConsignments(consignments: OTCConsignment[]): OTCConsignment[] {
+function filterValidConsignments(
+  consignments: OTCConsignment[],
+): OTCConsignment[] {
   return consignments.filter((c) => {
     // Must be active status
     if (c.status !== "active") return false;
@@ -48,7 +50,7 @@ function groupConsignmentsByToken(
 ): TokenGroup[] {
   // Filter out invalid consignments first
   const validConsignments = filterValidConsignments(consignments);
-  
+
   // Deduplicate by ID
   const uniqueMap = new Map(validConsignments.map((c) => [c.id, c]));
   const unique = Array.from(uniqueMap.values());
@@ -73,13 +75,19 @@ function groupConsignmentsByToken(
   return Array.from(grouped.values()).filter((g) => g.consignments.length > 0);
 }
 
-const TokenGroupLoader = memo(function TokenGroupLoader({ tokenGroup }: { tokenGroup: TokenGroup }) {
+const TokenGroupLoader = memo(function TokenGroupLoader({
+  tokenGroup,
+}: {
+  tokenGroup: TokenGroup;
+}) {
   useRenderTracker("TokenGroupLoader", { tokenId: tokenGroup.tokenId });
-  
-  const { token, marketData: cachedMarketData, isLoading } = useTokenCache(
-    tokenGroup.tokenId,
-  );
-  
+
+  const {
+    token,
+    marketData: cachedMarketData,
+    isLoading,
+  } = useTokenCache(tokenGroup.tokenId);
+
   // Show loading skeleton while fetching token
   if (isLoading) {
     return (
@@ -94,13 +102,13 @@ const TokenGroupLoader = memo(function TokenGroupLoader({ tokenGroup }: { tokenG
       </div>
     );
   }
-  
+
   // If token failed to load, hide the group
   // This filters out invalid/test entries with fake token addresses
   if (!token) {
     return null;
   }
-  
+
   return (
     <TokenDealsSection
       token={token}
@@ -111,7 +119,10 @@ const TokenGroupLoader = memo(function TokenGroupLoader({ tokenGroup }: { tokenG
 });
 
 export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
-  useRenderTracker("DealsGrid", { searchQuery, chainsCount: filters.chains.length });
+  useRenderTracker("DealsGrid", {
+    searchQuery,
+    chainsCount: filters.chains.length,
+  });
   const [tokenGroups, setTokenGroups] = useState<TokenGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -163,11 +174,14 @@ export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
     return filteredGroups.slice(startIndex, startIndex + PAGE_SIZE);
   }, [filteredGroups, currentPage]);
 
-  const goToPage = useCallback((page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-    // Scroll to top of deals section
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [totalPages]);
+  const goToPage = useCallback(
+    (page: number) => {
+      setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+      // Scroll to top of deals section
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [totalPages],
+  );
 
   if (isLoading) {
     return (
@@ -247,11 +261,21 @@ export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
             disabled={currentPage === 1}
             className="!px-3 !py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </Button>
-          
+
           <div className="flex items-center gap-1">
             {/* First page */}
             {currentPage > 2 && (
@@ -267,7 +291,7 @@ export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
                 )}
               </>
             )}
-            
+
             {/* Page numbers around current */}
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
               let pageNum: number;
@@ -280,11 +304,12 @@ export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
               } else {
                 pageNum = currentPage - 2 + i;
               }
-              
+
               if (pageNum < 1 || pageNum > totalPages) return null;
               if (pageNum === 1 && currentPage > 2) return null;
-              if (pageNum === totalPages && currentPage < totalPages - 1) return null;
-              
+              if (pageNum === totalPages && currentPage < totalPages - 1)
+                return null;
+
               return (
                 <button
                   key={pageNum}
@@ -299,7 +324,7 @@ export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
                 </button>
               );
             })}
-            
+
             {/* Last page */}
             {currentPage < totalPages - 1 && (
               <>
@@ -315,14 +340,24 @@ export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
               </>
             )}
           </div>
-          
+
           <Button
             onClick={() => goToPage(currentPage + 1)}
             disabled={currentPage === totalPages}
             className="!px-3 !py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
             </svg>
           </Button>
         </div>

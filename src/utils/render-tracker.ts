@@ -59,7 +59,9 @@ function summarizeValue(value: unknown): string {
 /**
  * Get a props summary for debugging
  */
-function getPropsSnapshot(props: Record<string, unknown>): Record<string, string> {
+function getPropsSnapshot(
+  props: Record<string, unknown>,
+): Record<string, string> {
   const snapshot: Record<string, string> = {};
   for (const [key, value] of Object.entries(props)) {
     if (key === "children") {
@@ -76,29 +78,29 @@ function getPropsSnapshot(props: Record<string, unknown>): Record<string, string
  */
 function findChanges(
   prev: Record<string, string> | undefined,
-  curr: Record<string, string>
+  curr: Record<string, string>,
 ): string[] {
   if (!prev) return ["(first render)"];
   const changes: string[] = [];
-  
+
   const allKeys = new Set([...Object.keys(prev), ...Object.keys(curr)]);
   for (const key of allKeys) {
     if (prev[key] !== curr[key]) {
       changes.push(`${key}: ${prev[key]} → ${curr[key]}`);
     }
   }
-  
+
   return changes.length > 0 ? changes : ["(no prop changes detected)"];
 }
 
 /**
  * Track a component render. Call this at the top of your component.
  * In development, throws an error if the component renders excessively.
- * 
+ *
  * @param componentName - Unique identifier for the component
  * @param props - Component props (optional, for debugging)
  * @param state - Component state snapshot (optional, for debugging)
- * 
+ *
  * @example
  * ```tsx
  * function MyComponent(props: MyProps) {
@@ -110,81 +112,95 @@ function findChanges(
 export function trackRender(
   componentName: string,
   props?: Record<string, unknown>,
-  state?: Record<string, unknown>
+  state?: Record<string, unknown>,
 ): void {
   // Only run in development
   if (process.env.NODE_ENV !== "development") return;
-  
+
   // Skip ignored components
   if (CONFIG.ignoredComponents.has(componentName)) return;
-  
+
   const now = Date.now();
   let record = renderCounts.get(componentName);
-  
+
   if (!record) {
     record = { count: 0, timestamps: [], firstRenderTime: now };
     renderCounts.set(componentName, record);
   }
-  
+
   // Clean up old timestamps outside the window
   record.timestamps = record.timestamps.filter(
-    (ts) => now - ts < CONFIG.timeWindowMs
+    (ts) => now - ts < CONFIG.timeWindowMs,
   );
-  
+
   // Add current timestamp
   record.timestamps.push(now);
   record.count++;
-  
+
   // Get current snapshots
   const propsSnapshot = props ? getPropsSnapshot(props) : undefined;
   const stateSnapshot = state ? getPropsSnapshot(state) : undefined;
-  
+
   // Check for excessive renders
   const recentRenders = record.timestamps.length;
-  
+
   // Determine if we're in initial mount grace period
   const timeSinceFirstRender = now - record.firstRenderTime;
-  const isInitialMount = timeSinceFirstRender < CONFIG.initialMountGracePeriodMs;
-  const maxAllowed = isInitialMount ? CONFIG.maxRendersInitialMount : CONFIG.maxRenders;
-  
+  const isInitialMount =
+    timeSinceFirstRender < CONFIG.initialMountGracePeriodMs;
+  const maxAllowed = isInitialMount
+    ? CONFIG.maxRendersInitialMount
+    : CONFIG.maxRenders;
+
   if (CONFIG.verboseLogging) {
-    const propsChanges = propsSnapshot ? findChanges(record.lastProps, propsSnapshot) : [];
-    const stateChanges = stateSnapshot ? findChanges(record.lastState, stateSnapshot) : [];
+    const propsChanges = propsSnapshot
+      ? findChanges(record.lastProps, propsSnapshot)
+      : [];
+    const stateChanges = stateSnapshot
+      ? findChanges(record.lastState, stateSnapshot)
+      : [];
     console.log(
       `[RenderTracker] ${componentName} render #${record.count} (${recentRenders} in ${CONFIG.timeWindowMs}ms)`,
-      { propsChanges, stateChanges, isInitialMount }
+      { propsChanges, stateChanges, isInitialMount },
     );
   }
-  
+
   if (recentRenders > maxAllowed) {
-    const propsChanges = propsSnapshot ? findChanges(record.lastProps, propsSnapshot) : [];
-    const stateChanges = stateSnapshot ? findChanges(record.lastState, stateSnapshot) : [];
-    
+    const propsChanges = propsSnapshot
+      ? findChanges(record.lastProps, propsSnapshot)
+      : [];
+    const stateChanges = stateSnapshot
+      ? findChanges(record.lastState, stateSnapshot)
+      : [];
+
     const error = new Error(
       `[RenderTracker] EXCESSIVE RENDERS DETECTED: ${componentName} rendered ${recentRenders} times in ${CONFIG.timeWindowMs}ms.\n\n` +
-      `This indicates a render loop or severe performance issue.\n\n` +
-      `Recent prop changes: ${propsChanges.join(", ")}\n` +
-      `Recent state changes: ${stateChanges.join(", ")}\n\n` +
-      `Common causes:\n` +
-      `  1. Object/array created in render passed as prop (use useMemo)\n` +
-      `  2. Callback created in render passed as prop (use useCallback)\n` +
-      `  3. State update in useEffect without proper deps\n` +
-      `  4. Context value changing on every render\n` +
-      `  5. Missing dependency in useEffect causing infinite loop`
+        `This indicates a render loop or severe performance issue.\n\n` +
+        `Recent prop changes: ${propsChanges.join(", ")}\n` +
+        `Recent state changes: ${stateChanges.join(", ")}\n\n` +
+        `Common causes:\n` +
+        `  1. Object/array created in render passed as prop (use useMemo)\n` +
+        `  2. Callback created in render passed as prop (use useCallback)\n` +
+        `  3. State update in useEffect without proper deps\n` +
+        `  4. Context value changing on every render\n` +
+        `  5. Missing dependency in useEffect causing infinite loop`,
     );
-    
+
     // Log detailed info before throwing
     console.error(error.message);
     console.error("Component:", componentName);
     console.error("Props snapshot:", propsSnapshot);
     console.error("State snapshot:", stateSnapshot);
-    console.error("Render timestamps:", record.timestamps.map(ts => new Date(ts).toISOString()));
+    console.error(
+      "Render timestamps:",
+      record.timestamps.map((ts) => new Date(ts).toISOString()),
+    );
     console.error("Time since first render:", timeSinceFirstRender, "ms");
     console.error("Is initial mount period:", isInitialMount);
-    
+
     throw error;
   }
-  
+
   // Update snapshots for next comparison
   record.lastProps = propsSnapshot;
   record.lastState = stateSnapshot;
@@ -192,7 +208,7 @@ export function trackRender(
 
 /**
  * React hook version of trackRender for easier integration.
- * 
+ *
  * @example
  * ```tsx
  * function MyComponent(props: MyProps) {
@@ -205,9 +221,7 @@ export function trackRender(
 export function useRenderTracker(
   componentName: string,
   props?: Record<string, unknown>,
-  state?: Record<string, unknown>
+  state?: Record<string, unknown>,
 ): void {
   trackRender(componentName, props, state);
 }
-
-

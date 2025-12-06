@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ConsignmentDB } from "@/services/database";
 import { ConsignmentService } from "@/services/consignmentService";
-import { sanitizeConsignmentForBuyer, isConsignmentOwner } from "@/utils/consignment-sanitizer";
+import {
+  sanitizeConsignmentForBuyer,
+  isConsignmentOwner,
+} from "@/utils/consignment-sanitizer";
 
 export async function GET(
   request: NextRequest,
@@ -10,19 +13,24 @@ export async function GET(
   try {
     const { id } = await params;
     const { searchParams } = new URL(request.url);
-    const callerAddress = searchParams.get("callerAddress") || request.headers.get("x-caller-address");
-    
+    const callerAddress =
+      searchParams.get("callerAddress") ||
+      request.headers.get("x-caller-address");
+
     const consignment = await ConsignmentDB.getConsignment(id);
-    
+
     // Check if caller is the owner - only owner can see full negotiation terms
     const isOwner = isConsignmentOwner(consignment, callerAddress);
-    
+
     // Sanitize response for non-owners to prevent gaming the negotiation
-    const responseConsignment = isOwner 
-      ? consignment 
+    const responseConsignment = isOwner
+      ? consignment
       : sanitizeConsignmentForBuyer(consignment);
-    
-    return NextResponse.json({ success: true, consignment: responseConsignment });
+
+    return NextResponse.json({
+      success: true,
+      consignment: responseConsignment,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     if (message.includes("not found")) {

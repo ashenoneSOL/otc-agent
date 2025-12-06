@@ -97,12 +97,15 @@ function transformSolanaDeal(
     ? new Date(deal.createdAt).getTime() / 1000
     : Date.now() / 1000;
   // Use actual lockup from deal, fallback to 6 months (180 days)
-  const lockupDays = deal.lockupDays ?? (deal.lockupMonths ? deal.lockupMonths * 30 : 180);
-  
+  const lockupDays =
+    deal.lockupDays ?? (deal.lockupMonths ? deal.lockupMonths * 30 : 180);
+
   // tokenAmount from API is ALREADY in human-readable form (e.g., "1000" = 1000 tokens)
   // Don't multiply by decimals - that's only for on-chain representation
   // Store as raw number for display purposes
-  const tokenAmountRaw = BigInt(Math.floor(parseFloat(deal.tokenAmount || "0")));
+  const tokenAmountRaw = BigInt(
+    Math.floor(parseFloat(deal.tokenAmount || "0")),
+  );
 
   return {
     id: BigInt(deal.offerId || "0"),
@@ -141,11 +144,14 @@ function transformEvmDeal(
     ? new Date(deal.createdAt).getTime() / 1000
     : Date.now() / 1000;
   // Use actual lockup from deal, fallback to 6 months (180 days) for consistency
-  const lockupDays = deal.lockupDays ?? (deal.lockupMonths ? deal.lockupMonths * 30 : 180);
-  
+  const lockupDays =
+    deal.lockupDays ?? (deal.lockupMonths ? deal.lockupMonths * 30 : 180);
+
   // tokenAmount from API is ALREADY in human-readable form (e.g., "1000" = 1000 tokens)
   // Don't multiply by decimals - that's only for on-chain representation
-  const tokenAmountRaw = BigInt(Math.floor(parseFloat(deal.tokenAmount || "0")));
+  const tokenAmountRaw = BigInt(
+    Math.floor(parseFloat(deal.tokenAmount || "0")),
+  );
 
   return {
     id: BigInt(deal.offerId || "0"),
@@ -218,7 +224,7 @@ function mergeDealsWithOffers(
 
 export function MyDealsContent() {
   useRenderTracker("MyDealsContent");
-  
+
   const {
     activeFamily,
     evmAddress,
@@ -243,7 +249,8 @@ export function MyDealsContent() {
     await disconnect();
   }, [disconnect]);
 
-  const currentAddress = activeFamily === "solana" ? solanaPublicKey : evmAddress;
+  const currentAddress =
+    activeFamily === "solana" ? solanaPublicKey : evmAddress;
   const displayAddress = currentAddress
     ? `${currentAddress.slice(0, 6)}...${currentAddress.slice(-4)}`
     : null;
@@ -282,8 +289,12 @@ export function MyDealsContent() {
 
     try {
       const [dealsRes, consignmentsRes] = await Promise.all([
-        fetch(`/api/deal-completion?wallet=${walletAddr}`).then((res) => res.json()),
-        fetch(`/api/consignments?consigner=${walletAddr}`).then((res) => res.json()),
+        fetch(`/api/deal-completion?wallet=${walletAddr}`).then((res) =>
+          res.json(),
+        ),
+        fetch(`/api/consignments?consigner=${walletAddr}`).then((res) =>
+          res.json(),
+        ),
       ]);
 
       if (dealsRes.success && dealsRes.deals) {
@@ -305,7 +316,8 @@ export function MyDealsContent() {
   }, [activeFamily, solanaPublicKey, evmAddress]);
 
   // Only fetch when wallet address changes, not when callback reference changes
-  const walletAddr = activeFamily === "solana" ? solanaPublicKey : evmAddress?.toLowerCase();
+  const walletAddr =
+    activeFamily === "solana" ? solanaPublicKey : evmAddress?.toLowerCase();
   useEffect(() => {
     refreshDeals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -314,10 +326,19 @@ export function MyDealsContent() {
   const purchases = useMemo(() => {
     if (activeFamily === "solana") {
       const walletAddress = solanaPublicKey?.toString() || "";
-      return solanaDeals.map((deal) => transformSolanaDeal(deal, walletAddress));
+      return solanaDeals.map((deal) =>
+        transformSolanaDeal(deal, walletAddress),
+      );
     }
     return mergeDealsWithOffers(evmDeals, myOffers ?? [], evmAddress || "");
-  }, [myOffers, activeFamily, solanaDeals, evmDeals, solanaPublicKey, evmAddress]);
+  }, [
+    myOffers,
+    activeFamily,
+    solanaDeals,
+    evmDeals,
+    solanaPublicKey,
+    evmAddress,
+  ]);
 
   const sortedPurchases = useMemo(() => {
     const list = [...purchases];
@@ -340,7 +361,7 @@ export function MyDealsContent() {
   useEffect(() => {
     if (hasResumedAuth.current) return;
     hasResumedAuth.current = true;
-    
+
     resumeFreshAuth().catch((err) => {
       console.error("[MyDeals] Failed to resume fresh auth:", err);
     });
@@ -350,7 +371,9 @@ export function MyDealsContent() {
     return (
       <main className="flex-1 min-h-[60dvh] flex items-center justify-center">
         <div className="text-center space-y-6 max-w-md mx-auto px-4">
-          <h1 className="text-2xl sm:text-3xl font-semibold">Sign In to View Your Deals</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold">
+            Sign In to View Your Deals
+          </h1>
           <Button
             color="brand"
             onClick={handleConnect}
@@ -368,7 +391,10 @@ export function MyDealsContent() {
     );
   }
 
-  const hasAnyDeals = filteredListings.length > 0 || sortedPurchases.length > 0 || withdrawnCount > 0;
+  const hasAnyDeals =
+    filteredListings.length > 0 ||
+    sortedPurchases.length > 0 ||
+    withdrawnCount > 0;
 
   return (
     <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 sm:py-6">
@@ -433,7 +459,8 @@ export function MyDealsContent() {
           <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-8 text-center">
             <h3 className="text-lg font-semibold mb-2">No Deals Yet</h3>
             <p className="text-zinc-600 dark:text-zinc-400 mb-6">
-              Use the chat to buy tokens at a discount, or create a listing from the header.
+              Use the chat to buy tokens at a discount, or create a listing from
+              the header.
             </p>
             <Link href="/">
               <Button color="brand" className="!px-4 !py-2">
@@ -450,14 +477,19 @@ export function MyDealsContent() {
                   <h2 className="text-lg font-semibold flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-brand-500"></span>
                     My Listings
-                    <span className="text-sm font-normal text-zinc-500">({filteredListings.length})</span>
+                    <span className="text-sm font-normal text-zinc-500">
+                      ({filteredListings.length})
+                    </span>
                   </h2>
                   {withdrawnCount > 0 && (
                     <button
-                      onClick={() => setShowWithdrawnListings(!showWithdrawnListings)}
+                      onClick={() =>
+                        setShowWithdrawnListings(!showWithdrawnListings)
+                      }
                       className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
                     >
-                      {showWithdrawnListings ? "Hide" : "Show"} withdrawn ({withdrawnCount})
+                      {showWithdrawnListings ? "Hide" : "Show"} withdrawn (
+                      {withdrawnCount})
                     </button>
                   )}
                 </div>
@@ -479,7 +511,9 @@ export function MyDealsContent() {
                 <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                   My Purchases
-                  <span className="text-sm font-normal text-zinc-500">({sortedPurchases.length})</span>
+                  <span className="text-sm font-normal text-zinc-500">
+                    ({sortedPurchases.length})
+                  </span>
                 </h2>
                 <div className="space-y-3">
                   {sortedPurchases.map((o, index) => {
@@ -487,7 +521,8 @@ export function MyDealsContent() {
                     const matured = Number(o.unlockTime) <= now;
                     const discountPct = Number(o.discountBps ?? 0n) / 100;
                     const lockup = getLockupLabel(o.createdAt, o.unlockTime);
-                    const uniqueKey = o.quoteId || o.id.toString() || `deal-${index}`;
+                    const uniqueKey =
+                      o.quoteId || o.id.toString() || `deal-${index}`;
 
                     return (
                       <div
@@ -515,18 +550,20 @@ export function MyDealsContent() {
                               ${o.tokenSymbol || "TOKEN"}
                             </div>
                             <div className="text-xs text-zinc-500 truncate">
-                              {o.tokenName || "Token"} • {o.chain === "solana" ? "Solana" : "Base"}
+                              {o.tokenName || "Token"} •{" "}
+                              {o.chain === "solana" ? "Solana" : "Base"}
                             </div>
                           </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                           <div>
                             <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
                               Amount
                             </div>
                             <div className="font-semibold text-sm">
-                              {formatTokenAmount(o.tokenAmount)} {o.tokenSymbol || "tokens"}
+                              {formatTokenAmount(o.tokenAmount)}{" "}
+                              {o.tokenSymbol || "tokens"}
                             </div>
                           </div>
 
@@ -572,7 +609,9 @@ export function MyDealsContent() {
                                 window.location.href = `/deal/${o.quoteId}`;
                                 return;
                               }
-                              const response = await fetch(`/api/quote/by-offer/${o.id}`);
+                              const response = await fetch(
+                                `/api/quote/by-offer/${o.id}`,
+                              );
                               if (response.ok) {
                                 const data = await response.json();
                                 if (data.quoteId) {
@@ -604,10 +643,13 @@ export function MyDealsContent() {
                                 setRefundStatus(null);
                                 const createdAt = Number(o.createdAt);
                                 const now = Math.floor(Date.now() / 1000);
-                                const daysSinceCreation = (now - createdAt) / (24 * 60 * 60);
+                                const daysSinceCreation =
+                                  (now - createdAt) / (24 * 60 * 60);
 
                                 if (daysSinceCreation < 90) {
-                                  const daysRemaining = Math.ceil(90 - daysSinceCreation);
+                                  const daysRemaining = Math.ceil(
+                                    90 - daysSinceCreation,
+                                  );
                                   setRefundStatus({
                                     type: "info",
                                     message: `Emergency refund available in ${daysRemaining} days`,
@@ -618,7 +660,10 @@ export function MyDealsContent() {
                                 setRefunding(o.id);
                                 try {
                                   await emergencyRefund(o.id);
-                                  setRefundStatus({ type: "success", message: "Refund successful" });
+                                  setRefundStatus({
+                                    type: "success",
+                                    message: "Refund successful",
+                                  });
                                 } catch (err) {
                                   setRefundStatus({
                                     type: "error",

@@ -227,13 +227,22 @@ export async function setUserQuote(
 
   // Add to beneficiary index for faster lookups
   const beneficiaryQuoteIds =
-    (await runtime.getCache<string[]>(`beneficiary_quotes:${normalized}`)) ?? [];
+    (await runtime.getCache<string[]>(`beneficiary_quotes:${normalized}`)) ??
+    [];
   if (!beneficiaryQuoteIds.includes(quoteId)) {
     beneficiaryQuoteIds.push(quoteId);
-    await runtime.setCache(`beneficiary_quotes:${normalized}`, beneficiaryQuoteIds);
+    await runtime.setCache(
+      `beneficiary_quotes:${normalized}`,
+      beneficiaryQuoteIds,
+    );
   }
 
-  console.log("[setUserQuote] ✅ New quote created and indexed:", quoteId, "token:", quote.tokenSymbol);
+  console.log(
+    "[setUserQuote] ✅ New quote created and indexed:",
+    quoteId,
+    "token:",
+    quote.tokenSymbol,
+  );
   return quoteData;
 }
 
@@ -262,11 +271,15 @@ export async function deleteUserQuote(walletAddress: string): Promise<void> {
 
   // Also remove from beneficiary index
   const beneficiaryQuoteIds =
-    (await runtime.getCache<string[]>(`beneficiary_quotes:${normalized}`)) ?? [];
+    (await runtime.getCache<string[]>(`beneficiary_quotes:${normalized}`)) ??
+    [];
   const updatedBeneficiaryQuoteIds = beneficiaryQuoteIds.filter(
     (id) => id !== quote.quoteId,
   );
-  await runtime.setCache(`beneficiary_quotes:${normalized}`, updatedBeneficiaryQuoteIds);
+  await runtime.setCache(
+    `beneficiary_quotes:${normalized}`,
+    updatedBeneficiaryQuoteIds,
+  );
 
   const allQuotes = (await runtime.getCache<string[]>("all_quotes")) ?? [];
   const updatedAllQuotes = allQuotes.filter((id) => id !== quote.quoteId);

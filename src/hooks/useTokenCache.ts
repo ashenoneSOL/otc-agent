@@ -18,21 +18,21 @@ const CACHE_DURATION = 30000; // 30 seconds
 async function fetchTokenFromChain(tokenId: string): Promise<Token | null> {
   const parts = tokenId.split("-");
   if (parts.length < 3) return null;
-  
+
   const chain = parts[1];
   const address = parts[2] as `0x${string}`;
-  
+
   if (!address?.startsWith("0x")) return null;
-  
+
   // For now, only support base chain for on-chain fallback
   if (chain !== "base") return null;
-  
+
   try {
     const publicClient = createPublicClient({
       chain: base,
       transport: http("/api/rpc/base"),
     });
-    
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const readContract = publicClient.readContract.bind(publicClient) as any;
     const [symbol, name, decimals] = await Promise.all([
@@ -52,7 +52,7 @@ async function fetchTokenFromChain(tokenId: string): Promise<Token | null> {
         functionName: "decimals",
       }),
     ]);
-    
+
     return {
       id: tokenId,
       symbol: symbol as string,
@@ -130,7 +130,7 @@ export function useTokenCache(tokenId: string | null) {
             globalTokenCache.set(id, entry);
             return entry;
           }
-          
+
           // Fallback: fetch from blockchain if not in database
           const chainToken = await fetchTokenFromChain(id);
           if (chainToken) {
@@ -142,7 +142,7 @@ export function useTokenCache(tokenId: string | null) {
             globalTokenCache.set(id, entry);
             return entry;
           }
-          
+
           return null;
         })();
 

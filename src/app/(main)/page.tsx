@@ -30,13 +30,16 @@ const INITIAL_FILTERS = {
 
 function MarketplaceContent() {
   useRenderTracker("MarketplaceContent");
-  
+
   const [filters, setFilters] = useState(INITIAL_FILTERS);
-  
+
   // Memoize the callback to prevent DealFilters re-renders
-  const handleFiltersChange = useCallback((newFilters: typeof INITIAL_FILTERS) => {
-    setFilters(newFilters);
-  }, []);
+  const handleFiltersChange = useCallback(
+    (newFilters: typeof INITIAL_FILTERS) => {
+      setFilters(newFilters);
+    },
+    [],
+  );
 
   return (
     <div className="relative flex flex-col h-full min-h-0">
@@ -44,7 +47,10 @@ function MarketplaceContent() {
         <div className="max-w-7xl mx-auto w-full flex flex-col min-h-0 flex-1">
           {/* Filters - Fixed */}
           <div className="mb-4 flex-shrink-0">
-            <DealFilters filters={filters} onFiltersChange={handleFiltersChange} />
+            <DealFilters
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+            />
           </div>
 
           {/* Deals Grid - Scrollable */}

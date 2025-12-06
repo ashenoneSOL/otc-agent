@@ -18,7 +18,10 @@ interface TokenDealsSectionProps {
 function getDealTerms(c: OTCConsignment) {
   return c.isNegotiable
     ? { discountBps: c.maxDiscountBps ?? 0, lockupDays: c.maxLockupDays ?? 0 }
-    : { discountBps: c.fixedDiscountBps ?? 0, lockupDays: c.fixedLockupDays ?? 0 };
+    : {
+        discountBps: c.fixedDiscountBps ?? 0,
+        lockupDays: c.fixedLockupDays ?? 0,
+      };
 }
 
 function getDealScore(c: OTCConsignment) {
@@ -44,14 +47,16 @@ export function TokenDealsSection({
 
   // Filter to only active consignments with remaining balance
   const activeConsignments = useMemo(
-    () => consignments.filter(
-      (c) => c.status === "active" && BigInt(c.remainingAmount) > 0n
-    ),
+    () =>
+      consignments.filter(
+        (c) => c.status === "active" && BigInt(c.remainingAmount) > 0n,
+      ),
     [consignments],
   );
 
   const sortedConsignments = useMemo(
-    () => [...activeConsignments].sort((a, b) => getDealScore(b) - getDealScore(a)),
+    () =>
+      [...activeConsignments].sort((a, b) => getDealScore(b) - getDealScore(a)),
     [activeConsignments],
   );
 
@@ -113,8 +118,9 @@ export function TokenDealsSection({
                       Price:{" "}
                     </span>
                     <span className="font-medium">
-                      ${marketData.priceUsd < 0.0001 
-                        ? marketData.priceUsd.toExponential(2) 
+                      $
+                      {marketData.priceUsd < 0.0001
+                        ? marketData.priceUsd.toExponential(2)
                         : marketData.priceUsd.toFixed(4)}
                     </span>
                   </div>
@@ -128,7 +134,9 @@ export function TokenDealsSection({
                   <span className="text-zinc-600 dark:text-zinc-400">
                     Listings:{" "}
                   </span>
-                  <span className="font-medium">{activeConsignments.length}</span>
+                  <span className="font-medium">
+                    {activeConsignments.length}
+                  </span>
                 </div>
               </div>
             </div>

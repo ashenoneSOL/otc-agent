@@ -231,4 +231,3 @@ export function parseMessageXML(messageText: string): {
 
   return { type: null, data: null };
 }
-

@@ -290,11 +290,15 @@ async function fetchAlchemyBalances(
 
     // Step 2: Get bulk metadata cache (single fast lookup)
     const bulkCache = await getBulkMetadataCache(chain);
-    const cachedMetadata: Record<string, CachedTokenMetadata> = { ...bulkCache };
+    const cachedMetadata: Record<string, CachedTokenMetadata> = {
+      ...bulkCache,
+    };
     const needsMetadata: string[] = [];
 
     for (const t of nonZeroBalances) {
-      const addr = (t as { contractAddress: string }).contractAddress.toLowerCase();
+      const addr = (
+        t as { contractAddress: string }
+      ).contractAddress.toLowerCase();
       if (!cachedMetadata[addr]) {
         needsMetadata.push(addr);
       }
@@ -353,12 +357,14 @@ async function fetchAlchemyBalances(
       }
 
       // Update bulk cache with new metadata (merge with existing to handle concurrent requests)
-      getBulkMetadataCache(chain).then(existing => {
-        const merged = { ...existing, ...cachedMetadata };
-        setBulkMetadataCache(chain, merged).catch((err) => 
-          console.debug("[EVM Balances] Cache write failed:", err)
-        );
-      }).catch(() => {});
+      getBulkMetadataCache(chain)
+        .then((existing) => {
+          const merged = { ...existing, ...cachedMetadata };
+          setBulkMetadataCache(chain, merged).catch((err) =>
+            console.debug("[EVM Balances] Cache write failed:", err),
+          );
+        })
+        .catch(() => {});
     }
 
     // Step 4: Build token list
@@ -596,12 +602,14 @@ export async function GET(request: NextRequest) {
         }
       }
       // Merge with existing to handle concurrent requests
-      getBulkPriceCache(chain).then(existing => {
-        const merged = { ...existing, ...allPrices };
-        setBulkPriceCache(chain, merged).catch((err) =>
-          console.debug("[EVM Balances] Price cache write failed:", err)
-        );
-      }).catch(() => {});
+      getBulkPriceCache(chain)
+        .then((existing) => {
+          const merged = { ...existing, ...allPrices };
+          setBulkPriceCache(chain, merged).catch((err) =>
+            console.debug("[EVM Balances] Price cache write failed:", err),
+          );
+        })
+        .catch(() => {});
     }
 
     // Calculate USD values

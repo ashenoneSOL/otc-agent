@@ -27,7 +27,7 @@ export type SanitizedConsignment = Omit<
  * to discover the seller's min/max discount and lockup bounds.
  */
 export function sanitizeConsignmentForBuyer(
-  consignment: OTCConsignment
+  consignment: OTCConsignment,
 ): SanitizedConsignment {
   const sanitized: Record<string, unknown> = { ...consignment };
 
@@ -48,7 +48,7 @@ export function sanitizeConsignmentForBuyer(
  */
 export function isConsignmentOwner(
   consignment: OTCConsignment,
-  callerAddress: string | null | undefined
+  callerAddress: string | null | undefined,
 ): boolean {
   if (!callerAddress) return false;
 
@@ -63,4 +63,3 @@ export function isConsignmentOwner(
 
   return normalizedCaller === normalizedConsigner;
 }
-

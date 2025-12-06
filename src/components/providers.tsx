@@ -32,7 +32,7 @@ const solanaConnectors = toSolanaWalletConnectors();
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useRenderTracker("Providers");
-  
+
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -81,7 +81,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         },
       },
     }),
-    [] // chains[0] and chains are stable module-level imports
+    [], // chains[0] and chains are stable module-level imports
   );
 
   if (!mounted) {

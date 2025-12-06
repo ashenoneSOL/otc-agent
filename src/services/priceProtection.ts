@@ -55,5 +55,4 @@ export class PriceProtectionService {
         : `Price moved ${deviationBps / 100}%, exceeding maximum allowed ${maxDeviationBps / 100}%`,
     };
   }
-
 }

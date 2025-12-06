@@ -394,7 +394,7 @@ export async function POST(request: NextRequest) {
   // This handles the case where frontend calls us immediately after tx submission
   let offer;
   const maxPollAttempts = 10; // 10 attempts * 2 seconds = 20 seconds max wait
-  
+
   for (let attempt = 1; attempt <= maxPollAttempts; attempt++) {
     const offerRaw = await safeReadContract<RawOfferData>(publicClient, {
       address: OTC_ADDRESS,
@@ -402,25 +402,35 @@ export async function POST(request: NextRequest) {
       functionName: "offers",
       args: [BigInt(offerId)],
     });
-    
+
     offer = parseOfferStruct(offerRaw);
-    
+
     // Check if offer exists (beneficiary is set when offer is created)
-    if (offer.beneficiary && offer.beneficiary !== "0x0000000000000000000000000000000000000000") {
+    if (
+      offer.beneficiary &&
+      offer.beneficiary !== "0x0000000000000000000000000000000000000000"
+    ) {
       console.log(`[Approve API] Offer found on attempt ${attempt}`);
       break;
     }
-    
+
     if (attempt < maxPollAttempts) {
-      console.log(`[Approve API] Offer ${offerId} not found yet, waiting... (${attempt}/${maxPollAttempts})`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log(
+        `[Approve API] Offer ${offerId} not found yet, waiting... (${attempt}/${maxPollAttempts})`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
 
-  if (!offer?.beneficiary || offer.beneficiary === "0x0000000000000000000000000000000000000000") {
+  if (
+    !offer?.beneficiary ||
+    offer.beneficiary === "0x0000000000000000000000000000000000000000"
+  ) {
     return NextResponse.json(
-      { error: `Offer ${offerId} not found after ${maxPollAttempts} attempts. Transaction may still be pending.` },
-      { status: 404 }
+      {
+        error: `Offer ${offerId} not found after ${maxPollAttempts} attempts. Transaction may still be pending.`,
+      },
+      { status: 404 },
     );
   }
 
@@ -443,13 +453,14 @@ export async function POST(request: NextRequest) {
   // Validate that the offer price hasn't diverged too much from market price
   // This prevents abuse from stale quotes or manipulated pool prices
   const MAX_PRICE_DIVERGENCE_BPS = 1000; // 10% maximum divergence
-  
+
   // Skip price validation for local development (Anvil has mock prices)
-  const isLocalNetwork = process.env.NEXT_PUBLIC_NETWORK === "localhost" || 
-                         process.env.NEXT_PUBLIC_NETWORK === "anvil" ||
-                         process.env.NETWORK === "localhost" ||
-                         process.env.NETWORK === "anvil";
-  
+  const isLocalNetwork =
+    process.env.NEXT_PUBLIC_NETWORK === "localhost" ||
+    process.env.NEXT_PUBLIC_NETWORK === "anvil" ||
+    process.env.NETWORK === "localhost" ||
+    process.env.NETWORK === "anvil";
+
   if (isLocalNetwork) {
     console.log("[Approve API] Skipping price validation on local network");
   }
@@ -538,7 +549,10 @@ export async function POST(request: NextRequest) {
         });
 
         // Reject if divergence exceeds threshold (skip on local network)
-        if (priceCheck.divergencePercent > MAX_PRICE_DIVERGENCE_BPS / 100 && !isLocalNetwork) {
+        if (
+          priceCheck.divergencePercent > MAX_PRICE_DIVERGENCE_BPS / 100 &&
+          !isLocalNetwork
+        ) {
           return NextResponse.json(
             {
               success: false,
@@ -553,8 +567,15 @@ export async function POST(request: NextRequest) {
             },
             { status: 400 },
           );
-        } else if (isLocalNetwork && priceCheck.divergencePercent > MAX_PRICE_DIVERGENCE_BPS / 100) {
-          console.log("[Approve API] Skipping price rejection on local network (divergence:", priceCheck.divergencePercent, "%)");
+        } else if (
+          isLocalNetwork &&
+          priceCheck.divergencePercent > MAX_PRICE_DIVERGENCE_BPS / 100
+        ) {
+          console.log(
+            "[Approve API] Skipping price rejection on local network (divergence:",
+            priceCheck.divergencePercent,
+            "%)",
+          );
         }
       } else {
         console.log("[Approve API] Price validation passed:", {

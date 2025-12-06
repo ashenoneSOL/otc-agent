@@ -108,7 +108,7 @@ export function MultiWalletProvider({
   children: React.ReactNode;
 }) {
   useRenderTracker("MultiWalletProvider");
-  
+
   const {
     ready: privyReady,
     authenticated: privyAuthenticated,
@@ -123,7 +123,7 @@ export function MultiWalletProvider({
   const { connect: connectWagmi, connectors } = useConnect();
   const { isConnected: isWagmiConnected, address: wagmiAddress } = useAccount();
   const chainId = useChainId();
-  
+
   // Track previous state to avoid logging on every render
   const prevStateRef = useRef<string | null>(null);
 
@@ -183,7 +183,7 @@ export function MultiWalletProvider({
   // Persisted to localStorage to remember user's chain choice across sessions
   // Use ref to track if we've initialized to avoid re-running initialization logic
   const preferenceInitializedRef = useRef(false);
-  
+
   const [preferredFamily, setPreferredFamily] = useState<ChainFamily | null>(
     () => {
       if (typeof window === "undefined") return null;
@@ -225,7 +225,10 @@ export function MultiWalletProvider({
     const handleCustomEvent = () => {
       const saved = localStorage.getItem("otc-preferred-chain");
       // Use ref to compare to avoid triggering unnecessarily
-      if ((saved === "evm" || saved === "solana") && saved !== preferredFamilyRef.current) {
+      if (
+        (saved === "evm" || saved === "solana") &&
+        saved !== preferredFamilyRef.current
+      ) {
         setPreferredFamily(saved);
       }
     };
@@ -235,7 +238,10 @@ export function MultiWalletProvider({
 
     return () => {
       window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("otc-chain-preference-changed", handleCustomEvent);
+      window.removeEventListener(
+        "otc-chain-preference-changed",
+        handleCustomEvent,
+      );
     };
   }, []); // Empty deps - listeners set up once
 
@@ -257,7 +263,13 @@ export function MultiWalletProvider({
     } else if (privyEvmWallet || isWagmiConnected) {
       setPreferredFamily("evm");
     }
-  }, [privyAuthenticated, preferredFamily, isWagmiConnected, privyEvmWallet, privySolanaWallet]);
+  }, [
+    privyAuthenticated,
+    preferredFamily,
+    isWagmiConnected,
+    privyEvmWallet,
+    privySolanaWallet,
+  ]);
 
   // === Derived active family ===
   // Single source of truth: derived from connection state + preference
@@ -303,7 +315,7 @@ export function MultiWalletProvider({
   // Use refs to ensure these only run once
   const envDetectionRef = useRef(false);
   const farcasterAutoConnectRef = useRef(false);
-  
+
   const [isFarcasterContext, setIsFarcasterContext] = useState(false);
   const [isPhantomInstalled, setIsPhantomInstalled] = useState(false);
 
@@ -315,7 +327,9 @@ export function MultiWalletProvider({
     const checkPhantom = () => {
       const phantomWindow = window as PhantomWindow;
       const hasPhantom = !!phantomWindow.phantom?.solana?.isPhantom;
-      setIsPhantomInstalled((prev) => prev !== hasPhantom ? hasPhantom : prev);
+      setIsPhantomInstalled((prev) =>
+        prev !== hasPhantom ? hasPhantom : prev,
+      );
     };
     checkPhantom();
     const timer = setTimeout(checkPhantom, 1000);
@@ -330,9 +344,13 @@ export function MultiWalletProvider({
               miniappSdk.actions.ready();
             }
           })
-          .catch(() => {/* Not in Farcaster context */});
+          .catch(() => {
+            /* Not in Farcaster context */
+          });
       })
-      .catch(() => {/* SDK not available */});
+      .catch(() => {
+        /* SDK not available */
+      });
 
     return () => clearTimeout(timer);
   }, []);
@@ -361,7 +379,7 @@ export function MultiWalletProvider({
   useEffect(() => {
     let mounted = true;
     const currentAddress = privySolanaWallet?.address ?? null;
-    
+
     // Skip if wallet address hasn't changed
     if (solanaWalletAddressRef.current === currentAddress) return;
     solanaWalletAddressRef.current = currentAddress;
@@ -463,7 +481,7 @@ export function MultiWalletProvider({
   // Debug logging in development - only log when state actually changes
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
-    
+
     const stateKey = JSON.stringify({
       evmConnected,
       solanaConnected,
@@ -473,11 +491,11 @@ export function MultiWalletProvider({
       solanaPublicKey,
       preferredFamily,
     });
-    
+
     // Only log if state actually changed
     if (prevStateRef.current === stateKey) return;
     prevStateRef.current = stateKey;
-    
+
     console.log("[MultiWallet] State changed:", {
       privyAuthenticated,
       privyReady,
@@ -623,7 +641,7 @@ export function MultiWalletProvider({
       connectSolanaWallet,
       switchSolanaWallet,
       disconnect,
-    ]
+    ],
   );
 
   return (

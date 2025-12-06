@@ -80,7 +80,8 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
 
     // For mainnet, use proxy route to keep Alchemy key server-side
     // For testnet, use public Sepolia RPC
-    const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL ||
+    const rpcUrl =
+      process.env.NEXT_PUBLIC_BASE_RPC_URL ||
       (isMainnet ? "/api/rpc/base" : "https://sepolia.base.org");
 
     return {

@@ -28,7 +28,7 @@ function getOtcAddress(): Address | undefined {
   if (cachedOtcAddress !== undefined || addressLogged) {
     return cachedOtcAddress;
   }
-  
+
   // Try environment variables first
   const envAddress =
     process.env.NEXT_PUBLIC_BASE_OTC_ADDRESS ||
@@ -255,19 +255,22 @@ export function useOTC(): {
   });
   // Track previous data to only log when actually changed
   const prevMyOfferIdsRef = useRef<string | null>(null);
-  
+
   const myOfferIds = useMemo(() => {
     const ids = (myOfferIdsRes.data as bigint[] | undefined) ?? [];
-    
+
     // Only log if data actually changed
     if (process.env.NODE_ENV === "development") {
       const idsKey = ids.map((id) => id.toString()).join(",");
       if (prevMyOfferIdsRef.current !== idsKey) {
         prevMyOfferIdsRef.current = idsKey;
-        console.log("[useOTC] My offer IDs from contract:", ids.map((id) => id.toString()));
+        console.log(
+          "[useOTC] My offer IDs from contract:",
+          ids.map((id) => id.toString()),
+        );
       }
     }
-    
+
     return ids;
   }, [myOfferIdsRes.data]);
 
@@ -337,71 +340,86 @@ export function useOTC(): {
     );
   }
 
-  const claim = useCallback(async (offerId: bigint) => {
-    if (!otcAddress) throw new Error("No OTC address");
-    if (!account) throw new Error("No wallet connected");
-    return writeContractAsync({
-      address: otcAddress,
-      abi,
-      functionName: "claim",
-      args: [offerId],
-    });
-  }, [otcAddress, account, abi]);
+  const claim = useCallback(
+    async (offerId: bigint) => {
+      if (!otcAddress) throw new Error("No OTC address");
+      if (!account) throw new Error("No wallet connected");
+      return writeContractAsync({
+        address: otcAddress,
+        abi,
+        functionName: "claim",
+        args: [offerId],
+      });
+    },
+    [otcAddress, account, abi],
+  );
 
-  const createOffer = useCallback(async (params: {
-    tokenAmountWei: bigint;
-    discountBps: number;
-    paymentCurrency: 0 | 1;
-    lockupSeconds?: bigint;
-  }) => {
-    if (!otcAddress) throw new Error("No OTC address");
-    if (!account) throw new Error("No wallet connected");
-    return writeContractAsync({
-      address: otcAddress,
-      abi,
-      functionName: "createOffer",
-      args: [
-        params.tokenAmountWei,
-        BigInt(params.discountBps),
-        params.paymentCurrency,
-        params.lockupSeconds ?? 0n,
-      ],
-    });
-  }, [otcAddress, account, abi]);
+  const createOffer = useCallback(
+    async (params: {
+      tokenAmountWei: bigint;
+      discountBps: number;
+      paymentCurrency: 0 | 1;
+      lockupSeconds?: bigint;
+    }) => {
+      if (!otcAddress) throw new Error("No OTC address");
+      if (!account) throw new Error("No wallet connected");
+      return writeContractAsync({
+        address: otcAddress,
+        abi,
+        functionName: "createOffer",
+        args: [
+          params.tokenAmountWei,
+          BigInt(params.discountBps),
+          params.paymentCurrency,
+          params.lockupSeconds ?? 0n,
+        ],
+      });
+    },
+    [otcAddress, account, abi],
+  );
 
-  const approveOffer = useCallback(async (offerId: bigint) => {
-    if (!otcAddress) throw new Error("No OTC address");
-    if (!account) throw new Error("No wallet connected");
-    return writeContractAsync({
-      address: otcAddress,
-      abi,
-      functionName: "approveOffer",
-      args: [offerId],
-    });
-  }, [otcAddress, account, abi]);
+  const approveOffer = useCallback(
+    async (offerId: bigint) => {
+      if (!otcAddress) throw new Error("No OTC address");
+      if (!account) throw new Error("No wallet connected");
+      return writeContractAsync({
+        address: otcAddress,
+        abi,
+        functionName: "approveOffer",
+        args: [offerId],
+      });
+    },
+    [otcAddress, account, abi],
+  );
 
-  const cancelOffer = useCallback(async (offerId: bigint) => {
-    if (!otcAddress) throw new Error("No OTC address");
-    if (!account) throw new Error("No wallet connected");
-    return writeContractAsync({
-      address: otcAddress,
-      abi,
-      functionName: "cancelOffer",
-      args: [offerId],
-    });
-  }, [otcAddress, account, abi]);
+  const cancelOffer = useCallback(
+    async (offerId: bigint) => {
+      if (!otcAddress) throw new Error("No OTC address");
+      if (!account) throw new Error("No wallet connected");
+      return writeContractAsync({
+        address: otcAddress,
+        abi,
+        functionName: "cancelOffer",
+        args: [offerId],
+      });
+    },
+    [otcAddress, account, abi],
+  );
 
-  const fulfillOffer = useCallback(async (offerId: bigint, valueWei?: bigint) => {
-    if (!otcAddress) throw new Error("No OTC address");
-    if (!account) throw new Error("No wallet connected");
-    return writeContractAsync({
-      address: otcAddress,
-      abi,
-      functionName: "fulfillOffer",
-      args: [offerId],
-      value: valueWei,
-    });
-  }, [otcAddress, account, abi]);
+  const fulfillOffer = useCallback(
+    async (offerId: bigint, valueWei?: bigint) => {
+      if (!otcAddress) throw new Error("No OTC address");
+      if (!account) throw new Error("No wallet connected");
+      return writeContractAsync({
+        address: otcAddress,
+        abi,
+        functionName: "fulfillOffer",
+        args: [offerId],
+        value: valueWei,
+      });
+    },
+    [otcAddress, account, abi],
+  );
 
   const usdcAddressRes = useReadContract({
     address: otcAddress,
@@ -425,220 +443,242 @@ export function useOTC(): {
     query: { enabled: enabled && Boolean(otcAddress) },
   });
 
-  const approveUsdc = useCallback(async (amount: bigint) => {
-    if (!otcAddress || !usdcAddress) throw new Error("Missing addresses");
-    if (!account) throw new Error("No wallet connected");
-    return writeContractAsync({
-      address: usdcAddress,
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [otcAddress, amount],
-    });
-  }, [otcAddress, usdcAddress, account]);
+  const approveUsdc = useCallback(
+    async (amount: bigint) => {
+      if (!otcAddress || !usdcAddress) throw new Error("Missing addresses");
+      if (!account) throw new Error("No wallet connected");
+      return writeContractAsync({
+        address: usdcAddress,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [otcAddress, amount],
+      });
+    },
+    [otcAddress, usdcAddress, account],
+  );
 
-  const emergencyRefund = useCallback(async (offerId: bigint) => {
-    if (!otcAddress) throw new Error("No OTC address");
-    if (!account) throw new Error("No wallet connected");
-    return writeContractAsync({
-      address: otcAddress,
-      abi,
-      functionName: "emergencyRefund",
-      args: [offerId],
-    });
-  }, [otcAddress, account, abi]);
+  const emergencyRefund = useCallback(
+    async (offerId: bigint) => {
+      if (!otcAddress) throw new Error("No OTC address");
+      if (!account) throw new Error("No wallet connected");
+      return writeContractAsync({
+        address: otcAddress,
+        abi,
+        functionName: "emergencyRefund",
+        args: [offerId],
+      });
+    },
+    [otcAddress, account, abi],
+  );
 
-  const withdrawConsignment = useCallback(async (consignmentId: bigint) => {
-    if (!otcAddress) throw new Error("No OTC address");
-    if (!account) throw new Error("No wallet connected");
-    return writeContractAsync({
-      address: otcAddress,
-      abi,
-      functionName: "withdrawConsignment",
-      args: [consignmentId],
-    });
-  }, [otcAddress, account, abi]);
+  const withdrawConsignment = useCallback(
+    async (consignmentId: bigint) => {
+      if (!otcAddress) throw new Error("No OTC address");
+      if (!account) throw new Error("No wallet connected");
+      return writeContractAsync({
+        address: otcAddress,
+        abi,
+        functionName: "withdrawConsignment",
+        args: [consignmentId],
+      });
+    },
+    [otcAddress, account, abi],
+  );
 
-  const createConsignmentOnChain = useCallback(async (
-    params: ConsignmentParams,
-    onTxSubmitted?: (txHash: string) => void,
-  ): Promise<ConsignmentCreationResult> => {
-    if (!otcAddress) throw new Error("No OTC address");
-    if (!account) throw new Error("No wallet connected");
+  const createConsignmentOnChain = useCallback(
+    async (
+      params: ConsignmentParams,
+      onTxSubmitted?: (txHash: string) => void,
+    ): Promise<ConsignmentCreationResult> => {
+      if (!otcAddress) throw new Error("No OTC address");
+      if (!account) throw new Error("No wallet connected");
 
-    // Compute the contract tokenId (keccak256 of the symbol)
-    // The symbol is passed directly from the selected token, no DB lookup needed
-    const tokenIdBytes32 = keccak256(stringToBytes(params.tokenSymbol));
+      // Compute the contract tokenId (keccak256 of the symbol)
+      // The symbol is passed directly from the selected token, no DB lookup needed
+      const tokenIdBytes32 = keccak256(stringToBytes(params.tokenSymbol));
 
-    const txHash = await writeContractAsync({
-      address: otcAddress,
-      abi,
-      functionName: "createConsignment",
-      args: [
-        tokenIdBytes32,
-        params.amount,
-        params.isNegotiable,
-        params.fixedDiscountBps,
-        params.fixedLockupDays,
-        params.minDiscountBps,
-        params.maxDiscountBps,
-        params.minLockupDays,
-        params.maxLockupDays,
-        params.minDealAmount,
-        params.maxDealAmount,
-        params.isFractionalized,
-        params.isPrivate,
-        params.maxPriceVolatilityBps,
-        params.maxTimeToExecute,
-      ],
-      value: params.gasDeposit,
-    });
-
-    // Notify caller that tx was submitted (before waiting for receipt)
-    // This allows UI to update immediately with tx hash
-    console.log("[useOTC] Transaction submitted:", txHash);
-    if (onTxSubmitted) {
-      onTxSubmitted(txHash);
-    }
-
-    // Wait for transaction receipt and parse the consignmentId from the event
-    // Use manual polling to avoid RPC timeout/rate limit issues
-    console.log("[useOTC] Waiting for transaction receipt:", txHash);
-    if (!publicClient) {
-      throw new Error("Public client not available");
-    }
-
-    // Quick poll for receipt - if not found fast, use fallback ID
-    // Backend can resolve actual consignmentId later via tx hash
-    let receipt = null;
-    const maxAttempts = 5; // 5 attempts * 2 seconds = 10 seconds max
-    const pollInterval = 2000;
-    
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        receipt = await publicClient.getTransactionReceipt({ 
-          hash: txHash as `0x${string}` 
-        });
-        if (receipt) {
-          console.log(`[useOTC] Receipt found on attempt ${attempt}`);
-          break;
-        }
-      } catch {
-        // Receipt not found yet
-      }
-      
-      if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-      }
-    }
-    
-    if (!receipt) {
-      console.warn(`[useOTC] No receipt after ${maxAttempts} attempts, using fallback`);
-    }
-    
-    // If we got a receipt, parse the consignment ID from the event
-    if (receipt) {
-      console.log("[useOTC] Receipt received, parsing ConsignmentCreated event");
-      console.log("[useOTC] Receipt logs count:", receipt.logs.length);
-      console.log("[useOTC] OTC contract address:", otcAddress);
-
-      // Find ConsignmentCreated event from the OTC contract
-      const logs = receipt.logs as TransactionLog[];
-      const consignmentCreatedEvent = logs.find((log) => {
-        if (log.address.toLowerCase() !== otcAddress.toLowerCase()) {
-          return false;
-        }
-
-        try {
-          const decoded = decodeEventLog({
-            abi,
-            data: log.data,
-            topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
-          });
-          console.log("[useOTC] Decoded event:", decoded.eventName);
-          return decoded.eventName === "ConsignmentCreated";
-        } catch (e) {
-          console.log("[useOTC] Failed to decode log:", e);
-          return false;
-        }
+      const txHash = await writeContractAsync({
+        address: otcAddress,
+        abi,
+        functionName: "createConsignment",
+        args: [
+          tokenIdBytes32,
+          params.amount,
+          params.isNegotiable,
+          params.fixedDiscountBps,
+          params.fixedLockupDays,
+          params.minDiscountBps,
+          params.maxDiscountBps,
+          params.minLockupDays,
+          params.maxLockupDays,
+          params.minDealAmount,
+          params.maxDealAmount,
+          params.isFractionalized,
+          params.isPrivate,
+          params.maxPriceVolatilityBps,
+          params.maxTimeToExecute,
+        ],
+        value: params.gasDeposit,
       });
 
-      if (consignmentCreatedEvent) {
-        const decoded = decodeEventLog({
-          abi,
-          data: consignmentCreatedEvent.data,
-          topics: consignmentCreatedEvent.topics as [
-            `0x${string}`,
-            ...`0x${string}`[],
-          ],
-        });
-
-        const args = decoded.args as unknown as Record<string, unknown>;
-        const consignmentId = args.consignmentId as bigint;
-        console.log(
-          "[useOTC] Consignment created with ID:",
-          consignmentId.toString(),
-        );
-
-        return { txHash: txHash as `0x${string}`, consignmentId };
+      // Notify caller that tx was submitted (before waiting for receipt)
+      // This allows UI to update immediately with tx hash
+      console.log("[useOTC] Transaction submitted:", txHash);
+      if (onTxSubmitted) {
+        onTxSubmitted(txHash);
       }
 
-      console.warn(
-        "[useOTC] No ConsignmentCreated event found in receipt, using tx hash as ID",
-      );
-    } else {
-      console.warn(
-        "[useOTC] Could not get receipt (timeout/rate limit), using tx hash as ID",
-      );
-    }
+      // Wait for transaction receipt and parse the consignmentId from the event
+      // Use manual polling to avoid RPC timeout/rate limit issues
+      console.log("[useOTC] Waiting for transaction receipt:", txHash);
+      if (!publicClient) {
+        throw new Error("Public client not available");
+      }
 
-    // Fallback: use a hash of the tx hash as the consignment ID
-    // This allows the flow to continue even if RPC is rate limited
-    // The actual consignment ID can be looked up later from the tx
-    const fallbackId = BigInt(txHash.slice(0, 18));
-    console.log("[useOTC] Using fallback consignment ID:", fallbackId.toString());
-    return { txHash: txHash as `0x${string}`, consignmentId: fallbackId };
-  }, [otcAddress, account, abi, publicClient]);
+      // Quick poll for receipt - if not found fast, use fallback ID
+      // Backend can resolve actual consignmentId later via tx hash
+      let receipt = null;
+      const maxAttempts = 5; // 5 attempts * 2 seconds = 10 seconds max
+      const pollInterval = 2000;
 
-  const approveToken = useCallback(async (tokenAddress: Address, amount: bigint) => {
-    if (!account) throw new Error("No wallet connected");
-    if (!otcAddress) throw new Error("OTC contract address not configured");
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          receipt = await publicClient.getTransactionReceipt({
+            hash: txHash as `0x${string}`,
+          });
+          if (receipt) {
+            console.log(`[useOTC] Receipt found on attempt ${attempt}`);
+            break;
+          }
+        } catch {
+          // Receipt not found yet
+        }
 
-    const network = process.env.NEXT_PUBLIC_NETWORK || "testnet";
-    console.log("[useOTC] approveToken - network config:", network);
-    console.log("[useOTC] approveToken - token:", tokenAddress);
-    console.log("[useOTC] approveToken - spender (OTC):", otcAddress);
-    console.log("[useOTC] approveToken - wallet chainId:", chainId);
-    console.log("[useOTC] approveToken - amount:", amount.toString());
+        if (attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, pollInterval));
+        }
+      }
 
-    // Warn if there might be a network mismatch
-    const isMainnetConfig = network === "mainnet";
-    const isMainnetWallet = chainId === 8453; // Base mainnet
-    const isTestnetWallet = chainId === 84532; // Base Sepolia
+      if (!receipt) {
+        console.warn(
+          `[useOTC] No receipt after ${maxAttempts} attempts, using fallback`,
+        );
+      }
 
-    if (isMainnetConfig && isTestnetWallet) {
-      console.error(
-        "[useOTC] NETWORK MISMATCH: App is configured for mainnet but wallet is on Base Sepolia",
+      // If we got a receipt, parse the consignment ID from the event
+      if (receipt) {
+        console.log(
+          "[useOTC] Receipt received, parsing ConsignmentCreated event",
+        );
+        console.log("[useOTC] Receipt logs count:", receipt.logs.length);
+        console.log("[useOTC] OTC contract address:", otcAddress);
+
+        // Find ConsignmentCreated event from the OTC contract
+        const logs = receipt.logs as TransactionLog[];
+        const consignmentCreatedEvent = logs.find((log) => {
+          if (log.address.toLowerCase() !== otcAddress.toLowerCase()) {
+            return false;
+          }
+
+          try {
+            const decoded = decodeEventLog({
+              abi,
+              data: log.data,
+              topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
+            });
+            console.log("[useOTC] Decoded event:", decoded.eventName);
+            return decoded.eventName === "ConsignmentCreated";
+          } catch (e) {
+            console.log("[useOTC] Failed to decode log:", e);
+            return false;
+          }
+        });
+
+        if (consignmentCreatedEvent) {
+          const decoded = decodeEventLog({
+            abi,
+            data: consignmentCreatedEvent.data,
+            topics: consignmentCreatedEvent.topics as [
+              `0x${string}`,
+              ...`0x${string}`[],
+            ],
+          });
+
+          const args = decoded.args as unknown as Record<string, unknown>;
+          const consignmentId = args.consignmentId as bigint;
+          console.log(
+            "[useOTC] Consignment created with ID:",
+            consignmentId.toString(),
+          );
+
+          return { txHash: txHash as `0x${string}`, consignmentId };
+        }
+
+        console.warn(
+          "[useOTC] No ConsignmentCreated event found in receipt, using tx hash as ID",
+        );
+      } else {
+        console.warn(
+          "[useOTC] Could not get receipt (timeout/rate limit), using tx hash as ID",
+        );
+      }
+
+      // Fallback: use a hash of the tx hash as the consignment ID
+      // This allows the flow to continue even if RPC is rate limited
+      // The actual consignment ID can be looked up later from the tx
+      const fallbackId = BigInt(txHash.slice(0, 18));
+      console.log(
+        "[useOTC] Using fallback consignment ID:",
+        fallbackId.toString(),
       );
-      throw new Error(
-        "Network mismatch: Please switch your wallet to Base mainnet",
-      );
-    }
-    if (!isMainnetConfig && isMainnetWallet) {
-      console.error(
-        "[useOTC] NETWORK MISMATCH: App is configured for testnet but wallet is on Base mainnet",
-      );
-      throw new Error(
-        "Network mismatch: Please switch your wallet to Base Sepolia (testnet) or set NEXT_PUBLIC_NETWORK=mainnet",
-      );
-    }
+      return { txHash: txHash as `0x${string}`, consignmentId: fallbackId };
+    },
+    [otcAddress, account, abi, publicClient],
+  );
 
-    return writeContractAsync({
-      address: tokenAddress,
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [otcAddress, amount],
-    });
-  }, [account, otcAddress, chainId]);
+  const approveToken = useCallback(
+    async (tokenAddress: Address, amount: bigint) => {
+      if (!account) throw new Error("No wallet connected");
+      if (!otcAddress) throw new Error("OTC contract address not configured");
+
+      const network = process.env.NEXT_PUBLIC_NETWORK || "testnet";
+      console.log("[useOTC] approveToken - network config:", network);
+      console.log("[useOTC] approveToken - token:", tokenAddress);
+      console.log("[useOTC] approveToken - spender (OTC):", otcAddress);
+      console.log("[useOTC] approveToken - wallet chainId:", chainId);
+      console.log("[useOTC] approveToken - amount:", amount.toString());
+
+      // Warn if there might be a network mismatch
+      const isMainnetConfig = network === "mainnet";
+      const isMainnetWallet = chainId === 8453; // Base mainnet
+      const isTestnetWallet = chainId === 84532; // Base Sepolia
+
+      if (isMainnetConfig && isTestnetWallet) {
+        console.error(
+          "[useOTC] NETWORK MISMATCH: App is configured for mainnet but wallet is on Base Sepolia",
+        );
+        throw new Error(
+          "Network mismatch: Please switch your wallet to Base mainnet",
+        );
+      }
+      if (!isMainnetConfig && isMainnetWallet) {
+        console.error(
+          "[useOTC] NETWORK MISMATCH: App is configured for testnet but wallet is on Base mainnet",
+        );
+        throw new Error(
+          "Network mismatch: Please switch your wallet to Base Sepolia (testnet) or set NEXT_PUBLIC_NETWORK=mainnet",
+        );
+      }
+
+      return writeContractAsync({
+        address: tokenAddress,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [otcAddress, amount],
+      });
+    },
+    [account, otcAddress, chainId],
+  );
 
   // Helper to extract contract address from tokenId format: "token-{chain}-{address}"
   const extractContractAddress = useCallback((tokenId: string): Address => {
@@ -651,11 +691,14 @@ export function useOTC(): {
     return tokenId as Address;
   }, []);
 
-  const getTokenAddress = useCallback(async (tokenId: string): Promise<Address> => {
-    // Simply extract the contract address from the tokenId
-    // The tokenId format is "token-{chain}-{contractAddress}"
-    return extractContractAddress(tokenId);
-  }, [extractContractAddress]);
+  const getTokenAddress = useCallback(
+    async (tokenId: string): Promise<Address> => {
+      // Simply extract the contract address from the tokenId
+      // The tokenId format is "token-{chain}-{contractAddress}"
+      return extractContractAddress(tokenId);
+    },
+    [extractContractAddress],
+  );
 
   const getRequiredGasDeposit = useCallback(async (): Promise<bigint> => {
     if (!otcAddress) throw new Error("No OTC address");
@@ -668,25 +711,25 @@ export function useOTC(): {
   }, [otcAddress, publicClient, abi]);
 
   // Helper to get exact required payment amount
-  const getRequiredPayment = useCallback(async (
-    offerId: bigint,
-    currency: "ETH" | "USDC",
-  ): Promise<bigint> => {
-    if (!otcAddress) {
-      throw new Error("OTC address not configured");
-    }
-    if (!publicClient) {
-      throw new Error("Public client not available");
-    }
-    const functionName =
-      currency === "ETH" ? "requiredEthWei" : "requiredUsdcAmount";
-    return readContractFromClient<bigint>(publicClient, {
-      address: otcAddress,
-      abi,
-      functionName,
-      args: [offerId],
-    });
-  }, [otcAddress, publicClient, abi]);
+  const getRequiredPayment = useCallback(
+    async (offerId: bigint, currency: "ETH" | "USDC"): Promise<bigint> => {
+      if (!otcAddress) {
+        throw new Error("OTC address not configured");
+      }
+      if (!publicClient) {
+        throw new Error("Public client not available");
+      }
+      const functionName =
+        currency === "ETH" ? "requiredEthWei" : "requiredUsdcAmount";
+      return readContractFromClient<bigint>(publicClient, {
+        address: otcAddress,
+        abi,
+        functionName,
+        args: [offerId],
+      });
+    },
+    [otcAddress, publicClient, abi],
+  );
 
   const agentAddr = (agentRes.data as Address | undefined) ?? undefined;
   const isAgent =
@@ -705,9 +748,9 @@ export function useOTC(): {
     query: { enabled },
   });
 
-  // Track previous offers data to only log on actual changes  
+  // Track previous offers data to only log on actual changes
   const prevMyOffersDataRef = useRef<string | null>(null);
-  
+
   const myOffers: (Offer & { id: bigint })[] = useMemo(() => {
     const base = myOffersRes.data ?? [];
 
@@ -769,7 +812,9 @@ export function useOTC(): {
 
     // Only log when offers data actually changes
     if (process.env.NODE_ENV === "development" && offers.length > 0) {
-      const offersKey = offers.map(o => `${o.id}:${o.paid}:${o.fulfilled}`).join(",");
+      const offersKey = offers
+        .map((o) => `${o.id}:${o.paid}:${o.fulfilled}`)
+        .join(",");
       if (prevMyOffersDataRef.current !== offersKey) {
         prevMyOffersDataRef.current = offersKey;
         const paidOffers = offers.filter((o) => o.paid);
@@ -780,7 +825,7 @@ export function useOTC(): {
         });
       }
     }
-    
+
     return offers;
   }, [myOfferIds, myOffersRes.data]);
 
