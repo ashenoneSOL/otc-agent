@@ -61,11 +61,11 @@ const SOLANA_DESK = process.env.NEXT_PUBLIC_SOLANA_DESK_MAINNET || process.env.N
 const SOLANA_PROGRAM_ID = process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID || "6qn8ELVXd957oRjLaomCpKpcVZshUjNvSzw1nc7QVyXc";
 const SOLANA_USDC = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
-// Test amounts - use SMALL amounts for safety
-const EVM_LISTING_AMOUNT = parseEther("10"); // 10 tokens to list
-const EVM_BUY_AMOUNT = parseEther("5"); // 5 tokens to buy
+// Test amounts - use amounts that meet minimum USD requirements
+const EVM_LISTING_AMOUNT = parseEther("100"); // 100 tokens to list
+const EVM_BUY_AMOUNT = parseEther("50"); // 50 tokens to buy
 const SOLANA_LISTING_AMOUNT = 1_000_000_000n; // 1 token (9 decimals)
-const SOLANA_BUY_AMOUNT = 500_000_000n; // 0.5 tokens
+const SOLANA_BUY_AMOUNT = 100_000_000_000n; // 100 tokens (to meet min USD of $5 at $0.05/token)
 
 // =============================================================================
 // ABIS
@@ -180,6 +180,8 @@ async function findTestToken(
   // Try to find a token the wallet has balance of
   // First check if there's a configured test token
   const configuredToken = process.env.EVM_TEST_TOKEN as Address | undefined;
+  console.log(`  🔍 Looking for test token: ${configuredToken || "not set"}`);
+  
   if (configuredToken) {
     try {
       const balance = await publicClient.readContract({
@@ -188,12 +190,16 @@ async function findTestToken(
         functionName: "balanceOf",
         args: [wallet],
       });
-      if (balance > EVM_LISTING_AMOUNT) {
-        console.log(`  📋 Using configured token: ${configuredToken}`);
+      console.log(`  📋 Token balance: ${formatEther(balance)} (need ${formatEther(EVM_LISTING_AMOUNT)})`);
+      
+      if (balance > 0n) {
+        console.log(`  ✅ Using configured token: ${configuredToken}`);
         return configuredToken;
+      } else {
+        console.log(`  ⚠️ Wallet has no balance of configured token`);
       }
-    } catch {
-      console.log(`  ⚠️ Configured token not valid`);
+    } catch (e) {
+      console.log(`  ⚠️ Configured token not valid or error:`, e);
     }
   }
   
