@@ -338,12 +338,16 @@ async function fetchAlchemyBalances(
 
               // Fire-and-forget image caching
               if (result.logo) {
-                cacheImageToBlob(result.logo).catch(() => {});
+                cacheImageToBlob(result.logo).catch(() => {
+                  // Ignore image caching failures - non-critical
+                });
               }
 
               return { contractAddress, metadata };
             }
-          } catch {}
+          } catch {
+            // Network/timeout errors when fetching metadata - use fallback
+          }
 
           return {
             contractAddress,
@@ -360,11 +364,13 @@ async function fetchAlchemyBalances(
       getBulkMetadataCache(chain)
         .then((existing) => {
           const merged = { ...existing, ...cachedMetadata };
-          setBulkMetadataCache(chain, merged).catch((err) =>
-            console.debug("[EVM Balances] Cache write failed:", err),
-          );
+          setBulkMetadataCache(chain, merged).catch(() => {
+            // Cache write failures are non-critical
+          });
         })
-        .catch(() => {});
+        .catch(() => {
+          // Cache read failures are non-critical - proceed without merging
+        });
     }
 
     // Step 4: Build token list

@@ -6,6 +6,7 @@ import {
   localhost,
   type Chain,
 } from "viem/chains";
+import { getCurrentNetwork, getEvmConfig } from "@/config/contracts";
 
 // Anvil chain with correct chain ID (31337)
 const anvil: Chain = {
@@ -17,57 +18,34 @@ const anvil: Chain = {
 /**
  * Get the appropriate chain based on environment and configuration
  * Supports: Base, BSC, Anvil/localhost
- *
- * Priority: NEXT_PUBLIC_NETWORK > NETWORK > NODE_ENV inference
  */
 export function getChain(): Chain {
-  const network =
-    process.env.NEXT_PUBLIC_NETWORK || process.env.NETWORK || "testnet";
+  const network = getCurrentNetwork();
 
   // Handle unified network names
   if (network === "mainnet") return base;
   if (network === "testnet") return baseSepolia;
-  if (network === "local" || network === "localnet") return anvil;
+  if (network === "local") return anvil;
 
-  // Handle chain-specific network names
-  switch (network) {
-    case "base":
-      return base;
-    case "base-sepolia":
-      return baseSepolia;
-    case "bsc":
-      return bsc;
-    case "bsc-testnet":
-      return bscTestnet;
-    case "localhost":
-    case "anvil":
-      return anvil;
-    default:
-      // Default to Base Sepolia (testnet)
-      return baseSepolia;
-  }
+  // Default to Base mainnet
+  return base;
 }
 
 /**
  * Get RPC URL for the current chain
+ * Uses deployment config with env override support
  */
 export function getRpcUrl(): string {
-  const network =
-    process.env.NEXT_PUBLIC_NETWORK || process.env.NETWORK || "testnet";
+  const config = getEvmConfig();
+  return config.rpc;
+}
 
-  // Handle unified network names
-  if (network === "mainnet") {
-    return process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
-  }
-  if (network === "testnet") {
-    return process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://sepolia.base.org";
-  }
-  if (network === "local" || network === "localnet") {
-    return process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545";
-  }
-
-  // Handle chain-specific network names
-  switch (network) {
+/**
+ * Get RPC URL for a specific chain type
+ * @param chainType - Chain identifier (base, bsc, localhost, etc.)
+ */
+export function getRpcUrlForChain(chainType: string): string {
+  switch (chainType) {
     case "base":
       return process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://mainnet.base.org";
     case "base-sepolia":
@@ -86,6 +64,6 @@ export function getRpcUrl(): string {
     case "anvil":
       return process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545";
     default:
-      return process.env.NEXT_PUBLIC_BASE_RPC_URL || "https://sepolia.base.org";
+      return getRpcUrl();
   }
 }

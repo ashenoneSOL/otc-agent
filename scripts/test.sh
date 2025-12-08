@@ -111,7 +111,7 @@ echo ""
 # 4. E2E UI Tests (Playwright)
 # ============================================
 echo "=== E2E UI Tests ==="
-npx playwright test e2e/
+npx playwright test tests/ui.spec.ts
 echo ""
 
 echo "=== All Tests Complete ==="

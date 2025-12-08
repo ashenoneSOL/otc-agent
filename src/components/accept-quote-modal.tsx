@@ -24,6 +24,7 @@ import { createPublicClient, http } from "viem";
 import { base, baseSepolia } from "viem/chains";
 import { useAccount, useBalance } from "wagmi";
 import { useTransactionErrorHandler } from "@/hooks/useTransactionErrorHandler";
+import { getCurrentNetwork } from "@/config/contracts";
 
 interface AcceptQuoteModalProps {
   isOpen: boolean;
@@ -254,9 +255,9 @@ export function AcceptQuoteModal({
   const abi = useMemo(() => otcArtifact.abi as Abi, []);
 
   // Determine RPC URL based on network configuration
-  const networkEnv = (process.env.NEXT_PUBLIC_NETWORK || "testnet") as string;
+  const networkEnv = getCurrentNetwork();
   const isMainnet = networkEnv === "mainnet";
-  const isLocal = networkEnv === "local" || networkEnv === "localnet";
+  const isLocal = networkEnv === "local";
 
   const rpcUrl = useMemo(() => {
     if (isLocal) {

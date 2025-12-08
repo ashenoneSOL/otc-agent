@@ -755,8 +755,7 @@ export const Chat = ({
 };
 
 function ChatHeader({
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  messages: _messages,
+  messages: _unusedMessages,
   apiQuote,
   onAcceptOffer,
   isOfferGlowing,

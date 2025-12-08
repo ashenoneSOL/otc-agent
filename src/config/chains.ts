@@ -6,7 +6,7 @@ import {
   localhost,
   type Chain as ViemChain,
 } from "viem/chains";
-import { getContracts } from "./contracts";
+import { getContracts, getCurrentNetwork } from "./contracts";
 
 // String-based chain identifier for database/API (lowercase, URL-safe)
 export type Chain = "ethereum" | "base" | "bsc" | "solana";
@@ -31,25 +31,8 @@ export interface ChainConfig {
   chainId?: number; // Numeric chain ID (EVM only)
 }
 
-// Helper to get current network environment
-// Priority: NEXT_PUBLIC_NETWORK > NEXT_PUBLIC_USE_MAINNET > NODE_ENV inference
-function getNetworkEnvironment(): "local" | "testnet" | "mainnet" {
-  // Explicit network override (highest priority)
-  const explicitNetwork = process.env.NEXT_PUBLIC_NETWORK;
-  if (explicitNetwork === "mainnet") return "mainnet";
-  if (explicitNetwork === "testnet") return "testnet";
-  if (explicitNetwork === "local" || explicitNetwork === "localnet")
-    return "local";
-
-  // Legacy flag support
-  if (process.env.NEXT_PUBLIC_USE_MAINNET === "true") return "mainnet";
-
-  // Default: testnet for both development and production
-  // Use NEXT_PUBLIC_NETWORK=local explicitly if you want local validators
-  return "testnet";
-}
-
-const env = getNetworkEnvironment();
+// Use centralized network resolution from contracts.ts
+const env = getCurrentNetwork();
 const deployments = getContracts(env);
 
 export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {

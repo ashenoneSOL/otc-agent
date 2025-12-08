@@ -4,20 +4,23 @@ const PORT = process.env.TEST_PORT ? parseInt(process.env.TEST_PORT) : 4444;
 const BASE_URL = `http://localhost:${PORT}`;
 
 /**
- * Playwright configuration for E2E tests
+ * Playwright configuration for UI E2E tests
  * App runs on port 4444 (OTC Desk)
  *
  * For local: Start the dev server manually with `bun run dev`
  * For CI: The workflow starts the server before running tests
+ * 
+ * Run: npx playwright test tests/ui.spec.ts
  */
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './tests',
   testMatch: /.*\.spec\.ts$/,
   testIgnore: [
     '**/node_modules/**',
     '**/contracts/lib/**',
     '**/contracts/test/**',
-    '**/tests/**',
+    '**/synpress/**',
+    '**/wallet-setup/**',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

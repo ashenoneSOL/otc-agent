@@ -1,33 +1,22 @@
 {
   "network": "solana-mainnet",
+  "rpc": "https://api.mainnet-beta.solana.com",
   "deployer": "ATwDftA6zTxod9A7ys2QSa1cEWg9usuLtCQj5MXPNc89",
-  "NEXT_PUBLIC_SOLANA_RPC": "https://api.mainnet-beta.solana.com",
-  "NEXT_PUBLIC_SOLANA_PROGRAM_ID": "6qn8ELVXd957oRjLaomCpKpcVZshUjNvSzw1nc7QVyXc",
-  "NEXT_PUBLIC_SOLANA_DESK": "G89QsVcKN1MZe6d8eKyzv93u7TEeXSsXbsDsBPbuTMUU",
-  "NEXT_PUBLIC_SOLANA_DESK_OWNER": "ATwDftA6zTxod9A7ys2QSa1cEWg9usuLtCQj5MXPNc89",
-  "NEXT_PUBLIC_SOLANA_USDC_MINT": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  "registered_tokens": {
+  "programId": "6qn8ELVXd957oRjLaomCpKpcVZshUjNvSzw1nc7QVyXc",
+  "desk": "G89QsVcKN1MZe6d8eKyzv93u7TEeXSsXbsDsBPbuTMUU",
+  "deskOwner": "ATwDftA6zTxod9A7ys2QSa1cEWg9usuLtCQj5MXPNc89",
+  "usdcMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "registeredTokens": {
     "ELIZAOS": {
       "mint": "DuMbhu7mvQvqQHGcnikDgb4XegXJRyhUBfdU22uELiZA",
       "registry": "CdAVNLwJuu22mEPNtx2SuzNbJEi4Mxqu1FUFRMvoc5dk",
       "treasury": "62Jy7LBLsH2bq1QGKVA7RcAH4wu3GC8jad6ShYwY7cN8",
-      "price_usd": 0.05,
-      "registered_at": "2024-12-07"
+      "priceUsd": 0.05
     }
   },
-  "verified_transactions": {
-    "token_registration": "342X6nHnkfnpS2Az2nm2D15a9XF7HvpJnRMaCZqBN6kzU6KAY76L2SkiKZBrDTJZB7poqdU91BvHj4P7xVrLQzzq",
-    "treasury_creation": "4uSuCN1LX11GBaMosDio5PD5Y7BG7XybrKqQhxv7Z5MgskEur9X6jKkUw36t2pUXDT6Xuj9drmt51zCzUyUdTecu",
-    "price_set": "4HctPHQeX5DziTMipNpFT7DM3Vf88K4fwiWzSasyMqrR21Re3aTX6wCML7oCHmZXx9LbN35hyrLd648WcdGHWvKS",
-    "desk_limits_set": "36bzEhvwuZoQEnxfHbiE85ybaKbs1yHDQtWtfmFbcJimAVvnyNoBUwV27Nr4mCirYtLRH29cfXaLhidcDvsgaZ2y",
-    "listing_1": "Hrte5sU1AW5cioFS1ZP89BUzBL6FS5bjUQFAqNdVMWGtpxzu2VMSxt3T6Js5XuhfBPftnfvJX9fZwwAWNcLo5iq",
-    "listing_2": "44SAWKxA3Yb8PUmmrQG24wPjXWt9WBrYW2jypEYNWfuGHHGAset4c5Hkk32Jzi1Px3gkycQSYDLhmYtZbcgwCF9D",
-    "buy_offer": "2V6davtkvv77pSNqkp8cqnBcBNr56oENqRkjeT78wqd2oa9Pj4q3ggDiuYRDqNR4zG7HwubhXzaxNDqkqKhSKHNg",
-    "offer_approved": "2ugfSaHAKFsnk52hcyEhuQvgkiNs7wDyhC1oLJ7A8ygXHUDBi1nB9TDs3EBXYYRtDGngMYrsmu7Bra79FMLaSrB3"
-  },
-  "verified_accounts": {
-    "consignment_1": "G5VeKNhAx8oecZotwi51zXZxqzY2HYDyeM34Yje8xvEo",
-    "consignment_2": "HM7GBPeLSctuXoUmmUdQ3vyHtv1GvoNZRg5UQKxQQYJk",
+  "verifiedAccounts": {
+    "consignment1": "G5VeKNhAx8oecZotwi51zXZxqzY2HYDyeM34Yje8xvEo",
+    "consignment2": "HM7GBPeLSctuXoUmmUdQ3vyHtv1GvoNZRg5UQKxQQYJk",
     "offer": "3PhXzMtpo2D57Ktv4Y1tKYrQ2A7GwnvdadJ1jakHLuZi"
   }
 }

@@ -142,10 +142,10 @@
     "typecheck": "tsc --noEmit",
     "seed": "bun scripts/seed-tokens.ts",
     "test:contracts": "cd contracts && forge test --summary",
-    "test:e2e": "vitest run tests/otc-e2e.test.ts && playwright test e2e/",
-    "test:ui": "playwright test --ui",
+    "test:e2e": "vitest run tests/otc-e2e.test.ts && playwright test tests/ui.spec.ts",
+    "test:ui": "playwright test tests/ui.spec.ts",
+    "test:wallet": "playwright test --config=synpress.config.ts",
     "test:real-otc": "MAINNET_TEST=true bun vitest run tests/real-otc-flow.test.ts",
-    "test:mainnet": "MAINNET_TEST=true bun vitest run tests/mainnet-e2e.test.ts",
     "deploy:testnet": "./scripts/deploy.sh testnet",
     "deploy:mainnet": "./scripts/deploy.sh mainnet"
   },

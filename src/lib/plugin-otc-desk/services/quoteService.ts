@@ -104,8 +104,10 @@ export class QuoteService extends Service {
     discountBps: number;
     lockupMonths: number;
   }): string {
-    const secret =
-      process.env.WORKER_AUTH_TOKEN || "dev-secret-DO-NOT-USE-IN-PRODUCTION";
+    const secret = process.env.WORKER_AUTH_TOKEN;
+    if (!secret) {
+      throw new Error("WORKER_AUTH_TOKEN must be set for quote signature generation");
+    }
     const payload = JSON.stringify(data);
     return crypto.createHmac("sha256", secret).update(payload).digest("hex");
   }

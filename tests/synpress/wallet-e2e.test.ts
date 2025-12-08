@@ -26,7 +26,7 @@
 import type { Page } from '@playwright/test';
 import { testWithSynpress } from '@synthetixio/synpress';
 import { MetaMask, metaMaskFixtures } from '@synthetixio/synpress/playwright';
-import basicSetup, { walletPassword } from '../../test/wallet-setup/basic.setup';
+import basicSetup, { walletPassword } from '../wallet-setup/basic.setup';
 
 const test = testWithSynpress(metaMaskFixtures(basicSetup));
 const { expect } = test;

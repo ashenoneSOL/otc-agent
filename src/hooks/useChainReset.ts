@@ -85,38 +85,6 @@ export function useChainReset() {
     setState((prev) => ({ ...prev, resetDetected: true }));
   }, [address, disconnect, logout]);
 
-  const resetWalletState = useCallback(async () => {
-    console.log("[ChainReset] Manually resetting wallet state");
-
-    // Disconnect EVM wallet
-    if (address) {
-      await disconnect();
-    }
-
-    // Logout from Privy (handles all wallet types)
-    await logout();
-
-    // Clear all wallet caches
-    localStorage.removeItem("wagmi.store");
-    localStorage.removeItem("wagmi.cache");
-    localStorage.removeItem("wagmi.recentConnectorId");
-    localStorage.removeItem("privy:token");
-    localStorage.removeItem("privy:refresh_token");
-
-    hasShownToast.current = false;
-    setState((prev) => ({
-      ...prev,
-      resetDetected: false,
-      lastBlockNumber: null,
-    }));
-
-    toast.success("Wallet reset complete");
-
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
-  }, [address, disconnect, logout]);
-
   useEffect(() => {
     if (!mounted || !state.checksEnabled || !publicClient) return;
 

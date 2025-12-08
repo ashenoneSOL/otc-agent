@@ -60,3 +60,4 @@ export const seedPhrase = SEED_PHRASE;
 
 // Default export is the wallet setup
 export default setupWallet;
+

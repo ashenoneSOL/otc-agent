@@ -1,6 +1,8 @@
 /**
- * OTC Marketplace E2E Tests
+ * OTC Marketplace UI E2E Tests
  * Consolidated test suite for UI, navigation, API, and auth flows
+ * 
+ * Run: npx playwright test --config=playwright.config.ts tests/ui.spec.ts
  */
 
 import { test, expect } from '@playwright/test';
@@ -273,3 +275,4 @@ test.describe('Error Handling', () => {
     await expect(page.locator('body')).toBeVisible({ timeout: 10000 });
   });
 });
+

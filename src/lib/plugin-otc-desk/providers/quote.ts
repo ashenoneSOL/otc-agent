@@ -157,8 +157,10 @@ export async function setUserQuote(
   const now = Date.now();
 
   // Generate signature using same method as QuoteService
-  const secret =
-    process.env.WORKER_AUTH_TOKEN || "dev-secret-DO-NOT-USE-IN-PRODUCTION";
+  const secret = process.env.WORKER_AUTH_TOKEN;
+  if (!secret) {
+    throw new Error("WORKER_AUTH_TOKEN must be set for quote signature generation");
+  }
   const signatureData = {
     quoteId,
     entityId,

@@ -1,7 +1,9 @@
 {
-  "NEXT_PUBLIC_SOLANA_RPC": "https://api.devnet.solana.com",
-  "NEXT_PUBLIC_SOLANA_PROGRAM_ID": "6qn8ELVXd957oRjLaomCpKpcVZshUjNvSzw1nc7QVyXc",
-  "NEXT_PUBLIC_SOLANA_DESK": "6ZidhqgftFePupwxjYgbmxhs9ym4zW2LNxppsbU66y8c",
-  "NEXT_PUBLIC_SOLANA_DESK_OWNER": "ATwDftA6zTxod9A7ys2QSa1cEWg9usuLtCQj5MXPNc89",
-  "NEXT_PUBLIC_SOLANA_USDC_MINT": "FPq3dQeUjyzx9CwHNYRH9Lwm8hgDSUgiGxdZpz1FW5NU"
+  "network": "solana-devnet",
+  "rpc": "https://api.devnet.solana.com",
+  "deployer": "ATwDftA6zTxod9A7ys2QSa1cEWg9usuLtCQj5MXPNc89",
+  "programId": "6qn8ELVXd957oRjLaomCpKpcVZshUjNvSzw1nc7QVyXc",
+  "desk": "6ZidhqgftFePupwxjYgbmxhs9ym4zW2LNxppsbU66y8c",
+  "deskOwner": "ATwDftA6zTxod9A7ys2QSa1cEWg9usuLtCQj5MXPNc89",
+  "usdcMint": "FPq3dQeUjyzx9CwHNYRH9Lwm8hgDSUgiGxdZpz1FW5NU"
 }
