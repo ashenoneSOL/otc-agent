@@ -5,7 +5,7 @@ const BASE_URL = `http://localhost:${PORT}`;
 
 /**
  * Playwright configuration for UI E2E tests
- * App runs on port 4444 (OTC Desk)
+ * App runs on port 5005 (OTC Desk - vendor port range)
  *
  * For local: Start the dev server manually with `bun run dev`
  * For CI: The workflow starts the server before running tests

@@ -85,13 +85,14 @@ if [ -f "$DEPLOYMENT_FILE" ]; then
 fi
 
 # Start Next.js with fresh env
-echo "Starting Next.js..."
-bun run next dev -p 4444 >/dev/null 2>&1 &
+OTC_PORT="${VENDOR_OTC_DESK_PORT:-${OTC_PORT:-5005}}"
+echo "Starting Next.js on port $OTC_PORT..."
+bun run next dev -p "$OTC_PORT" >/dev/null 2>&1 &
 
 # Wait for server to be ready
 echo "Waiting for Next.js to start..."
 for i in {1..30}; do
-    if curl -s http://localhost:4444 >/dev/null 2>&1; then
+    if curl -s "http://localhost:$OTC_PORT" >/dev/null 2>&1; then
         echo "Next.js is ready"
         break
     fi
