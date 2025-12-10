@@ -43,12 +43,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   title: `${siteConfig.name} - AI-Powered OTC Trading Desk`,
   description:
-    "Trade tokens OTC with Eliza AI agent. Negotiate deals on EVM and Solana networks with automated pricing and smart contracts.",
+    "Trade tokens OTC with Eliza AI agent. Negotiate deals on EVM networks with automated pricing and smart contracts.",
   openGraph: {
     siteName: siteConfig.name,
     title: "Eliza OTC Desk - AI-Powered Token Trading",
     description:
-      "Trade tokens OTC with Eliza AI agent. Negotiate deals on EVM and Solana networks.",
+      "Trade tokens OTC with Eliza AI agent. Negotiate deals on EVM networks.",
     images: [siteConfig.ogImage],
     type: "website",
     url: siteConfig.url,
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
     site: siteConfig.name,
     title: "Eliza OTC Desk - AI-Powered Token Trading",
     description:
-      "Trade tokens OTC with Eliza AI agent. Negotiate deals on EVM and Solana networks.",
+      "Trade tokens OTC with Eliza AI agent. Negotiate deals on EVM networks.",
     images: [siteConfig.ogImage],
     creator: siteConfig.creator,
   },

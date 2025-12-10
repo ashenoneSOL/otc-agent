@@ -1,5 +1,3 @@
-// Shared types for OTC Desk plugin - export for external use only
-
 export type QuoteStatus =
   | "active"
   | "expired"
@@ -7,7 +5,6 @@ export type QuoteStatus =
   | "rejected"
   | "approved";
 export type PaymentCurrency = "ETH" | "USDC";
-export type ChainType = "evm" | "solana";
 
 export interface QuoteMemory {
   id: string;
@@ -36,14 +33,11 @@ export interface QuoteMemory {
   blockNumber: number;
   rejectionReason: string;
   approvalNote: string;
-  // Optional chain context to distinguish EVM vs Solana flows
-  chain?: ChainType;
-  // Token metadata for display
+  chain?: string;
   tokenId?: string;
   tokenSymbol?: string;
   tokenName?: string;
   tokenLogoUrl?: string;
-  // Consignment reference
   consignmentId?: string;
 }
 

@@ -5,7 +5,11 @@ import type { Character } from "@elizaos/core";
 // import { openaiPlugin } from "@elizaos/plugin-openai";
 import { otcDeskPlugin } from "./plugin-otc-desk";
 import { groqPlugin } from "./plugin-groq";
+import { cloudInferencePlugin } from "./plugin-cloud-inference";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+
+const USE_CLOUD_INFERENCE = process.env.USE_CLOUD_INFERENCE === "true";
+const inferencePlugin = USE_CLOUD_INFERENCE ? cloudInferencePlugin : groqPlugin;
 
 /**
  * A character object representing a Eliza representative.
@@ -907,10 +911,8 @@ const character: Character = {
 const agent = {
   character,
   plugins: [
-    groqPlugin,
-    // SQL plugin connects to Docker PostgreSQL (port 5439) in localnet mode
+    inferencePlugin,
     sqlPlugin,
-    /* openaiPlugin, */
     otcDeskPlugin,
   ],
   providers: [otcDeskPlugin.providers].flat(),

@@ -1,4 +1,4 @@
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { OTCAbiJson as otcArtifact } from "@jeju/contracts/abis";
 import { agentRuntime } from "@/lib/agent-runtime";
 import { walletToEntityId } from "@/lib/entityId";
 import QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
@@ -9,7 +9,6 @@ import {
 } from "@/services/database";
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, type Address, type Abi } from "viem";
-import { Connection } from "@solana/web3.js";
 import { getChain, getRpcUrl } from "@/lib/getChain";
 import { getContractAddress } from "@/lib/getContractAddress";
 
@@ -108,7 +107,7 @@ export async function POST(request: NextRequest) {
     const blockNumber = Number(body.blockNumber || 0);
     const chainType = body.chain || "evm";
     const offerAddress = body.offerAddress;
-    const beneficiaryOverride = body.beneficiary; // Solana wallet address
+    const beneficiaryOverride = body.beneficiary;
 
     const runtime = agentRuntime.runtime;
     if (!runtime) {
@@ -128,7 +127,7 @@ export async function POST(request: NextRequest) {
 
     const quote = await quoteService.getQuoteByQuoteId(quoteId);
 
-    // Update beneficiary AND entityId if provided (for Solana wallets)
+    // Update beneficiary AND entityId if provided
     if (beneficiaryOverride) {
       const normalizedBeneficiary = beneficiaryOverride.toLowerCase();
       if (quote.beneficiary !== normalizedBeneficiary) {
@@ -157,178 +156,7 @@ export async function POST(request: NextRequest) {
     let discountedUsd = 0;
     let actualPaymentAmount = "0";
 
-    // Handle Solana deals (calculate from quote data, not contract)
-    if (chainType === "solana") {
-      console.log("[DealCompletion] Processing Solana deal:", {
-        quoteId,
-        offerId,
-        offerAddress,
-        tokenAmount: tokenAmountStr,
-        transactionHash,
-      });
-
-      // Verify transaction on-chain
-      if (!transactionHash) {
-        return NextResponse.json(
-          { error: "Transaction hash required for Solana verification" },
-          { status: 400 },
-        );
-      }
-
-      try {
-        const rpcUrl =
-          process.env.NEXT_PUBLIC_SOLANA_RPC ||
-          "https://api.mainnet-beta.solana.com";
-        const connection = new Connection(rpcUrl, "confirmed");
-
-        console.log(
-          `[DealCompletion] Verifying Solana tx: ${transactionHash} on ${rpcUrl}`,
-        );
-
-        // Fetch transaction
-        const tx = await connection.getTransaction(transactionHash, {
-          commitment: "confirmed",
-          maxSupportedTransactionVersion: 0,
-        });
-
-        if (!tx) {
-          throw new Error("Transaction not found or not confirmed");
-        }
-
-        if (tx.meta?.err) {
-          throw new Error(`Transaction failed: ${JSON.stringify(tx.meta.err)}`);
-        }
-
-        console.log("[DealCompletion] ✅ Solana transaction verified on-chain");
-      } catch (error) {
-        console.error("[DealCompletion] Solana verification failed:", error);
-        // If localnet, maybe allow skip? No, always enforce.
-        // Unless we are in a mock environment where RPC fails?
-        // For now, strict enforcement.
-        return NextResponse.json(
-          {
-            error: "Solana transaction verification failed",
-            details: error instanceof Error ? error.message : String(error),
-          },
-          { status: 400 },
-        );
-      }
-
-      const tokenAmount = BigInt(tokenAmountStr);
-      const discountBps = quote.discountBps || 1000;
-
-      // Fetch real prices from market data and price feeds
-      let tokenPrice = 0;
-      let solPrice = 0;
-
-      // Try to get actual token price from market data
-      if (quote.tokenId) {
-        try {
-          const { MarketDataDB } = await import("@/services/database");
-          const marketData = await MarketDataDB.getMarketData(quote.tokenId);
-          if (marketData?.priceUsd && marketData.priceUsd > 0) {
-            tokenPrice = marketData.priceUsd;
-            console.log(
-              "[DealCompletion] Using market data token price:",
-              tokenPrice,
-            );
-          }
-        } catch (err) {
-          console.warn(
-            "[DealCompletion] Failed to fetch token market data:",
-            err,
-          );
-        }
-      }
-
-      // Fallback to quote's stored price if market data unavailable
-      if (
-        tokenPrice === 0 &&
-        quote.priceUsdPerToken &&
-        quote.priceUsdPerToken > 0
-      ) {
-        tokenPrice = quote.priceUsdPerToken;
-        console.log(
-          "[DealCompletion] Using quote stored token price:",
-          tokenPrice,
-        );
-      }
-
-      // Get SOL price from price feed API
-      try {
-        const { getSolPriceUsd } = await import(
-          "@/lib/plugin-otc-desk/services/priceFeed"
-        );
-        solPrice = await getSolPriceUsd();
-        console.log("[DealCompletion] Using SOL price from API:", solPrice);
-      } catch (err) {
-        console.warn(
-          "[DealCompletion] Failed to fetch SOL price from API:",
-          err,
-        );
-        // Try market data as fallback
-        try {
-          const { MarketDataDB } = await import("@/services/database");
-          const solMarketData = await MarketDataDB.getMarketData(
-            "token-solana-So11111111111111111111111111111111111111112",
-          );
-          if (solMarketData?.priceUsd && solMarketData.priceUsd > 0) {
-            solPrice = solMarketData.priceUsd;
-          }
-        } catch {
-          // Last resort: env variable
-          const solPriceEnv = process.env.SOL_USD_PRICE;
-          if (solPriceEnv) {
-            solPrice = parseFloat(solPriceEnv);
-          }
-        }
-        console.log("[DealCompletion] Using fallback SOL price:", solPrice);
-      }
-
-      // Validate we have real prices
-      if (tokenPrice === 0) {
-        console.error(
-          "[DealCompletion] CRITICAL: Token price is $0 - deal value cannot be calculated",
-        );
-        return NextResponse.json(
-          {
-            error:
-              "Token price unavailable - please ensure token has market data",
-          },
-          { status: 400 },
-        );
-      }
-      if (body.paymentCurrency === "SOL" && solPrice === 0) {
-        console.error(
-          "[DealCompletion] CRITICAL: SOL price is $0 - cannot calculate SOL payment",
-        );
-        return NextResponse.json(
-          { error: "SOL price unavailable - please try again later" },
-          { status: 400 },
-        );
-      }
-
-      // Calculate values
-      totalUsd = Number(tokenAmount) * tokenPrice;
-      discountUsd = totalUsd * (discountBps / 10000);
-      discountedUsd = totalUsd - discountUsd;
-
-      // Payment amount based on currency
-      if (body.paymentCurrency === "SOL") {
-        actualPaymentAmount = (discountedUsd / solPrice).toFixed(6);
-      } else {
-        actualPaymentAmount = discountedUsd.toFixed(2);
-      }
-
-      console.log("[DealCompletion] Calculated Solana deal values:", {
-        tokenPrice,
-        solPrice,
-        totalUsd,
-        discountUsd,
-        discountedUsd,
-        actualPaymentAmount,
-      });
-    } else if (offerId && offerId !== "0") {
+    if (offerId && offerId !== "0") {
       // Fetch on-chain data for EVM deals
       // Use chain-specific contract address based on NETWORK env var
       const OTC_ADDRESS = getContractAddress();
@@ -471,17 +299,14 @@ export async function POST(request: NextRequest) {
         `CRITICAL: tokenAmount is ${tokenAmountStr} - must be > 0`,
       );
     }
-    if (totalUsd === 0 && chainType === "solana") {
-      console.warn(
-        `[DealCompletion] Solana deal has $0 value - quote: ${quoteId}`,
-      );
+    if (totalUsd === 0) {
+      console.warn(`[DealCompletion] Deal has $0 value - quote: ${quoteId}`);
       if (quote.status === "executed") {
         console.log(
           "[DealCompletion] Quote already executed, returning current state",
         );
         return NextResponse.json({ success: true, quote });
       }
-      throw new Error("CRITICAL: Solana deal has $0 value");
     }
 
     // Calculate priceUsdPerToken from totalUsd / tokenAmount
@@ -525,7 +350,7 @@ export async function POST(request: NextRequest) {
     // Store chain type for proper currency display
     const updatedWithChain = {
       ...updated,
-      chain: chainType === "solana" ? "solana" : "evm",
+      chain: "evm",
     };
     await runtime.setCache(`quote:${quoteId}`, updatedWithChain);
 

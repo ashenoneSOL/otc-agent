@@ -43,30 +43,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (consignerAddress) {
-      consignments = consignments.filter((c) => {
-        // Solana addresses are case-sensitive, EVM addresses are case-insensitive
-        if (c.chain === "solana") {
-          return c.consignerAddress === consignerAddress;
-        }
-        return (
-          c.consignerAddress.toLowerCase() === consignerAddress.toLowerCase()
-        );
-      });
+      consignments = consignments.filter((c) =>
+        c.consignerAddress.toLowerCase() === consignerAddress.toLowerCase()
+      );
     }
 
     if (requesterAddress) {
       consignments = consignments.filter((c) => {
         if (!c.isPrivate) return true;
-        // Solana addresses are case-sensitive, EVM addresses are case-insensitive
-        if (c.chain === "solana") {
-          if (c.consignerAddress === requesterAddress) return true;
-          if (c.allowedBuyers?.includes(requesterAddress)) return true;
-        } else {
-          const requester = requesterAddress.toLowerCase();
-          if (c.consignerAddress.toLowerCase() === requester) return true;
-          if (c.allowedBuyers?.some((b) => b.toLowerCase() === requester))
-            return true;
-        }
+        const requester = requesterAddress.toLowerCase();
+        if (c.consignerAddress.toLowerCase() === requester) return true;
+        if (c.allowedBuyers?.some((b) => b.toLowerCase() === requester)) return true;
         return false;
       });
     } else {
@@ -102,7 +89,7 @@ export async function GET(request: NextRequest) {
       // Filter consignments using the pre-fetched token data
       consignments = consignments.filter((c) => {
         const tokenData = tokenMap.get(c.tokenId);
-        const decimals = tokenData?.decimals ?? (c.chain === "solana" ? 9 : 18);
+        const decimals = tokenData?.decimals ?? 18;
         const oneToken = BigInt(10) ** BigInt(decimals);
         const remaining = BigInt(c.remainingAmount);
         return remaining >= oneToken;

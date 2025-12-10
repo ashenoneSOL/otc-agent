@@ -59,17 +59,7 @@ export async function PUT(
 
     const consignment = await ConsignmentDB.getConsignment(id);
 
-    // Normalize addresses for comparison (Solana is case-sensitive, EVM is not)
-    const normalizedCaller =
-      consignment.chain === "solana"
-        ? callerAddress
-        : callerAddress.toLowerCase();
-    const normalizedConsigner =
-      consignment.chain === "solana"
-        ? consignment.consignerAddress
-        : consignment.consignerAddress.toLowerCase();
-
-    if (normalizedCaller !== normalizedConsigner) {
+    if (callerAddress.toLowerCase() !== consignment.consignerAddress.toLowerCase()) {
       return NextResponse.json(
         { error: "Only the consigner can update this consignment" },
         { status: 403 },
@@ -117,17 +107,7 @@ export async function DELETE(
 
     const consignment = await ConsignmentDB.getConsignment(id);
 
-    // Normalize addresses for comparison (Solana is case-sensitive, EVM is not)
-    const normalizedCaller =
-      consignment.chain === "solana"
-        ? callerAddress
-        : callerAddress.toLowerCase();
-    const normalizedConsigner =
-      consignment.chain === "solana"
-        ? consignment.consignerAddress
-        : consignment.consignerAddress.toLowerCase();
-
-    if (normalizedCaller !== normalizedConsigner) {
+    if (callerAddress.toLowerCase() !== consignment.consignerAddress.toLowerCase()) {
       return NextResponse.json(
         { error: "Only the consigner can withdraw this consignment" },
         { status: 403 },

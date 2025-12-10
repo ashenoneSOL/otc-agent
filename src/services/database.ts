@@ -1,5 +1,3 @@
-// Database service layer using Eliza runtime services
-
 import { agentRuntime } from "@/lib/agent-runtime";
 import type QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
 import type {
@@ -131,6 +129,7 @@ export class QuoteDB {
     return service.verifyQuoteSignature(quote);
   }
 }
+
 export class DealCompletionService {
   static async generateShareData(quoteId: string) {
     const quote = await QuoteDB.getQuoteByQuoteId(quoteId);
@@ -140,19 +139,10 @@ export class DealCompletionService {
   }
 }
 
-/**
- * Normalizes a tokenId to ensure consistent lookups.
- * EVM addresses are case-insensitive, so they are lowercased.
- * Solana addresses (Base58) are case-sensitive, so they are preserved.
- * Format: token-{chain}-{address}
- */
 function normalizeTokenId(tokenId: string): string {
   const match = tokenId.match(/^token-([a-z]+)-(.+)$/);
   if (!match) return tokenId;
   const [, chain, address] = match;
-  // Solana addresses are case-sensitive (Base58), preserve them
-  if (chain === "solana") return tokenId;
-  // EVM addresses are case-insensitive, lowercase for consistency
   return `token-${chain}-${address.toLowerCase()}`;
 }
 
@@ -161,12 +151,7 @@ export class TokenDB {
     data: Omit<Token, "id" | "createdAt" | "updatedAt">,
   ): Promise<Token> {
     const runtime = await agentRuntime.getRuntime();
-    // EVM addresses are case-insensitive, so lowercase for consistent ID
-    // Solana addresses are Base58 encoded and case-sensitive, preserve case
-    const normalizedAddress =
-      data.chain === "solana"
-        ? data.contractAddress
-        : data.contractAddress.toLowerCase();
+    const normalizedAddress = data.contractAddress.toLowerCase();
     const tokenId = `token-${data.chain}-${normalizedAddress}`;
 
     const existing = await runtime.getCache<Token>(`token:${tokenId}`);
@@ -227,10 +212,6 @@ export class TokenDB {
     return updated;
   }
 
-  /**
-   * Find a token by its on-chain tokenId (keccak256 hash of symbol).
-   * This is used to map from the smart contract's bytes32 tokenId to the database token.
-   */
   static async getTokenByOnChainId(
     onChainTokenId: string,
   ): Promise<Token | null> {
@@ -246,9 +227,6 @@ export class TokenDB {
     return null;
   }
 
-  /**
-   * Find a token by its symbol (case-insensitive).
-   */
   static async getTokenBySymbol(symbol: string): Promise<Token | null> {
     const allTokens = await TokenDB.getAllTokens();
     return (
@@ -376,7 +354,6 @@ export class ConsignmentDB {
         runtime.getCache<OTCConsignment>(`consignment:${id}`),
       ),
     );
-    // Filter out null entries and optionally withdrawn consignments
     return consignments.filter(
       (c): c is OTCConsignment =>
         c !== null && (includeWithdrawn || c.status !== "withdrawn"),

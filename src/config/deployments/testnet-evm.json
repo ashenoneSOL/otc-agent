@@ -4,11 +4,29 @@
   "rpc": "https://sepolia.base.org",
   "deployer": "0x5dB1268e424da5C26451e4a8B9C221e6DE3C3064",
   "contracts": {
-    "otc": "",
-    "usdc": "",
-    "ethUsdFeed": ""
+    "otc": "0x08cAa161780d195E0799b73b318da5D175b85313",
+    "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "ethUsdFeed": "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1"
   },
   "accounts": {
     "approver": "0x5dB1268e424da5C26451e4a8B9C221e6DE3C3064"
+  },
+  "additionalNetworks": {
+    "bscTestnet": {
+      "chainId": 97,
+      "rpc": "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
+      "contracts": {
+        "otc": "",
+        "usdc": "0x64544969ed7EBf5f083679233325356EbE738930"
+      }
+    },
+    "jejuTestnet": {
+      "chainId": 420690,
+      "rpc": "https://testnet-rpc.jeju.network",
+      "contracts": {
+        "otc": "",
+        "usdc": ""
+      }
+    }
   }
 }

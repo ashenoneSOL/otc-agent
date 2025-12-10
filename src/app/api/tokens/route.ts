@@ -87,9 +87,7 @@ export async function POST(request: NextRequest) {
     contractAddress.startsWith("0x5fbdb") ||
     (chain === "ethereum" && contractAddress.length === 42);
 
-  const isSolanaWithoutKey = chain === "solana" && !process.env.BIRDEYE_API_KEY;
-
-  if (!isLocalTestnet && !isSolanaWithoutKey) {
+  if (!isLocalTestnet) {
     const marketDataService = new MarketDataService();
     await marketDataService.refreshTokenData(token.id, contractAddress, chain);
   } else {

@@ -14,6 +14,7 @@
     }
   },
   "dependencies": {
+    "@jejunetwork/contracts": "workspace:*",
     "@ai-sdk/groq": "^2.0.21",
     "@ai-sdk/openai": "^2.0.35",
     "@babel/runtime": "^7.28.4",
@@ -134,20 +135,31 @@
   "scripts": {
     "postinstall": "cd solana/otc-program && bun install",
     "dev": "./scripts/dev.sh",
-    "start": "next start -p 4444",
+    "dev:testnet": "NETWORK=testnet ./scripts/dev.sh",
+    "dev:mainnet": "NETWORK=mainnet ./scripts/dev.sh",
+    "start": "next start -p ${VENDOR_OTC_DESK_PORT:-5005}",
     "build": "./scripts/build.sh",
     "test": "./scripts/test.sh",
     "lint": "prettier --check ./src",
     "format": "prettier --write ./src",
     "typecheck": "tsc --noEmit",
     "seed": "bun scripts/seed-tokens.ts",
-    "test:contracts": "cd contracts && forge test --summary",
+    "test:contracts": "cd ../../packages/contracts && forge test --match-path 'test/OTC*.t.sol' --summary",
     "test:e2e": "vitest run tests/otc-e2e.test.ts && playwright test tests/ui.spec.ts",
     "test:ui": "playwright test tests/ui.spec.ts",
+    "test:wallet:cache": "npx synpress tests/wallet-setup --force",
     "test:wallet": "playwright test --config=synpress.config.ts",
     "test:real-otc": "MAINNET_TEST=true bun vitest run tests/real-otc-flow.test.ts",
-    "deploy:testnet": "./scripts/deploy.sh testnet",
-    "deploy:mainnet": "./scripts/deploy.sh mainnet"
+    "deploy:testnet": "./scripts/deploy.sh testnet all",
+    "deploy:testnet:base": "./scripts/deploy.sh testnet base",
+    "deploy:testnet:bsc": "./scripts/deploy.sh testnet bsc",
+    "deploy:testnet:jeju": "./scripts/deploy.sh testnet jeju",
+    "deploy:mainnet": "./scripts/deploy.sh mainnet all",
+    "deploy:mainnet:base": "./scripts/deploy.sh mainnet base",
+    "deploy:mainnet:bsc": "./scripts/deploy.sh mainnet bsc",
+    "deploy:mainnet:solana": "./scripts/deploy.sh mainnet solana",
+    "deploy:mainnet:jeju": "./scripts/deploy.sh mainnet jeju",
+    "verify:deployment": "bun scripts/verify-multichain-deployment.ts"
   },
   "trustedDependencies": [
     "@tailwindcss/oxide",

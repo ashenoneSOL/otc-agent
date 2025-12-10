@@ -60,9 +60,8 @@ export class ConsignmentService {
       throw new Error("minLockupDays cannot exceed maxLockupDays");
     }
 
-    // Solana addresses are Base58 and case-sensitive, EVM addresses are case-insensitive
-    const normalizeAddress = (addr: string) =>
-      params.chain === "solana" ? addr : addr.toLowerCase();
+    // EVM addresses are case-insensitive
+    const normalizeAddress = (addr: string) => addr.toLowerCase();
 
     const consignment = await ConsignmentDB.createConsignment({
       tokenId: params.tokenId,
@@ -148,19 +147,9 @@ export class ConsignmentService {
     if (filters?.includePrivate && filters?.requesterAddress) {
       consignments = consignments.filter((c) => {
         if (!c.isPrivate) return true;
-        // Compare addresses - Solana is case-sensitive, EVM is case-insensitive
-        const isSolana = c.chain === "solana";
-        const requester = isSolana
-          ? filters.requesterAddress!
-          : filters.requesterAddress!.toLowerCase();
-        if (isSolana) {
-          if (c.consignerAddress === requester) return true;
-          if (c.allowedBuyers?.includes(requester)) return true;
-        } else {
-          if (c.consignerAddress.toLowerCase() === requester) return true;
-          if (c.allowedBuyers?.some((b) => b.toLowerCase() === requester))
-            return true;
-        }
+        const requester = filters.requesterAddress!.toLowerCase();
+        if (c.consignerAddress.toLowerCase() === requester) return true;
+        if (c.allowedBuyers?.some((b) => b.toLowerCase() === requester)) return true;
         return false;
       });
     }
@@ -177,12 +166,9 @@ export class ConsignmentService {
 
   async getConsignerConsignments(
     consignerAddress: string,
-    chain?: Chain,
+    _chain?: Chain,
   ): Promise<OTCConsignment[]> {
-    // Normalize address based on chain - Solana is case-sensitive, EVM is case-insensitive
-    const normalizedAddress =
-      chain === "solana" ? consignerAddress : consignerAddress.toLowerCase();
-    return await ConsignmentDB.getConsignmentsByConsigner(normalizedAddress);
+    return await ConsignmentDB.getConsignmentsByConsigner(consignerAddress.toLowerCase());
   }
 
   async getAllConsignments(filters?: {
@@ -269,17 +255,11 @@ export class ConsignmentService {
     offerId?: string;
     chain?: Chain;
   }): Promise<ConsignmentDeal> {
-    // Normalize address based on chain - Solana is case-sensitive, EVM is case-insensitive
-    const normalizedBuyerAddress =
-      params.chain === "solana"
-        ? params.buyerAddress
-        : params.buyerAddress.toLowerCase();
-
     return await ConsignmentDealDB.createDeal({
       consignmentId: params.consignmentId,
       quoteId: params.quoteId,
       tokenId: params.tokenId,
-      buyerAddress: normalizedBuyerAddress,
+      buyerAddress: params.buyerAddress.toLowerCase(),
       amount: params.amount,
       discountBps: params.discountBps,
       lockupDays: params.lockupDays,

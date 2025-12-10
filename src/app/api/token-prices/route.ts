@@ -6,12 +6,8 @@ interface CachedPrice {
   cachedAt: number;
 }
 
-// Price cache TTL: 5 minutes
 const PRICE_CACHE_TTL_MS = 5 * 60 * 1000;
 
-/**
- * Get cached token price
- */
 async function getCachedPrice(
   chain: string,
   address: string,
@@ -30,9 +26,6 @@ async function getCachedPrice(
   }
 }
 
-/**
- * Set cached token price
- */
 async function setCachedPrice(
   chain: string,
   address: string,
@@ -50,64 +43,13 @@ async function setCachedPrice(
   }
 }
 
-/**
- * Fetch Solana token prices from Jupiter Price API
- * Returns prices for multiple tokens in one call
- */
-async function fetchSolanaPrices(
-  mints: string[],
-): Promise<Record<string, number>> {
-  if (mints.length === 0) return {};
-
-  try {
-    // Jupiter supports up to 100 tokens per request
-    const chunks: string[][] = [];
-    for (let i = 0; i < mints.length; i += 100) {
-      chunks.push(mints.slice(i, i + 100));
-    }
-
-    const allPrices: Record<string, number> = {};
-
-    for (const chunk of chunks) {
-      const ids = chunk.join(",");
-      const response = await fetch(`https://api.jup.ag/price/v2?ids=${ids}`, {
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (!response.ok) continue;
-
-      const data = await response.json();
-
-      // Jupiter returns { data: { [mint]: { price: string } } }
-      if (data.data) {
-        for (const [mint, priceData] of Object.entries(data.data)) {
-          const price = (priceData as { price?: string })?.price;
-          if (price) {
-            allPrices[mint] = parseFloat(price);
-          }
-        }
-      }
-    }
-
-    return allPrices;
-  } catch (error) {
-    console.error("[Token Prices] Jupiter API error:", error);
-    return {};
-  }
-}
-
-/**
- * CoinGecko platform IDs
- */
 const COINGECKO_PLATFORMS: Record<string, string> = {
   base: "base",
   bsc: "binance-smart-chain",
   ethereum: "ethereum",
+  jeju: "base", // Use Base as fallback for Jeju tokens
 };
 
-/**
- * Fetch EVM token prices from CoinGecko
- */
 async function fetchEvmPrices(
   chain: string,
   addresses: string[],
@@ -118,7 +60,6 @@ async function fetchEvmPrices(
   if (!platformId) return {};
 
   try {
-    // CoinGecko supports multiple addresses in one call
     const addressList = addresses.map((a) => a.toLowerCase()).join(",");
     const apiKey = process.env.COINGECKO_API_KEY;
 
@@ -144,7 +85,6 @@ async function fetchEvmPrices(
     const data = await response.json();
     const prices: Record<string, number> = {};
 
-    // CoinGecko returns { [address]: { usd: number } }
     for (const [address, priceData] of Object.entries(data)) {
       const usd = (priceData as { usd?: number })?.usd;
       if (typeof usd === "number") {
@@ -160,7 +100,7 @@ async function fetchEvmPrices(
 }
 
 /**
- * GET /api/token-prices?chain=solana&addresses=mint1,mint2
+ * GET /api/token-prices?chain=base&addresses=0x...,0x...
  * Returns cached prices with 5-minute TTL
  */
 export async function GET(request: NextRequest) {
@@ -179,7 +119,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ prices: {} });
   }
 
-  // Check cache for each address
   const prices: Record<string, number> = {};
   const uncachedAddresses: string[] = [];
 
@@ -192,20 +131,11 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Fetch uncached prices
   if (uncachedAddresses.length > 0) {
-    let freshPrices: Record<string, number> = {};
+    const freshPrices = await fetchEvmPrices(chain, uncachedAddresses);
 
-    if (chain === "solana") {
-      freshPrices = await fetchSolanaPrices(uncachedAddresses);
-    } else {
-      freshPrices = await fetchEvmPrices(chain, uncachedAddresses);
-    }
-
-    // Cache and merge fresh prices
     for (const [addr, price] of Object.entries(freshPrices)) {
       await setCachedPrice(chain, addr, price);
-      // Match original case for Solana
       const originalAddr =
         uncachedAddresses.find((a) => a.toLowerCase() === addr.toLowerCase()) ||
         addr;

@@ -6,7 +6,7 @@
  */
 
 import { createPublicClient, http, type Address, type Abi } from "viem";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { OTCAbiJson as otcArtifact } from "@jeju/contracts/abis";
 import { QuoteDB } from "./database";
 import { getChain, getRpcUrl } from "@/lib/getChain";
 import { getContractAddress } from "@/lib/getContractAddress";

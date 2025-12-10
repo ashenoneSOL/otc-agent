@@ -65,44 +65,6 @@ export async function getEthPriceUsd(): Promise<number> {
 }
 
 /**
- * Get SOL price in USD
- */
-export async function getSolPriceUsd(): Promise<number> {
-  const cacheKey = "SOL";
-
-  // Check runtime cache
-  const cached = await getCachedPrice(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.price;
-  }
-
-  // Fetch from CoinGecko
-  const response = await fetch(
-    "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
-    {
-      headers: {
-        Accept: "application/json",
-      },
-    },
-  );
-
-  if (response.ok) {
-    const data = await response.json();
-    const price = data.solana?.usd;
-
-    if (typeof price === "number") {
-      await setCachedPrice(cacheKey, {
-        price,
-        timestamp: Date.now(),
-      });
-      return price;
-    }
-  }
-
-  throw new Error("Failed to fetch SOL price");
-}
-
-/**
  * Format token amount with proper display (K, M, B suffixes)
  */
 export function formatTokenAmount(amount: string | number): string {

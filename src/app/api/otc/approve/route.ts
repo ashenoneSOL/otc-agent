@@ -7,12 +7,7 @@ import {
   type Address,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import type {
-  Transaction,
-  VersionedTransaction,
-  PublicKey as SolanaPublicKey,
-} from "@solana/web3.js";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { OTCAbiJson as otcArtifact } from "@jeju/contracts/abis";
 import { agentRuntime } from "@/lib/agent-runtime";
 import { parseOfferStruct, type RawOfferData } from "@/lib/otc-helpers";
 import { getChain, getRpcUrl } from "@/lib/getChain";
@@ -79,14 +74,10 @@ export async function POST(request: NextRequest) {
   // Parse body
   const contentType = request.headers.get("content-type") || "";
   let offerId: string | number | bigint;
-  let chainType: string | undefined;
-  let offerAddress: string | undefined;
 
   if (contentType.includes("application/json")) {
     const body = await request.json();
     offerId = body.offerId;
-    chainType = body.chain;
-    offerAddress = body.offerAddress;
   } else if (contentType.includes("application/x-www-form-urlencoded")) {
     // Use type assertion for FormData as Next.js returns a compatible type
     const form = (await request.formData()) as unknown as {
@@ -102,180 +93,7 @@ export async function POST(request: NextRequest) {
     offerId = v;
   }
 
-  console.log("[Approve API] Approving offer:", offerId, "chain:", chainType);
-
-  // Handle Solana approval
-  if (chainType === "solana") {
-    if (!offerAddress) throw new Error("offerAddress required for Solana");
-    console.log(
-      "[Approve API] Processing Solana approval for offer:",
-      offerAddress,
-    );
-
-    // Import Anchor and Solana libs dynamically
-    const anchor = await import("@coral-xyz/anchor");
-    const { Connection, PublicKey, Keypair } = await import("@solana/web3.js");
-
-    const SOLANA_RPC =
-      process.env.NEXT_PUBLIC_SOLANA_RPC || "http://127.0.0.1:8899";
-    const SOLANA_DESK = process.env.NEXT_PUBLIC_SOLANA_DESK;
-
-    if (!SOLANA_DESK) throw new Error("SOLANA_DESK not configured");
-
-    const connection = new Connection(SOLANA_RPC, "confirmed");
-
-    // Load owner/approver keypair from id.json
-    const idlPath = path.join(
-      process.cwd(),
-      "solana/otc-program/target/idl/otc.json",
-    );
-    const keypairPath = path.join(process.cwd(), "solana/otc-program/id.json");
-    const idl = JSON.parse(await fs.readFile(idlPath, "utf8"));
-    const keypairData = JSON.parse(await fs.readFile(keypairPath, "utf8"));
-    const approverKeypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
-
-    // Create provider with the approver keypair
-    // Wallet interface matches @coral-xyz/anchor's Wallet type
-    interface AnchorWallet {
-      publicKey: SolanaPublicKey;
-      signTransaction<T extends Transaction | VersionedTransaction>(
-        tx: T,
-      ): Promise<T>;
-      signAllTransactions<T extends Transaction | VersionedTransaction>(
-        txs: T[],
-      ): Promise<T[]>;
-    }
-
-    const wallet: AnchorWallet = {
-      publicKey: approverKeypair.publicKey,
-      signTransaction: async <T extends Transaction | VersionedTransaction>(
-        tx: T,
-      ) => {
-        (tx as Transaction).partialSign(approverKeypair);
-        return tx;
-      },
-      signAllTransactions: async <T extends Transaction | VersionedTransaction>(
-        txs: T[],
-      ) => {
-        txs.forEach((tx) => (tx as Transaction).partialSign(approverKeypair));
-        return txs;
-      },
-    };
-
-    const provider = new anchor.AnchorProvider(connection, wallet, {
-      commitment: "confirmed",
-    });
-    anchor.setProvider(provider);
-
-    const program = new anchor.Program(idl, provider);
-
-    // Approve the offer
-    const desk = new PublicKey(SOLANA_DESK);
-    const offer = new PublicKey(offerAddress);
-
-    const approveTx = await program.methods
-      .approveOffer(new anchor.BN(offerId))
-      .accounts({
-        desk,
-        offer,
-        approver: approverKeypair.publicKey,
-      })
-      .signers([approverKeypair])
-      .rpc();
-
-    console.log("[Approve API] ✅ Solana offer approved:", approveTx);
-
-    // Fetch offer to get payment details and token mint
-    // In token-agnostic architecture, each offer stores its own token_mint
-    type ProgramAccountsFetch = {
-      offer: {
-        fetch: (address: SolanaPublicKey) => Promise<{
-          currency: number;
-          id: import("@coral-xyz/anchor").BN;
-          tokenMint: SolanaPublicKey;
-        }>;
-      };
-      desk: {
-        fetch: (
-          address: SolanaPublicKey,
-        ) => Promise<{ usdcMint: SolanaPublicKey }>;
-      };
-    };
-    const programAccounts = program.account as unknown as ProgramAccountsFetch;
-    const offerData = await programAccounts.offer.fetch(offer);
-
-    // Auto-fulfill (backend pays)
-    console.log("[Approve API] Auto-fulfilling Solana offer...");
-
-    const { getAssociatedTokenAddress } = await import("@solana/spl-token");
-    const deskData = await programAccounts.desk.fetch(desk);
-    // Token mint comes from the offer itself (multi-token support)
-    const tokenMint = new PublicKey(offerData.tokenMint);
-    const deskTokenTreasury = await getAssociatedTokenAddress(
-      tokenMint,
-      desk,
-      true,
-    );
-
-    let fulfillTx: string;
-
-    if (offerData.currency === 0) {
-      // Pay with SOL
-      fulfillTx = await program.methods
-        .fulfillOfferSol(new anchor.BN(offerId))
-        .accounts({
-          desk,
-          offer,
-          deskTokenTreasury,
-          payer: approverKeypair.publicKey,
-          systemProgram: new PublicKey("11111111111111111111111111111111"),
-        })
-        .signers([approverKeypair])
-        .rpc();
-      console.log("[Approve API] ✅ Paid with SOL:", fulfillTx);
-    } else {
-      // Pay with USDC
-      const usdcMint = new PublicKey(deskData.usdcMint);
-      const deskUsdcTreasury = await getAssociatedTokenAddress(
-        usdcMint,
-        desk,
-        true,
-      );
-      const payerUsdcAta = await getAssociatedTokenAddress(
-        usdcMint,
-        approverKeypair.publicKey,
-        false,
-      );
-
-      fulfillTx = await program.methods
-        .fulfillOfferUsdc(new anchor.BN(offerId))
-        .accounts({
-          desk,
-          offer,
-          deskTokenTreasury,
-          deskUsdcTreasury,
-          payerUsdcAta,
-          payer: approverKeypair.publicKey,
-          tokenProgram: new PublicKey(
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          ),
-          systemProgram: new PublicKey("11111111111111111111111111111111"),
-        })
-        .signers([approverKeypair])
-        .rpc();
-      console.log("[Approve API] ✅ Paid with USDC:", fulfillTx);
-    }
-
-    return NextResponse.json({
-      success: true,
-      approved: true,
-      autoFulfilled: true,
-      fulfillTx,
-      chain: "solana",
-      offerAddress,
-      approvalTx: approveTx,
-    });
-  }
+  console.log("[Approve API] Approving offer:", offerId);
 
   const chain = getChain();
   const rpcUrl = getRpcUrl();
@@ -476,14 +294,14 @@ export async function POST(request: NextRequest) {
     // Find the specific token associated with this offer
     // Primary method: Use the on-chain tokenId (keccak256 hash of symbol) to look up token
     let tokenAddress: string | null = null;
-    let tokenChain: "base" | "solana" = "base";
+    let tokenChain = "base";
 
     // The offer.tokenId is a bytes32 (keccak256 of token symbol)
     if (offer.tokenId) {
       const token = await TokenDB.getTokenByOnChainId(offer.tokenId);
       if (token) {
         tokenAddress = token.contractAddress;
-        tokenChain = token.chain as "base" | "solana";
+        tokenChain = token.chain;
         console.log("[Approve API] Found token via on-chain tokenId:", {
           symbol: token.symbol,
           address: tokenAddress,
@@ -504,7 +322,7 @@ export async function POST(request: NextRequest) {
         const token = await TokenDB.getToken(matchingQuote.tokenId as string);
         if (token) {
           tokenAddress = token.contractAddress;
-          tokenChain = token.chain as "base" | "solana";
+          tokenChain = token.chain;
           console.log("[Approve API] Found token via quote:", {
             symbol: token.symbol,
             address: tokenAddress,

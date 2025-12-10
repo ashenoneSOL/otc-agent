@@ -1,10 +1,11 @@
 /**
- * Wallet E2E Tests with Synpress + MetaMask
+ * Wallet E2E Tests with Synpress + MetaMask (EVM-only)
  * 
- * Complete UI tests for OTC deal flows with real wallet interactions.
+ * UI tests for OTC deal flows with MetaMask wallet interactions.
+ * Supports Base, Anvil, and Jeju chains.
  * 
  * SELLER FLOW:
- * 1. Connect wallet via Privy
+ * 1. Connect MetaMask wallet
  * 2. Navigate to /consign
  * 3. Fill listing form
  * 4. Submit and sign transaction
@@ -17,7 +18,7 @@
  * 
  * Prerequisites:
  * - bun run dev (starts all services)
- * - Anvil running on localhost:8545
+ * - Anvil running on localhost:8545 (or Jeju testnet)
  * - Token listings seeded
  * 
  * Run: npx playwright test --config=synpress.config.ts tests/synpress/wallet-e2e.test.ts
@@ -31,7 +32,8 @@ import basicSetup, { walletPassword } from '../wallet-setup/basic.setup';
 const test = testWithSynpress(metaMaskFixtures(basicSetup));
 const { expect } = test;
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:4444';
+const OTC_PORT = process.env.OTC_DESK_PORT || process.env.VENDOR_OTC_DESK_PORT || '5005';
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${OTC_PORT}`;
 const TEST_TIMEOUT = 180000;
 
 // =============================================================================
@@ -46,18 +48,11 @@ async function connectWallet(page: Page, metamask: MetaMask): Promise<void> {
     return;
   }
 
-  // Click sign in / connect
+  // Click connect wallet button
   const connectButton = page.locator('button:has-text("Sign In"), button:has-text("Connect Wallet")').first();
   await expect(connectButton).toBeVisible({ timeout: 10000 });
   await connectButton.click();
   await page.waitForTimeout(2000);
-
-  // Privy flow: Click "Continue with a wallet"
-  const continueWithWallet = page.locator('button:has-text("Continue with a wallet")').first();
-  if (await continueWithWallet.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await continueWithWallet.click();
-    await page.waitForTimeout(2000);
-  }
 
   // Look for MetaMask option in wallet list
   const metamaskOption = page.locator('button:has-text("MetaMask")').first();
@@ -70,16 +65,16 @@ async function connectWallet(page: Page, metamask: MetaMask): Promise<void> {
   try {
     await metamask.connectToDapp();
     await page.waitForTimeout(3000);
-  } catch (e) {
+  } catch {
     console.log('  ⚠ MetaMask popup handling failed, may need manual interaction');
   }
 
-  // Verify connection (may fail if MetaMask not found)
+  // Verify connection
   const connected = await walletIndicator.isVisible({ timeout: 15000 }).catch(() => false);
   if (connected) {
     console.log('  ✓ Wallet connected');
   } else {
-    console.log('  ⚠ Wallet connection incomplete (MetaMask extension issue)');
+    console.log('  ⚠ Wallet connection incomplete');
   }
 }
 
@@ -437,7 +432,7 @@ test.describe('Test Summary', () => {
   test('display summary', () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════════════╗
-║                SYNPRESS WALLET E2E TEST SUMMARY                   ║
+║            SYNPRESS WALLET E2E TEST SUMMARY (EVM-only)            ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
 ║  PAGE LOADS:                                                     ║
@@ -446,7 +441,7 @@ test.describe('Test Summary', () => {
 ║  ✓ Consign form                                                  ║
 ║                                                                  ║
 ║  WALLET:                                                         ║
-║  ✓ Connect via Privy + MetaMask                                  ║
+║  ✓ Connect via MetaMask (Base, Anvil, Jeju)                      ║
 ║  ✓ Disconnect                                                    ║
 ║                                                                  ║
 ║  SELLER FLOW:                                                    ║
@@ -455,7 +450,7 @@ test.describe('Test Summary', () => {
 ║                                                                  ║
 ║  BUYER FLOW:                                                     ║
 ║  ✓ View token detail page                                        ║
-║  ✓ Chat with agent                                               ║
+║  ✓ Chat with agent (Cloud inference)                             ║
 ║  ✓ Accept button opens modal                                     ║
 ║                                                                  ║
 ║  MY DEALS:                                                       ║

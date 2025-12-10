@@ -8,12 +8,46 @@ import {
 } from "viem/chains";
 import { getContracts, getCurrentNetwork } from "./contracts";
 
-// String-based chain identifier for database/API (lowercase, URL-safe)
-export type Chain = "ethereum" | "base" | "bsc" | "solana";
-export type ChainFamily = "evm" | "solana";
+const jejuDevnet: ViemChain = {
+  id: 420689,
+  name: "Jeju Devnet",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["https://devnet-rpc.jeju.network"] },
+  },
+  blockExplorers: {
+    default: { name: "Jeju Explorer", url: "https://devnet-explorer.jeju.network" },
+  },
+};
+
+const jejuTestnet: ViemChain = {
+  id: 420690,
+  name: "Jeju Testnet",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["https://testnet-rpc.jeju.network"] },
+  },
+  blockExplorers: {
+    default: { name: "Jeju Explorer", url: "https://testnet-explorer.jeju.network" },
+  },
+};
+
+const jejuMainnet: ViemChain = {
+  id: 420691,
+  name: "Jeju",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["https://rpc.jeju.network"] },
+  },
+  blockExplorers: {
+    default: { name: "Jeju Explorer", url: "https://explorer.jeju.network" },
+  },
+};
+
+export type Chain = "ethereum" | "base" | "bsc" | "jeju";
 
 export interface ChainConfig {
-  id: string; // String ID for database storage
+  id: string;
   name: string;
   rpcUrl: string;
   explorerUrl: string;
@@ -26,12 +60,10 @@ export interface ChainConfig {
     otc?: string;
     usdc?: string;
   };
-  type: ChainFamily;
-  viemChain?: ViemChain; // Reference to viem chain for wagmi (EVM only)
-  chainId?: number; // Numeric chain ID (EVM only)
+  viemChain: ViemChain;
+  chainId: number;
 }
 
-// Use centralized network resolution from contracts.ts
 const env = getCurrentNetwork();
 const deployments = getContracts(env);
 
@@ -49,26 +81,21 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
         deployments.evm?.contracts?.usdc ||
         process.env.NEXT_PUBLIC_USDC_ADDRESS,
     },
-    type: "evm",
     viemChain: localhost,
     chainId: localhost.id,
   },
   base: (() => {
     const isMainnet = env === "mainnet";
     const chain = isMainnet ? base : baseSepolia;
-    
-    // Hardcoded mainnet/testnet OTC addresses from deployment configs
+
     const MAINNET_OTC = "0x12FA61c9d77AEd9BeDA0FF4bF2E900F31bdBdc45";
     const TESTNET_OTC = "0x08cAa161780d195E0799b73b318da5D175b85313";
-    
-    // Use deployments if available, else env vars, else hardcoded defaults
+
     const otc =
       deployments.evm?.contracts?.otc ||
       process.env.NEXT_PUBLIC_BASE_OTC_ADDRESS ||
       (isMainnet ? MAINNET_OTC : TESTNET_OTC);
 
-    // For mainnet, use proxy route to keep Alchemy key server-side
-    // For testnet, use public Sepolia RPC
     const rpcUrl =
       process.env.NEXT_PUBLIC_BASE_RPC_URL ||
       (isMainnet ? "/api/rpc/base" : "https://sepolia.base.org");
@@ -87,7 +114,6 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
           ? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
           : "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       },
-      type: "evm" as ChainFamily,
       viemChain: chain,
       chainId: chain.id,
     };
@@ -115,77 +141,50 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
         otc: otc,
         usdc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
       },
-      type: "evm" as ChainFamily,
       viemChain: chain,
       chainId: chain.id,
     };
   })(),
-  solana: (() => {
+  jeju: (() => {
     const isMainnet = env === "mainnet";
     const isLocal = env === "local";
 
+    const chain = isMainnet ? jejuMainnet : isLocal ? jejuDevnet : jejuTestnet;
+
     const otc =
-      deployments.solana?.NEXT_PUBLIC_SOLANA_DESK ||
-      process.env.NEXT_PUBLIC_SOLANA_DESK;
-    const usdc =
-      deployments.solana?.NEXT_PUBLIC_SOLANA_USDC_MINT ||
-      process.env.NEXT_PUBLIC_SOLANA_USDC_MINT;
+      process.env.NEXT_PUBLIC_JEJU_OTC_ADDRESS ||
+      deployments.evm?.contracts?.otc;
 
     return {
-      id: isMainnet
-        ? "solana-mainnet"
-        : isLocal
-          ? "solana-localnet"
-          : "solana-devnet",
-      name: isMainnet
-        ? "Solana"
-        : isLocal
-          ? "Solana Localnet"
-          : "Solana Devnet",
+      id: chain.id.toString(),
+      name: chain.name,
       rpcUrl:
-        process.env.NEXT_PUBLIC_SOLANA_RPC ||
+        process.env.NEXT_PUBLIC_JEJU_RPC_URL ||
         (isMainnet
-          ? "https://api.mainnet-beta.solana.com"
+          ? "https://rpc.jeju.network"
           : isLocal
-            ? "http://127.0.0.1:8899"
-            : "https://api.devnet.solana.com"),
-      explorerUrl: "https://explorer.solana.com",
-      nativeCurrency: { name: "SOL", symbol: "SOL", decimals: 9 },
+            ? "https://devnet-rpc.jeju.network"
+            : "https://testnet-rpc.jeju.network"),
+      explorerUrl: isMainnet
+        ? "https://explorer.jeju.network"
+        : isLocal
+          ? "https://devnet-explorer.jeju.network"
+          : "https://testnet-explorer.jeju.network",
+      nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
       contracts: {
         otc: otc,
-        usdc: isMainnet
-          ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-          : usdc || "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr", // Default to Devnet USDC if not in deployment
+        usdc: process.env.NEXT_PUBLIC_JEJU_USDC_ADDRESS,
       },
-      type: "solana" as ChainFamily,
+      viemChain: chain,
+      chainId: chain.id,
     };
   })(),
 };
 
-/**
- * Get chain config by identifier
- */
 export function getChainConfig(chain: Chain): ChainConfig {
   return SUPPORTED_CHAINS[chain];
 }
 
-/**
- * Check if chain is EVM-based
- */
-export function isEVMChain(chain: Chain): boolean {
-  return SUPPORTED_CHAINS[chain].type === "evm";
-}
-
-/**
- * Check if chain is Solana-based
- */
-export function isSolanaChain(chain: Chain): boolean {
-  return SUPPORTED_CHAINS[chain].type === "solana";
-}
-
-/**
- * Get chain identifier from string chain ID (database format)
- */
 export function getChainFromId(chainId: string): Chain | null {
   for (const [key, config] of Object.entries(SUPPORTED_CHAINS)) {
     if (config.id === chainId) return key as Chain;
@@ -193,9 +192,6 @@ export function getChainFromId(chainId: string): Chain | null {
   return null;
 }
 
-/**
- * Get chain identifier from numeric chain ID (wagmi/viem format)
- */
 export function getChainFromNumericId(chainId: number): Chain | null {
   for (const [key, config] of Object.entries(SUPPORTED_CHAINS)) {
     if (config.chainId === chainId) return key as Chain;
@@ -203,11 +199,6 @@ export function getChainFromNumericId(chainId: number): Chain | null {
   return null;
 }
 
-/**
- * Get all viem chains for wagmi configuration
- */
 export function getAllViemChains(): ViemChain[] {
-  return Object.values(SUPPORTED_CHAINS)
-    .filter((config) => config.viemChain)
-    .map((config) => config.viemChain!);
+  return Object.values(SUPPORTED_CHAINS).map((config) => config.viemChain);
 }

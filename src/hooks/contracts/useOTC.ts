@@ -17,7 +17,7 @@ import type {
   ConsignmentParams,
   ConsignmentCreationResult,
 } from "@/types";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { OTCAbiJson as otcArtifact } from "@jeju/contracts/abis";
 import { getContracts, getCurrentNetwork } from "@/config/contracts";
 
 // Helper to get OTC address from deployments or env - cached at module level

@@ -1,17 +1,10 @@
-/**
- * Consolidated Type Definitions
- * Single source of truth for all shared types across the OTC Agent
- */
-
 import type { Address } from "viem";
 import type { Chain } from "@/config/chains";
 import type { PaymentCurrency } from "@/lib/plugin-otc-desk/types";
 
-// Re-export from specific type files
 export type { ChatMessage } from "./chat-message";
 export type { Citation, ChatStreamData } from "./chat";
 
-// Re-export from plugin types
 export type {
   PaymentCurrency,
   QuoteStatus,
@@ -19,40 +12,27 @@ export type {
   UserSessionMemory as PluginUserSessionMemory,
 } from "@/lib/plugin-otc-desk/types";
 
-//==============================================================================
-// CHAIN TYPES
-//==============================================================================
-
-export type EVMChain = "base" | "bsc";
-export type { Chain, ChainFamily, ChainConfig } from "@/config/chains";
+export type EVMChain = "base" | "bsc" | "jeju" | "ethereum";
+export type { Chain, ChainConfig } from "@/config/chains";
 export {
   SUPPORTED_CHAINS,
-  isEVMChain,
-  isSolanaChain,
   getChainConfig,
   getChainFromId,
   getChainFromNumericId,
 } from "@/config/chains";
 
-//==============================================================================
-// OTC CONTRACT TYPES
-//==============================================================================
-
-/**
- * OTC Offer structure (matches Solidity contract)
- */
 export interface Offer {
   consignmentId: bigint;
-  tokenId: string; // bytes32 hex string
+  tokenId: string;
   beneficiary: Address;
   tokenAmount: bigint;
   discountBps: bigint;
   createdAt: bigint;
   unlockTime: bigint;
-  priceUsdPerToken: bigint; // 8 decimals
+  priceUsdPerToken: bigint;
   maxPriceDeviation: bigint;
-  ethUsdPrice: bigint; // 8 decimals
-  currency: number; // 0 = ETH, 1 = USDC
+  ethUsdPrice: bigint;
+  currency: number;
   approved: boolean;
   paid: boolean;
   fulfilled: boolean;
@@ -61,9 +41,6 @@ export interface Offer {
   amountPaid: bigint;
 }
 
-/**
- * Consignment parameters for on-chain creation
- */
 export interface ConsignmentParams {
   tokenId: string;
   tokenSymbol: string;
@@ -84,9 +61,6 @@ export interface ConsignmentParams {
   gasDeposit: bigint;
 }
 
-/**
- * OTC Quote for XML parsing and frontend display
- */
 export interface OTCQuote {
   quoteId: string;
   tokenSymbol: string;
@@ -105,21 +79,11 @@ export interface OTCQuote {
   isFixedPrice?: boolean;
 }
 
-/**
- * Quote accepted message
- */
 export interface QuoteAccepted {
   quoteId: string;
   txHash: string;
 }
 
-//==============================================================================
-// DATABASE TYPES
-//==============================================================================
-
-/**
- * Token in database
- */
 export interface Token {
   id: string;
   symbol: string;
@@ -136,9 +100,6 @@ export interface Token {
   updatedAt: number;
 }
 
-/**
- * Token market data
- */
 export interface TokenMarketData {
   tokenId: string;
   priceUsd: number;
@@ -149,9 +110,6 @@ export interface TokenMarketData {
   lastUpdated: number;
 }
 
-/**
- * OTC Consignment in database
- */
 export interface OTCConsignment {
   id: string;
   tokenId: string;
@@ -181,9 +139,6 @@ export interface OTCConsignment {
   lastDealAt?: number;
 }
 
-/**
- * Consignment deal record
- */
 export interface ConsignmentDeal {
   id: string;
   consignmentId: string;
@@ -198,18 +153,10 @@ export interface ConsignmentDeal {
   status: "pending" | "executed" | "failed";
 }
 
-//==============================================================================
-// USER SESSION TYPES
-//==============================================================================
-
-/**
- * User session memory
- */
 export interface UserSessionMemory {
   id: string;
   entityId: string;
   walletAddress: string;
-  chainFamily: "evm" | "solana";
   preferredChain?: string;
   lastActiveAt: number;
   sessionData?: Record<string, unknown>;
@@ -217,13 +164,6 @@ export interface UserSessionMemory {
   updatedAt: number;
 }
 
-//==============================================================================
-// UTILITY TYPES
-//==============================================================================
-
-/**
- * Token with balance information
- */
 export interface TokenWithBalance extends Token {
   balance: string;
   balanceFormatted: string;
@@ -231,9 +171,6 @@ export interface TokenWithBalance extends Token {
   priceUsd: number;
 }
 
-/**
- * Consignment creation result
- */
 export interface ConsignmentCreationResult {
   txHash: `0x${string}`;
   consignmentId: bigint;

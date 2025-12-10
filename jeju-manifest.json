@@ -1,0 +1,56 @@
+{
+  "$schema": "../../packages/config/jeju-manifest.schema.json",
+  "name": "otc-agent",
+  "displayName": "OTC Trading Desk",
+  "version": "1.0.0",
+  "type": "vendor",
+  "description": "AI-powered multi-chain OTC trading desk with Eliza integration. Supports Base, BSC, Solana mainnet and testnets with cryptographic quote verification and lockup scheduling.",
+  "commands": {
+    "dev": "bun run dev",
+    "build": "bun run build",
+    "start": "bun run start",
+    "test": "bun run test"
+  },
+  "ports": {
+    "main": 5005,
+    "db": 5439,
+    "worker": 3137
+  },
+  "dependencies": ["contracts", "config"],
+  "optional": true,
+  "enabled": true,
+  "autoStart": false,
+  "tags": ["otc", "trading", "ai", "eliza", "multi-chain", "base", "bsc", "solana", "defi"],
+  "healthCheck": {
+    "url": "http://localhost:5005",
+    "interval": 30000
+  },
+  "agent": {
+    "enabled": true,
+    "a2aEndpoint": "/api/a2a",
+    "tags": ["jeju-app", "otc", "trading", "ai", "multi-chain"],
+    "metadata": {
+      "category": "defi",
+      "provider": "jeju-network",
+      "chains": ["base", "bsc", "solana", "jeju"]
+    },
+    "trustModels": ["open", "staked"],
+    "x402Support": true
+  },
+  "networks": {
+    "evm": {
+      "mainnet": ["base", "bsc"],
+      "testnet": ["base-sepolia", "bsc-testnet"]
+    },
+    "solana": {
+      "mainnet": ["solana-mainnet"],
+      "testnet": ["solana-devnet"]
+    },
+    "jeju": {
+      "mainnet": ["jeju"],
+      "testnet": ["jeju-testnet"]
+    }
+  }
+}
+
+

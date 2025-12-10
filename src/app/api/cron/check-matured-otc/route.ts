@@ -7,7 +7,7 @@ import {
   type Address,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { OTCAbiJson as otcArtifact } from "@jeju/contracts/abis";
 import { getChain, getRpcUrl } from "@/lib/getChain";
 import { getContractAddress } from "@/lib/getContractAddress";
 import type { RawOfferData } from "@/lib/otc-helpers";
