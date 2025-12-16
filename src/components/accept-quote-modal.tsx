@@ -126,6 +126,9 @@ function setContractExists(key: string, exists: boolean): void {
 // --- Consolidated Modal State ---
 interface ModalState {
   tokenAmount: number;
+  // Minimum token amount based on the agent's quote.
+  // Users may increase above this, but cannot decrease below it.
+  minTokenAmount: number | null;
   currency: "ETH" | "USDC" | "SOL";
   step: StepState;
   isProcessing: boolean;
@@ -140,6 +143,7 @@ interface ModalState {
 
 type ModalAction =
   | { type: "SET_TOKEN_AMOUNT"; payload: number }
+  | { type: "SET_MIN_TOKEN_AMOUNT"; payload: number | null }
   | { type: "SET_CURRENCY"; payload: "ETH" | "USDC" | "SOL" }
   | { type: "SET_STEP"; payload: StepState }
   | { type: "SET_PROCESSING"; payload: boolean }
@@ -154,7 +158,11 @@ type ModalAction =
     }
   | {
       type: "RESET";
-      payload: { tokenAmount: number; currency: "ETH" | "USDC" | "SOL" };
+      payload: {
+        tokenAmount: number;
+        minTokenAmount: number | null;
+        currency: "ETH" | "USDC" | "SOL";
+      };
     }
   | { type: "START_TRANSACTION" }
   | { type: "TRANSACTION_ERROR"; payload: string };
@@ -163,6 +171,8 @@ function modalReducer(state: ModalState, action: ModalAction): ModalState {
   switch (action.type) {
     case "SET_TOKEN_AMOUNT":
       return { ...state, tokenAmount: action.payload };
+    case "SET_MIN_TOKEN_AMOUNT":
+      return { ...state, minTokenAmount: action.payload };
     case "SET_CURRENCY":
       return { ...state, currency: action.payload };
     case "SET_STEP":
@@ -301,14 +311,26 @@ export function AcceptQuoteModal({
 
   // --- Consolidated State ---
   // Use quoteChain to determine initial currency - it's the token's chain, not the connected wallet
-  const initialState: ModalState = {
-    tokenAmount: Math.min(
-      ONE_MILLION,
-      Math.max(
-        MIN_TOKENS,
-        initialQuote?.tokenAmount ? Number(initialQuote.tokenAmount) : 1000,
-      ),
+  const quotedTokenAmount =
+    initialQuote?.tokenAmount && Number(initialQuote.tokenAmount) > 0
+      ? Number(initialQuote.tokenAmount)
+      : null;
+
+  const initialTokenAmount = Math.min(
+    ONE_MILLION,
+    Math.max(
+      MIN_TOKENS,
+      quotedTokenAmount !== null ? quotedTokenAmount : 1000,
     ),
+  );
+
+  const initialState: ModalState = {
+    tokenAmount: initialTokenAmount,
+    // Lock minimum to the quoted amount when available; otherwise fall back to generic minimum
+    minTokenAmount:
+      quotedTokenAmount !== null
+        ? Math.max(MIN_TOKENS, quotedTokenAmount)
+        : MIN_TOKENS,
     currency: quoteChain === "solana" ? "SOL" : "ETH",
     step: "amount",
     isProcessing: false,
@@ -358,20 +380,16 @@ export function AcceptQuoteModal({
       dispatch({
         type: "RESET",
         payload: {
-          tokenAmount: Math.min(
-            ONE_MILLION,
-            Math.max(
-              MIN_TOKENS,
-              initialQuote?.tokenAmount
-                ? Number(initialQuote.tokenAmount)
-                : 1000,
-            ),
-          ),
+          tokenAmount: initialTokenAmount,
+          minTokenAmount:
+            quotedTokenAmount !== null
+              ? Math.max(MIN_TOKENS, quotedTokenAmount)
+              : MIN_TOKENS,
           currency: quoteChain === "solana" ? "SOL" : "ETH",
         },
       });
     }
-  }, [isOpen, initialQuote, quoteChain]);
+  }, [isOpen, initialTokenAmount, quotedTokenAmount, quoteChain]);
 
   // Look up token metadata from cache first, then database
   useEffect(() => {
@@ -546,16 +564,25 @@ export function AcceptQuoteModal({
   }, [maxTokenPerOrder]);
 
   const clampAmount = useCallback(
-    (value: number) =>
-      Math.min(contractMaxTokens, Math.max(MIN_TOKENS, Math.floor(value))),
+    (value: number, minOverride?: number) => {
+      const raw = Math.floor(value);
+      const effectiveMin =
+        typeof minOverride === "number"
+          ? Math.max(MIN_TOKENS, minOverride)
+          : MIN_TOKENS;
+      return Math.min(contractMaxTokens, Math.max(effectiveMin, raw));
+    },
     [contractMaxTokens],
   );
 
   const setTokenAmount = useCallback(
     (value: number) => {
-      dispatch({ type: "SET_TOKEN_AMOUNT", payload: clampAmount(value) });
+      dispatch({
+        type: "SET_TOKEN_AMOUNT",
+        payload: clampAmount(value, state.minTokenAmount ?? undefined),
+      });
     },
-    [clampAmount],
+    [clampAmount, state.minTokenAmount],
   );
 
   const setCurrency = useCallback((value: "ETH" | "USDC" | "SOL") => {
@@ -711,6 +738,19 @@ export function AcceptQuoteModal({
 
   const handleConfirm = useCallback(async () => {
     if (!walletConnected) return;
+
+    // Enforce minimum amount based on quoted tokens before starting any transaction
+    if (
+      state.minTokenAmount !== null &&
+      tokenAmount < state.minTokenAmount
+    ) {
+      dispatch({
+        type: "SET_ERROR",
+        payload:
+          "This quote requires at least the originally quoted token amount. Please increase the amount or request a new quote.",
+      });
+      return;
+    }
 
     // CRITICAL: Quote must exist
     if (!initialQuote?.quoteId) {
@@ -1342,7 +1382,9 @@ export function AcceptQuoteModal({
     if (maxByFunds < MIN_TOKENS) {
       maxByFunds = MIN_TOKENS;
     }
-    setTokenAmount(clampAmount(maxByFunds));
+    setTokenAmount(
+      clampAmount(maxByFunds, state.minTokenAmount ?? undefined),
+    );
   };
 
   // Unified connection handler - uses connectWallet if already authenticated, login if not
@@ -1555,9 +1597,14 @@ export function AcceptQuoteModal({
                   type="number"
                   value={tokenAmount}
                   onChange={(e) =>
-                    setTokenAmount(clampAmount(Number(e.target.value)))
+                    setTokenAmount(
+                      clampAmount(
+                        Number(e.target.value),
+                        state.minTokenAmount ?? undefined,
+                      ),
+                    )
                   }
-                  min={MIN_TOKENS}
+                  min={state.minTokenAmount ?? MIN_TOKENS}
                   max={ONE_MILLION}
                   className="w-full bg-transparent border-none outline-none text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white"
                 />
@@ -1594,15 +1641,29 @@ export function AcceptQuoteModal({
                   </div>
                 </div>
               </div>
+              <div className="mt-1 text-[10px] sm:text-xs text-zinc-500">
+                {state.minTokenAmount
+                  ? `Minimum based on quoted amount: ${state.minTokenAmount.toLocaleString()} ${
+                      initialQuote?.tokenSymbol || "TOKEN"
+                    }`
+                  : `Minimum amount: ${MIN_TOKENS.toLocaleString()} ${
+                      initialQuote?.tokenSymbol || "TOKEN"
+                    }`}
+              </div>
               <div className="mt-2">
                 <input
                   data-testid="token-amount-slider"
                   type="range"
-                  min={MIN_TOKENS}
+                  min={state.minTokenAmount ?? MIN_TOKENS}
                   max={ONE_MILLION}
                   value={tokenAmount}
                   onChange={(e) =>
-                    setTokenAmount(clampAmount(Number(e.target.value)))
+                    setTokenAmount(
+                      clampAmount(
+                        Number(e.target.value),
+                        state.minTokenAmount ?? undefined,
+                      ),
+                    )
                   }
                   className="w-full accent-brand-500"
                 />
