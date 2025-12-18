@@ -53,12 +53,6 @@ export const DealFilters = memo(function DealFilters({
       ? "all"
       : filters.negotiableTypes[0] || "all";
 
-  const typeOptions: { value: DealType; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "negotiable", label: "Negotiable" },
-    { value: "fixed", label: "Fixed" },
-  ];
-
   return (
     <>
       {/* Desktop: Search and Dropdowns */}
@@ -153,12 +147,14 @@ export const DealFilters = memo(function DealFilters({
           </svg>
         </div>
 
-        {/* Mobile Filters: Chain + Type */}
+        {/* Mobile Filters: Chain + Type (both as dropdowns to avoid clipping) */}
         <div className="flex items-center gap-2">
-          <ChainSelector
-            selected={filters.chains}
-            onChange={(chains) => onFiltersChange({ ...filters, chains })}
-          />
+          <div className="flex-1">
+            <ChainSelector
+              selected={filters.chains}
+              onChange={(chains) => onFiltersChange({ ...filters, chains })}
+            />
+          </div>
 
           {/* Type toggle - independent buttons */}
           <div className="flex-1 flex rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">

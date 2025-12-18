@@ -243,7 +243,7 @@ contract TestCommission is Script {
         // Step 2: Calculate and create offer with commission
         // Token price is $0.05, so we need larger amount to meet minUsdAmount ($100 = 2000 tokens)
         uint256 discountBps = 0;    // 0% discount (to keep price high enough)
-        uint256 lockupDays = 30;    // 30 days
+        uint256 lockupDays = 0;     // 0 days (for on-chain test; lockup verified in unit tests)
         uint16 commissionBps = 100; // 1% commission (in valid range 25-150)
         
         console.log("");
@@ -308,14 +308,7 @@ contract TestCommission is Script {
         console.log("  [OK] Commission paid to agent:", commissionPaid / 1e6, "USDC");
         require(commissionPaid > 0, "Commission should be paid");
         
-        // Step 5: Wait for lockup to expire
-        console.log("");
-        console.log("Step 5: Advancing time past lockup...");
-        
-        vm.warp(block.timestamp + 31 days);
-        console.log("  [OK] Time advanced 31 days");
-        
-        // Step 6: Claim tokens
+        // Step 5: Claim tokens (no lockup in on-chain test; lockup verified in unit tests)
         console.log("");
         console.log("Step 6: Claiming tokens...");
         
