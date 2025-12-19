@@ -31,6 +31,32 @@ import { SUPPORTED_CHAINS } from "@/config/chains";
 const SOLANA_RPC = SUPPORTED_CHAINS.solana.rpcUrl;
 const SOLANA_DESK = SUPPORTED_CHAINS.solana.contracts.otc;
 
+// Polling-based transaction confirmation (avoids WebSocket which doesn't work with HTTP proxy)
+async function confirmTransactionPolling(
+  connection: Connection,
+  signature: string,
+  commitment: "processed" | "confirmed" | "finalized" = "confirmed",
+  timeoutMs: number = 60000,
+  pollIntervalMs: number = 1000
+): Promise<void> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    const response = await connection.getSignatureStatuses([signature]);
+    const status = response?.value?.[0];
+    if (status) {
+      if (status.err) {
+        throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+      }
+      const confirmationStatus = status.confirmationStatus;
+      if (commitment === "processed" && confirmationStatus) return;
+      if (commitment === "confirmed" && (confirmationStatus === "confirmed" || confirmationStatus === "finalized")) return;
+      if (commitment === "finalized" && confirmationStatus === "finalized") return;
+    }
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+  }
+  throw new Error(`Transaction confirmation timeout after ${timeoutMs}ms`);
+}
+
 // Default gas deposit fallback (0.001 ETH) - used when RPC fetch fails
 const DEFAULT_GAS_DEPOSIT = BigInt(1000000000000000);
 
@@ -92,8 +118,8 @@ const INITIAL_FORM_DATA = {
   maxDiscountBps: 2000,
   minLockupDays: 7,
   maxLockupDays: 365,
-  minDealAmount: "1000",
-  maxDealAmount: "100000",
+  minDealAmount: "1", // No minimum - allow any size purchase
+  maxDealAmount: "0", // Will be set to listing amount
   isFractionalized: true,
   isPrivate: false,
   maxPriceVolatilityBps: 1000,
@@ -198,7 +224,21 @@ export default function ConsignPageClient() {
   }, [step, activeFamily, rawTokenAddress, tokenChain, getRequiredGasDeposit]);
 
   const updateFormData = useCallback((updates: Partial<typeof formData>) => {
-    setFormData((prev) => ({ ...prev, ...updates }));
+    setFormData((prev) => {
+      const newData = { ...prev, ...updates };
+      
+      // When amount changes, auto-set deal limits (hidden from user)
+      if (updates.amount !== undefined) {
+        const amount = parseFloat(updates.amount) || 0;
+        if (amount > 0) {
+          // No min/max limits - allow any size purchase up to listing amount
+          newData.minDealAmount = "1";
+          newData.maxDealAmount = amount.toString();
+        }
+      }
+      
+      return newData;
+    });
   }, []);
 
   const handleNext = useCallback(() => setStep((s) => Math.min(s + 1, 4)), []);
@@ -218,15 +258,11 @@ export default function ConsignPageClient() {
 
   const handleTokenSelect = useCallback((token: TokenWithBalance) => {
     setSelectedToken(token);
-    // Auto-set deal amounts based on token balance
-    const humanBalance =
-      Number(BigInt(token.balance)) / Math.pow(10, token.decimals);
-    const minDeal = Math.max(1, Math.floor(humanBalance * 0.01));
-    const maxDeal = Math.floor(humanBalance);
+    // Reset amount when selecting new token
+    // Deal limits auto-set when amount is entered
     setFormData((prev) => ({
       ...prev,
-      minDealAmount: minDeal.toString(),
-      maxDealAmount: maxDeal.toString(),
+      amount: "",
     }));
   }, []);
 
@@ -300,7 +336,12 @@ export default function ConsignPageClient() {
           throw new Error("Token address not found");
         }
 
-        const connection = new Connection(SOLANA_RPC, "confirmed");
+        // Use HTTP-only connection (no WebSocket) since we're using a proxy
+        const connection = new Connection(SOLANA_RPC, {
+          commitment: "confirmed",
+          wsEndpoint: undefined, // Disable WebSocket - proxy doesn't support it
+          disableRetryOnRateLimit: false,
+        });
 
         // Get wallet signing capabilities - either from adapter or directly from Privy
         type SignableTransaction = anchor.web3.Transaction;
@@ -385,7 +426,7 @@ export default function ConsignPageClient() {
             
             const signedRegisterTx = await signTransaction(registerTx);
             const registerSig = await connection.sendRawTransaction(signedRegisterTx.serialize());
-            await connection.confirmTransaction(registerSig, "confirmed");
+            await confirmTransactionPolling(connection, registerSig, "confirmed");
             console.log("[ConsignPage] Token registered:", registerSig);
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -421,7 +462,7 @@ export default function ConsignPageClient() {
             
             const signedTx = await signTransaction(createAtaTx);
             const createAtaSig = await connection.sendRawTransaction(signedTx.serialize());
-            await connection.confirmTransaction(createAtaSig, "confirmed");
+            await confirmTransactionPolling(connection, createAtaSig, "confirmed");
             console.log("[ConsignPage] Desk token treasury created:", createAtaSig);
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -455,10 +496,11 @@ export default function ConsignPageClient() {
           ).toString(),
         );
 
-        // Call createConsignment instruction
+        // Call createConsignment instruction - build tx manually to avoid WebSocket confirmation
         let txSignature: string;
         try {
-          txSignature = await program.methods
+          // Build the transaction (don't use .rpc() as it uses WebSocket confirmation)
+          const tx = await program.methods
             .createConsignment(
               rawAmount,
               formData.isNegotiable,
@@ -485,8 +527,27 @@ export default function ConsignPageClient() {
               tokenProgram: TOKEN_PROGRAM_ID,
               systemProgram: SolSystemProgram.programId,
             })
-            .signers([consignmentKeypair])
-            .rpc();
+            .transaction();
+          
+          // Set recent blockhash and fee payer
+          const { blockhash } = await connection.getLatestBlockhash();
+          tx.recentBlockhash = blockhash;
+          tx.feePayer = consignerPk;
+          
+          // Sign with consignment keypair first
+          tx.partialSign(consignmentKeypair);
+          
+          // Sign with wallet
+          const signedTx = await signTransaction(tx);
+          
+          // Send raw transaction (skipPreflight=false for better error messages)
+          txSignature = await connection.sendRawTransaction(signedTx.serialize(), {
+            skipPreflight: false,
+            preflightCommitment: "confirmed",
+          });
+          
+          // Confirm using polling (avoids WebSocket)
+          await confirmTransactionPolling(connection, txSignature, "confirmed");
         } catch (err) {
           // Provide more helpful error messages for Solana failures
           const errMsg = err instanceof Error ? err.message : String(err);

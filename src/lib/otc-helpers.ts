@@ -20,6 +20,7 @@ export interface ParsedOffer {
   cancelled: boolean;
   payer: string;
   amountPaid: bigint;
+  agentCommissionBps: number; // 0 for P2P, 25-150 for negotiated deals
 }
 
 /**
@@ -28,23 +29,24 @@ export interface ParsedOffer {
  */
 export type RawOfferData =
   | readonly [
-      bigint,
-      string,
-      string,
-      bigint,
-      bigint,
-      bigint,
-      bigint,
-      bigint,
-      bigint,
-      bigint,
-      number,
-      boolean,
-      boolean,
-      boolean,
-      boolean,
-      string,
-      bigint,
+      bigint,   // 0. consignmentId
+      string,   // 1. tokenId
+      string,   // 2. beneficiary
+      bigint,   // 3. tokenAmount
+      bigint,   // 4. discountBps
+      bigint,   // 5. createdAt
+      bigint,   // 6. unlockTime
+      bigint,   // 7. priceUsdPerToken
+      bigint,   // 8. maxPriceDeviation
+      bigint,   // 9. ethUsdPrice
+      number,   // 10. currency
+      boolean,  // 11. approved
+      boolean,  // 12. paid
+      boolean,  // 13. fulfilled
+      boolean,  // 14. cancelled
+      string,   // 15. payer
+      bigint,   // 16. amountPaid
+      number,   // 17. agentCommissionBps
     ]
   | ParsedOffer;
 
@@ -52,7 +54,7 @@ export type RawOfferData =
  * Parse an Offer struct from viem contract read.
  * Viem may return structs as arrays or objects depending on version/config.
  *
- * Struct order from OTC.sol (UPDATED with multi-token support):
+ * Struct order from OTC.sol (UPDATED with P2P support):
  * 0. consignmentId (uint256)
  * 1. tokenId (bytes32)
  * 2. beneficiary (address)
@@ -70,6 +72,7 @@ export type RawOfferData =
  * 14. cancelled (bool)
  * 15. payer (address)
  * 16. amountPaid (uint256)
+ * 17. agentCommissionBps (uint16) - 0 for P2P, 25-150 for negotiated
  */
 export function parseOfferStruct(offerRaw: RawOfferData): ParsedOffer {
   if (Array.isArray(offerRaw)) {
@@ -91,6 +94,7 @@ export function parseOfferStruct(offerRaw: RawOfferData): ParsedOffer {
       cancelled: offerRaw[14],
       payer: offerRaw[15],
       amountPaid: offerRaw[16],
+      agentCommissionBps: offerRaw[17],
     };
   }
   return offerRaw as ParsedOffer;

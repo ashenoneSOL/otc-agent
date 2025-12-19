@@ -10,7 +10,23 @@ interface TokenDealsSectionProps {
   consignments: OTCConsignment[];
 }
 
-function getDealTerms(c: OTCConsignment) {
+// Extended type to handle sanitized consignments with display fields
+type ConsignmentWithDisplay = OTCConsignment & {
+  displayDiscountBps?: number;
+  displayLockupDays?: number;
+  termsType?: "negotiable" | "fixed";
+};
+
+function getDealTerms(c: ConsignmentWithDisplay) {
+  // Use display fields if available (sanitized response)
+  if (c.displayDiscountBps !== undefined && c.displayLockupDays !== undefined) {
+    return {
+      discountBps: c.displayDiscountBps,
+      lockupDays: c.displayLockupDays,
+    };
+  }
+
+  // Fallback to raw fields (owner view)
   return c.isNegotiable
     ? { discountBps: c.maxDiscountBps ?? 0, lockupDays: c.maxLockupDays ?? 0 }
     : {
@@ -19,7 +35,7 @@ function getDealTerms(c: OTCConsignment) {
       };
 }
 
-function getDealScore(c: OTCConsignment) {
+function getDealScore(c: ConsignmentWithDisplay) {
   const { discountBps, lockupDays } = getDealTerms(c);
   return discountBps - lockupDays; // higher discount, shorter lockup = better
 }
@@ -136,8 +152,10 @@ export function TokenDealsSection({
       {isExpanded && (
         <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
           {sortedConsignments.map((consignment) => {
-            const { discountBps, lockupDays } = getDealTerms(consignment);
+            const { discountBps, lockupDays } = getDealTerms(consignment as ConsignmentWithDisplay);
             const discountPct = (discountBps / 100).toFixed(1);
+            const isNegotiable = consignment.isNegotiable;
+            
             return (
               <div
                 key={consignment.id}
@@ -150,9 +168,13 @@ export function TokenDealsSection({
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {discountPct}% off · {lockupDays}d
+                      {isNegotiable ? (
+                        <>Starting at {discountPct}% off · {lockupDays}d</>
+                      ) : (
+                        <>{discountPct}% off · {lockupDays}d</>
+                      )}
                     </span>
-                    {consignment.isNegotiable && (
+                    {isNegotiable && (
                       <span className="inline-flex items-center rounded-full bg-brand-500/15 text-brand-600 dark:text-brand-400 px-2 py-1 text-xs font-medium">
                         Negotiable
                       </span>

@@ -4,6 +4,7 @@ import testnetEvm from "./deployments/testnet-evm.json";
 import testnetSolana from "./deployments/testnet-solana.json";
 import mainnetEvm from "./deployments/mainnet-evm.json";
 import mainnetSolana from "./deployments/mainnet-solana.json";
+import { getNetwork, type NetworkEnvironment } from "./env";
 
 // =============================================================================
 // TYPES
@@ -89,89 +90,52 @@ export const CONTRACT_DEPLOYMENTS = {
   },
 };
 
-export type NetworkType = "local" | "testnet" | "mainnet";
+export type NetworkType = NetworkEnvironment;
+
+// Re-export for backwards compatibility
+export { getNetwork, getNetwork as getCurrentNetwork };
 
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
 
 /**
- * Get the current network from env or default to mainnet
- * Priority: NEXT_PUBLIC_NETWORK > NEXT_PUBLIC_USE_MAINNET > default to mainnet
- * 
- * This is the SINGLE SOURCE OF TRUTH for network resolution.
- * Do not duplicate this logic elsewhere.
- */
-export function getCurrentNetwork(): NetworkType {
-  const explicitNetwork = process.env.NEXT_PUBLIC_NETWORK || process.env.NETWORK;
-  
-  if (explicitNetwork === "mainnet") return "mainnet";
-  if (explicitNetwork === "testnet" || explicitNetwork === "sepolia") return "testnet";
-  if (explicitNetwork === "local" || explicitNetwork === "localnet" || explicitNetwork === "anvil") return "local";
-  
-  // Legacy flag support
-  if (process.env.NEXT_PUBLIC_USE_MAINNET === "true") return "mainnet";
-  
-  // Default to mainnet for production
-  return "mainnet";
-}
-
-/**
  * Get deployment configs for a network
  */
 export function getContracts(network?: NetworkType) {
-  const net = network || getCurrentNetwork();
+  const net = network || getNetwork();
   return CONTRACT_DEPLOYMENTS[net];
 }
 
 /**
- * Get EVM contract addresses with env overrides
+ * Get EVM contract addresses from deployment config
+ * All values come from deployment JSON - no env var overrides
  */
 export function getEvmConfig(network?: NetworkType): EvmDeployment {
-  const net = network || getCurrentNetwork();
+  const net = network || getNetwork();
   const config = CONTRACT_DEPLOYMENTS[net].evm;
   
   // Handle legacy contract names (deal -> otc, usdcToken -> usdc)
   const otcAddress = config.contracts.otc ?? config.contracts.deal;
   const usdcAddress = config.contracts.usdc ?? config.contracts.usdcToken;
   
-  // Allow env overrides
   return {
     ...config,
-    rpc: process.env.NEXT_PUBLIC_RPC_URL ?? config.rpc ?? "",
     contracts: {
       ...config.contracts,
-      otc: process.env.NEXT_PUBLIC_OTC_ADDRESS ?? 
-           (net === "mainnet" ? process.env.NEXT_PUBLIC_OTC_ADDRESS_MAINNET : undefined) ?? 
-           otcAddress,
-      usdc: process.env.NEXT_PUBLIC_USDC_ADDRESS ?? usdcAddress,
-    },
-    accounts: {
-      ...config.accounts,
-      approver: process.env.APPROVER_ADDRESS ?? config.accounts?.approver,
+      otc: otcAddress,
+      usdc: usdcAddress,
     },
   };
 }
 
 /**
- * Get Solana config with env overrides
+ * Get Solana config from deployment config
+ * All values come from deployment JSON - no env var overrides
  */
 export function getSolanaConfig(network?: NetworkType): SolanaDeployment {
-  const net = network || getCurrentNetwork();
-  const config = CONTRACT_DEPLOYMENTS[net].solana;
-  
-  // Allow env overrides
-  return {
-    ...config,
-    rpc: process.env.NEXT_PUBLIC_SOLANA_RPC || 
-         (net === "mainnet" ? process.env.NEXT_PUBLIC_SOLANA_RPC_MAINNET : null) || 
-         config.rpc,
-    programId: process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID || config.programId,
-    desk: process.env.NEXT_PUBLIC_SOLANA_DESK || 
-          (net === "mainnet" ? process.env.NEXT_PUBLIC_SOLANA_DESK_MAINNET : null) || 
-          config.desk,
-    usdcMint: process.env.NEXT_PUBLIC_SOLANA_USDC_MINT || config.usdcMint,
-  };
+  const net = network || getNetwork();
+  return CONTRACT_DEPLOYMENTS[net].solana;
 }
 
 /**
@@ -179,7 +143,11 @@ export function getSolanaConfig(network?: NetworkType): SolanaDeployment {
  */
 export function getOtcAddress(network?: NetworkType): string {
   const config = getEvmConfig(network);
-  return config.contracts.otc;
+  const address = config.contracts.otc;
+  if (!address) {
+    throw new Error(`OTC contract address not configured for network: ${network || getNetwork()}`);
+  }
+  return address;
 }
 
 /**
@@ -216,7 +184,38 @@ export function getOtcAddressForChain(chainId: number, network?: NetworkType): s
 }
 
 /**
- * All mainnet OTC contract addresses
+ * Get registration helper address for a chain
+ */
+export function getRegistrationHelperForChain(chainId: number, network?: NetworkType): string | undefined {
+  const config = getEvmConfig(network);
+  
+  if (config.networks) {
+    if (chainId === 8453 && config.networks.base) return config.networks.base.registrationHelper;
+    if (chainId === 56 && config.networks.bsc) return config.networks.bsc.registrationHelper;
+    if (chainId === 1 && config.networks.ethereum) return config.networks.ethereum.registrationHelper;
+  }
+  
+  return config.contracts.registrationHelper;
+}
+
+/**
+ * Get USDC address for a chain
+ */
+export function getUsdcAddressForChain(chainId: number, network?: NetworkType): string | undefined {
+  const config = getEvmConfig(network);
+  
+  if (config.networks) {
+    if (chainId === 8453 && config.networks.base) return config.networks.base.usdc;
+    if (chainId === 56 && config.networks.bsc) return config.networks.bsc.usdc;
+    if (chainId === 1 && config.networks.ethereum) return config.networks.ethereum.usdc;
+  }
+  
+  return config.contracts.usdc;
+}
+
+/**
+ * All mainnet OTC contract addresses (hardcoded for reference)
+ * In practice, use getOtcAddressForChain() which reads from deployment JSON
  */
 export const MAINNET_OTC_ADDRESSES = {
   base: "0x23eD9EC8deb2F88Ec44a2dbbe1bbE7Be7EFc02b9",

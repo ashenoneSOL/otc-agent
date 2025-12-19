@@ -964,6 +964,10 @@ pub mod otc {
     }
 
     pub fn fulfill_offer_usdc(ctx: Context<FulfillOfferUsdc>, _offer_id: u64) -> Result<()> {
+        // Cache keys before mutable borrows to avoid borrow checker issues
+        let offer_key = ctx.accounts.offer.key();
+        let payer_key = ctx.accounts.payer.key();
+        
         let desk = &mut ctx.accounts.desk;
         require!(!desk.paused, OtcError::Paused);
         // Removed PDA validation - now using keypairs for offers
@@ -1004,17 +1008,21 @@ pub mod otc {
                 };
                 let cpi_ctx_commission = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts_commission);
                 token::transfer(cpi_ctx_commission, commission_usdc)?;
-                emit!(AgentCommissionPaid { offer: ctx.accounts.offer.key(), agent: desk.agent, amount: commission_usdc, currency: 1 });
+                emit!(AgentCommissionPaid { offer: offer_key, agent: desk.agent, amount: commission_usdc, currency: 1 });
             }
         }
         
-        offer.amount_paid = usdc_amount; offer.payer = ctx.accounts.payer.key(); offer.paid = true;
+        offer.amount_paid = usdc_amount; offer.payer = payer_key; offer.paid = true;
         // Note: desk.token_reserved is deprecated since all tokens are equal now
-        emit!(OfferPaid { offer: ctx.accounts.offer.key(), payer: ctx.accounts.payer.key(), amount: usdc_amount, currency: 1 });
+        emit!(OfferPaid { offer: offer_key, payer: payer_key, amount: usdc_amount, currency: 1 });
         Ok(())
     }
 
     pub fn fulfill_offer_sol(ctx: Context<FulfillOfferSol>, _offer_id: u64) -> Result<()> {
+        // Cache keys before mutable borrows to avoid borrow checker issues
+        let offer_key = ctx.accounts.offer.key();
+        let payer_key = ctx.accounts.payer.key();
+        
         let desk_ai = ctx.accounts.desk.to_account_info();
         let desk_key = desk_ai.key();
         let desk = &mut ctx.accounts.desk;
@@ -1058,13 +1066,13 @@ pub mod otc {
                 // Transfer commission from desk to agent (desk_signer authorizes)
                 **desk_ai.try_borrow_mut_lamports()? -= commission_lamports;
                 **agent_account.to_account_info().try_borrow_mut_lamports()? += commission_lamports;
-                emit!(AgentCommissionPaid { offer: ctx.accounts.offer.key(), agent: agent_key, amount: commission_lamports, currency: 0 });
+                emit!(AgentCommissionPaid { offer: offer_key, agent: agent_key, amount: commission_lamports, currency: 0 });
             }
         }
         
-        offer.amount_paid = lamports_req; offer.payer = ctx.accounts.payer.key(); offer.paid = true;
+        offer.amount_paid = lamports_req; offer.payer = payer_key; offer.paid = true;
         // Note: desk.token_reserved is deprecated since all tokens are equal now
-        emit!(OfferPaid { offer: ctx.accounts.offer.key(), payer: ctx.accounts.payer.key(), amount: lamports_req, currency: 0 });
+        emit!(OfferPaid { offer: offer_key, payer: payer_key, amount: lamports_req, currency: 0 });
         Ok(())
     }
 

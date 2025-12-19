@@ -1074,7 +1074,7 @@ export function useOTC(): {
       const rawResult = base[idx]?.result;
 
       // Contract returns array: [consignmentId, tokenId, beneficiary, tokenAmount, discountBps, createdAt, unlockTime,
-      //   priceUsdPerToken, maxPriceDeviation, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid]
+      //   priceUsdPerToken, maxPriceDeviation, ethUsdPrice, currency, approved, paid, fulfilled, cancelled, payer, amountPaid, agentCommissionBps]
       if (Array.isArray(rawResult)) {
         const [
           consignmentId,
@@ -1094,6 +1094,7 @@ export function useOTC(): {
           cancelled,
           payer,
           amountPaid,
+          agentCommissionBps,
         ] = rawResult;
 
         return {
@@ -1115,6 +1116,7 @@ export function useOTC(): {
           cancelled,
           payer,
           amountPaid,
+          agentCommissionBps,
         } as Offer & { id: bigint };
       }
 

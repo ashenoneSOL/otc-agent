@@ -59,6 +59,7 @@ export interface Offer {
   cancelled: boolean;
   payer: Address;
   amountPaid: bigint;
+  agentCommissionBps?: number; // 0 for P2P, 25-150 for negotiated deals
 }
 
 /**

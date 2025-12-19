@@ -1,5 +1,6 @@
 import { MarketDataDB, type TokenMarketData } from "./database";
 import type { Chain } from "@/config/chains";
+import { getCoingeckoApiKey, getBirdeyeApiKey } from "@/config/env";
 
 interface CoinGeckoPrice {
   [key: string]: {
@@ -25,8 +26,8 @@ export class MarketDataService {
   private birdeyeApiKey?: string;
 
   constructor() {
-    this.coingeckoApiKey = process.env.COINGECKO_API_KEY;
-    this.birdeyeApiKey = process.env.BIRDEYE_API_KEY;
+    this.coingeckoApiKey = getCoingeckoApiKey();
+    this.birdeyeApiKey = getBirdeyeApiKey();
   }
 
   async fetchTokenPrice(tokenAddress: string, chain: Chain): Promise<number> {
@@ -93,7 +94,8 @@ export class MarketDataService {
     // In local development without Birdeye, return mock data
     // The actual price comes from on-chain (desk.token_usd_price_8d)
     if (!this.birdeyeApiKey) {
-      const solanaRpc = process.env.NEXT_PUBLIC_SOLANA_RPC || "";
+      const { getSolanaConfig } = await import("@/config/contracts");
+      const solanaRpc = getSolanaConfig().rpc;
       const isLocalnet =
         solanaRpc.includes("127.0.0.1") || solanaRpc.includes("localhost");
 

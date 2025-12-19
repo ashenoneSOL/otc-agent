@@ -3,6 +3,67 @@ import { TokenDB, MarketDataDB, ConsignmentDB } from "@/services/database";
 import type { Token, TokenMarketData, Chain } from "@/types";
 
 /**
+ * Chain config for Alchemy API
+ */
+const CHAIN_ALCHEMY_CONFIG: Record<string, string> = {
+  ethereum: "eth-mainnet",
+  base: "base-mainnet",
+  bsc: "bnb-mainnet",
+};
+
+/**
+ * Fetch and cache logo URL for a token from Alchemy
+ */
+async function enrichTokenWithLogo(token: Token): Promise<Token> {
+  // Skip if already has logo or is not EVM
+  if (token.logoUrl || token.chain === "solana") {
+    return token;
+  }
+
+  const alchemyNetwork = CHAIN_ALCHEMY_CONFIG[token.chain];
+  if (!alchemyNetwork) {
+    return token;
+  }
+
+  const alchemyKey = process.env.ALCHEMY_API_KEY;
+  if (!alchemyKey) {
+    return token;
+  }
+
+  try {
+    const url = `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyKey}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "alchemy_getTokenMetadata",
+        params: [token.contractAddress],
+      }),
+      signal: AbortSignal.timeout(3000),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const logo = data.result?.logo;
+      if (logo) {
+        console.log(`[Cache] Enriched ${token.symbol} with logo from Alchemy`);
+        // Update the token in the database (fire-and-forget)
+        TokenDB.updateToken(token.id, { logoUrl: logo }).catch((err) =>
+          console.debug(`[Cache] Failed to persist logo for ${token.symbol}:`, err)
+        );
+        return { ...token, logoUrl: logo };
+      }
+    }
+  } catch {
+    // Ignore errors - logo enrichment is best-effort
+  }
+
+  return token;
+}
+
+/**
  * Cache invalidation functions.
  * Call these after mutations to ensure fresh data on next request.
  */
@@ -64,11 +125,14 @@ export const getCachedTokens = unstable_cache(
 /**
  * Get a single token by ID with caching (5 minute TTL)
  * Tag: "tokens" - invalidate when tokens are updated
+ * Also enriches token with logo if missing
  */
 export const getCachedToken = unstable_cache(
   async (tokenId: string) => {
     try {
-      return await TokenDB.getToken(tokenId);
+      const token = await TokenDB.getToken(tokenId);
+      // Enrich with logo if missing (best-effort)
+      return await enrichTokenWithLogo(token);
     } catch {
       return null;
     }
@@ -147,6 +211,8 @@ export const getCachedTokenAddresses = unstable_cache(
 /**
  * Batch get multiple tokens with caching (no market data - for trading desk)
  * Market data is only fetched on token details pages via useMarketDataRefresh
+ * 
+ * Also enriches tokens missing logoUrl from Alchemy (best-effort)
  */
 export const getCachedTokenBatch = unstable_cache(
   async (tokenIds: string[]) => {
@@ -155,7 +221,9 @@ export const getCachedTokenBatch = unstable_cache(
     await Promise.all(
       tokenIds.map(async (tokenId) => {
         try {
-          const token = await TokenDB.getToken(tokenId);
+          let token = await TokenDB.getToken(tokenId);
+          // Enrich with logo if missing (best-effort)
+          token = await enrichTokenWithLogo(token);
           // No market data fetch - prices are only shown on token details page
           results[tokenId] = { token, marketData: null };
         } catch {

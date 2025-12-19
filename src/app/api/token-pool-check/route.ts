@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
     let warning: string | undefined;
     
     if (!pool) {
-      warning = "No liquidity pool found. This token needs a Uniswap V3 or compatible pool to be listed.";
+      warning = "No liquidity pool found. Requires Uniswap V3/V4, Aerodrome, or Pancakeswap pool.";
     } else if (pool.tvlUsd < 1000) {
       warning = `Low liquidity detected ($${pool.tvlUsd.toFixed(0)}). Price accuracy may be affected.`;
     } else if (pool.tvlUsd < 10000) {

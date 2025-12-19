@@ -15,6 +15,11 @@ export default defineConfig({
       // Run tests sequentially to avoid RPC rate limiting (429 errors)
       concurrent: false,
     },
+    // Global setup/teardown for E2E infrastructure
+    // Starts: PostgreSQL, Anvil, deploys contracts, Next.js
+    // Stops: All processes after tests complete
+    globalSetup: './tests/global-setup.ts',
+    globalTeardown: './tests/global-teardown.ts',
   },
   resolve: {
     alias: {

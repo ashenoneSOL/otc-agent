@@ -256,6 +256,7 @@ export const Chat = ({
   };
 
   // Calculate aggregated consignment data for the token
+  // Uses sanitized display fields (worst case for negotiable, actual for fixed)
   const consignmentData = useMemo(() => {
     if (!consignments?.length) return null;
     
@@ -274,38 +275,43 @@ export const Chat = ({
       0n
     );
 
-    // Get best terms across all consignments (highest discount, shortest lockup)
-    const bestDiscount = Math.max(...activeConsignments.map(c => 
-      c.isNegotiable ? (c.maxDiscountBps ?? 0) : (c.fixedDiscountBps ?? c.minDiscountBps ?? 0)
-    ));
-    
-    // Get worst terms (starting default - lowest discount, longest lockup)
-    const worstDiscount = Math.min(...activeConsignments.map(c => 
-      c.isNegotiable ? (c.minDiscountBps ?? 0) : (c.fixedDiscountBps ?? c.minDiscountBps ?? 0)
-    ));
-    const worstLockupDays = Math.max(...activeConsignments.map(c => 
-      c.isNegotiable ? (c.maxLockupDays ?? 365) : (c.fixedLockupDays ?? c.maxLockupDays ?? 365)
-    ));
+    // Extended type for sanitized consignments with display fields
+    type ConsignmentWithDisplay = typeof activeConsignments[0] & {
+      displayDiscountBps?: number;
+      displayLockupDays?: number;
+    };
 
-    // Get deal amount limits
-    const firstMinAmount = safeBigInt(activeConsignments[0]?.minDealAmount);
-    const minDealAmount = activeConsignments.reduce(
-      (min, c) => {
-        const amount = safeBigInt(c.minDealAmount);
-        return amount > 0n && amount < min ? amount : min;
-      },
-      firstMinAmount > 0n ? firstMinAmount : totalAvailable
-    );
+    // Get starting terms using sanitized display fields
+    // For negotiable: displayDiscountBps = minDiscount (worst), displayLockupDays = maxLockup (worst)
+    // For fixed: displayDiscountBps = fixedDiscount, displayLockupDays = fixedLockup
+    const startingDiscount = Math.min(...activeConsignments.map(c => {
+      const cwd = c as ConsignmentWithDisplay;
+      // Use display field if available (sanitized API), fallback to raw fields (owner view)
+      if (cwd.displayDiscountBps !== undefined) return cwd.displayDiscountBps;
+      return c.isNegotiable ? (c.minDiscountBps ?? 0) : (c.fixedDiscountBps ?? 0);
+    }));
+    
+    const startingLockupDays = Math.max(...activeConsignments.map(c => {
+      const cwd = c as ConsignmentWithDisplay;
+      // Use display field if available (sanitized API), fallback to raw fields (owner view)
+      if (cwd.displayLockupDays !== undefined) return cwd.displayLockupDays;
+      return c.isNegotiable ? (c.maxLockupDays ?? 365) : (c.fixedLockupDays ?? 365);
+    }));
+
     const maxDealAmount = totalAvailable; // Can buy up to total available
+    
+    // Check if any consignment is fractionalized (allows partial purchases)
+    const hasFractionalized = activeConsignments.some(c => c.isFractionalized);
+    const hasNegotiable = activeConsignments.some(c => c.isNegotiable);
 
     return {
       totalAvailable: totalAvailable.toString(),
-      bestDiscountBps: bestDiscount,
-      worstDiscountBps: worstDiscount || 100, // Default to 1% if no discount found
-      worstLockupDays: worstLockupDays || 365, // Default to 1 year if no lockup found
-      minDealAmount: minDealAmount.toString(),
+      // Starting terms (worst case for negotiable, actual for fixed)
+      startingDiscountBps: startingDiscount || 100, // Default to 1% if no discount found
+      startingLockupDays: startingLockupDays || 365, // Default to 1 year if no lockup found
       maxDealAmount: maxDealAmount.toString(),
-      hasNegotiable: activeConsignments.some(c => c.isNegotiable),
+      hasNegotiable,
+      hasFractionalized,
     };
   }, [consignments]);
 
@@ -720,27 +726,35 @@ export const Chat = ({
     const tokenIdParts = token.id?.split("-") || [];
     const tokenChain = tokenIdParts[1] as OTCQuote["tokenChain"];
 
-    // Calculate lockup months from days
-    const lockupDays = consignmentData.worstLockupDays;
+    // Calculate lockup months from days (starting terms for negotiable, actual for fixed)
+    const lockupDays = consignmentData.startingLockupDays;
     const lockupMonths = Math.ceil(lockupDays / 30);
 
-    // Create default quote with minimum terms from consignment data
+    // Extract token address from token ID (format: token-{chain}-{address})
+    const tokenAddress = tokenIdParts.slice(2).join("-") || token.contractAddress;
+
+    // Create default quote with starting terms from consignment data
     const defaultQuote: OTCQuote = {
       quoteId: `default-${token.id}`,
       tokenAmount: consignmentData.totalAvailable,
       tokenAmountFormatted: formatTokenAmount(consignmentData.totalAvailable, token.decimals),
       tokenSymbol: token.symbol,
       tokenChain: tokenChain,
+      tokenAddress: tokenAddress, // Include for direct lookup
       lockupMonths: lockupMonths,
       lockupDays: lockupDays,
-      discountBps: consignmentData.worstDiscountBps,
-      discountPercent: consignmentData.worstDiscountBps / 100,
+      discountBps: consignmentData.startingDiscountBps,
+      discountPercent: consignmentData.startingDiscountBps / 100,
       paymentCurrency: "USDC",
       pricePerToken: marketData?.priceUsd,
       totalValueUsd: marketData?.priceUsd 
         ? (Number(consignmentData.totalAvailable) / Math.pow(10, token.decimals)) * marketData.priceUsd
         : undefined,
       status: "default",
+      // Pass consignment properties for UI
+      isFractionalized: consignmentData.hasFractionalized,
+      isNegotiable: consignmentData.hasNegotiable,
+      isFixedPrice: !consignmentData.hasFractionalized, // Fixed price only if NOT fractionalized
     };
 
     dispatch({

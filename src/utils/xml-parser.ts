@@ -9,6 +9,8 @@ export interface OTCQuote {
   tokenAmountFormatted?: string;
   tokenSymbol: string;
   tokenChain?: "ethereum" | "base" | "bsc" | "solana";
+  // Token contract address (for direct lookup without DB query)
+  tokenAddress?: string;
   apr?: number;
   lockupMonths: number;
   lockupDays: number;
@@ -29,6 +31,10 @@ export interface OTCQuote {
   message?: string;
   consignmentId?: string;
   isFixedPrice?: boolean;
+  // Whether the listing allows partial purchases
+  isFractionalized?: boolean;
+  // Whether the listing terms are negotiable
+  isNegotiable?: boolean;
   // Agent commission in basis points (0 for P2P, 25-150 for negotiated)
   agentCommissionBps?: number;
 }

@@ -1,5 +1,6 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getCached, setCache } from "./retry-cache";
+import { getHeliusRpcUrl, getNetwork } from "@/config/env";
 
 // Cache TTL for Solana pool info (30 seconds)
 const SOLANA_POOL_CACHE_TTL_MS = 30_000;
@@ -75,11 +76,14 @@ export async function findBestSolanaPool(
     return cached;
   }
 
-  // Use public RPCs that are less restrictive for getProgramAccounts
+  // Use Helius for mainnet (via proxy on client, direct on server)
+  const network = getNetwork();
   const rpcUrl =
     cluster === "mainnet"
-      ? "https://api.mainnet-beta.solana.com" // Official public RPC usually allows some GPA
-      : "https://api.devnet.solana.com";
+      ? getHeliusRpcUrl() // Direct Helius (server-side only)
+      : network === "local"
+        ? "http://127.0.0.1:8899"
+        : "https://api.devnet.solana.com";
 
   const connection = rpcConnection || new Connection(rpcUrl, "confirmed");
   const mint = new PublicKey(tokenMint);

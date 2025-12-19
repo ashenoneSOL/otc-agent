@@ -6,7 +6,7 @@ resolution = true
 skip-lint = true
 
 [programs.devnet]
-otc = "6qn8ELVXd957oRjLaomCpKpcVZshUjNvSzw1nc7QVyXc"
+otc = "q9MhHpeydqTdtPaNpzDoWvP1qY5s3sFHTF1uYcXjdsc"
 
 [programs.localnet]
 otc = "6qn8ELVXd957oRjLaomCpKpcVZshUjNvSzw1nc7QVyXc"

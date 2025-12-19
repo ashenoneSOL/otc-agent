@@ -5,6 +5,7 @@ import {
   type VersionedTransactionResponse,
 } from "@solana/web3.js";
 import { TokenDB } from "./database";
+import { getHeliusRpcUrl, getNetwork } from "@/config/env";
 
 let isListening = false;
 let connection: Connection | null = null;
@@ -36,8 +37,9 @@ export async function startSolanaListener() {
     return;
   }
 
-  const rpcUrl =
-    process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+  // Use Helius directly for mainnet (this runs server-side)
+  const network = getNetwork();
+  const rpcUrl = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
   connection = new Connection(rpcUrl, "confirmed");
 
   try {
@@ -248,12 +250,8 @@ async function registerTokenToDatabase(parsed: ParsedRegistration): Promise<void
       contractAddress: parsed.tokenMint,
       decimals,
       isActive: true,
-      logoUrl: null,
-      priceUsd: null,
-      marketCap: null,
-      volume24h: null,
-      priceChange24h: null,
-      poolAddress: parsed.poolAddress || null,
+      logoUrl: "",
+      description: "",
     });
 
     console.log("[Solana Listener] ✅ Token registered to database:", {
@@ -324,8 +322,9 @@ export async function backfillSolanaEvents(signatures?: string[]) {
     throw new Error("SOLANA_PROGRAM_ID not configured");
   }
 
-  const rpcUrl =
-    process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+  // Use Helius directly for mainnet (this runs server-side)
+  const network = getNetwork();
+  const rpcUrl = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
   const conn = new Connection(rpcUrl, "confirmed");
 
   console.log("[Solana Backfill] Fetching transactions for program", programId);

@@ -4,6 +4,7 @@ import { base } from "viem/chains";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { TokenRegistryService } from "@/services/tokenRegistry";
 import { TokenDB } from "@/services/database";
+import { getHeliusRpcUrl, getNetwork } from "@/config/env";
 
 // register_token instruction discriminator from IDL
 const REGISTER_TOKEN_DISCRIMINATOR = Buffer.from([32, 146, 36, 240, 80, 183, 36, 84]);
@@ -170,8 +171,9 @@ async function pollSolanaRegistrations() {
     return { processed: 0, error: "SOLANA_PROGRAM_ID not configured" };
   }
 
-  const rpcUrl =
-    process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+  const network = getNetwork();
+  const rpcUrl = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
+  console.log(`[Poll Solana Registrations] Using Helius RPC`);
   const connection = new Connection(rpcUrl, "confirmed");
 
   try {
@@ -232,12 +234,8 @@ async function pollSolanaRegistrations() {
                 contractAddress: parsed.tokenMint,
                 decimals: tokenData.decimals,
                 isActive: true,
-                logoUrl: null,
-                priceUsd: null,
-                marketCap: null,
-                volume24h: null,
-                priceChange24h: null,
-                poolAddress: parsed.poolAddress || null,
+                logoUrl: "",
+                description: "",
               });
               console.log(`[Cron Solana] ✅ Registered: ${tokenData.symbol} (${parsed.tokenMint})`);
               registeredTokens.push(parsed.tokenMint);

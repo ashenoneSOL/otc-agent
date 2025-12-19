@@ -1,14 +1,10 @@
 import type { OTCConsignment } from "@/services/database";
 
-// Sensitive fields that should not be exposed to buyers
-// These reveal the seller's negotiation bounds which would let buyers game the system
-export const SENSITIVE_CONSIGNMENT_FIELDS = [
-  "minDiscountBps",
-  "maxDiscountBps",
-  "minLockupDays",
-  "maxLockupDays",
-  "fixedDiscountBps",
-  "fixedLockupDays",
+// Sensitive fields that reveal the seller's full negotiation range
+// Only the "worst case" starting point is exposed for negotiable deals
+const NEGOTIABLE_SENSITIVE_FIELDS = [
+  "maxDiscountBps", // Best discount - hidden
+  "minLockupDays", // Best lockup - hidden
   "minDealAmount",
   "maxDealAmount",
   "allowedBuyers",
@@ -16,27 +12,54 @@ export const SENSITIVE_CONSIGNMENT_FIELDS = [
 
 export type SanitizedConsignment = Omit<
   OTCConsignment,
-  (typeof SENSITIVE_CONSIGNMENT_FIELDS)[number]
+  (typeof NEGOTIABLE_SENSITIVE_FIELDS)[number]
 > & {
   termsType: "negotiable" | "fixed";
+  // For negotiable: starting point (worst deal for buyer)
+  // For fixed: the actual fixed terms
+  displayDiscountBps: number;
+  displayLockupDays: number;
 };
 
 /**
  * Sanitize consignment to hide negotiation terms from non-owners.
- * This prevents buyers from gaming the negotiation by querying the API
- * to discover the seller's min/max discount and lockup bounds.
+ * 
+ * For NEGOTIABLE deals: Shows "starting at" the worst possible deal
+ *   - displayDiscountBps = minDiscountBps (lowest discount)
+ *   - displayLockupDays = maxLockupDays (longest lockup)
+ * 
+ * For FIXED deals: Shows the actual fixed terms
+ *   - displayDiscountBps = fixedDiscountBps
+ *   - displayLockupDays = fixedLockupDays
+ * 
+ * This prevents buyers from gaming negotiations while still showing useful info.
  */
 export function sanitizeConsignmentForBuyer(
   consignment: OTCConsignment,
 ): SanitizedConsignment {
   const sanitized: Record<string, unknown> = { ...consignment };
 
-  // Remove sensitive fields
-  for (const field of SENSITIVE_CONSIGNMENT_FIELDS) {
+  // Remove sensitive fields that reveal negotiation range
+  for (const field of NEGOTIABLE_SENSITIVE_FIELDS) {
     delete sanitized[field];
   }
 
-  // Add a flag indicating whether terms are negotiable or fixed (but not the actual terms)
+  // Set display terms based on deal type
+  if (consignment.isNegotiable) {
+    // Show worst case: min discount, max lockup ("starting at")
+    sanitized.displayDiscountBps = consignment.minDiscountBps ?? 0;
+    sanitized.displayLockupDays = consignment.maxLockupDays ?? 0;
+    // Remove actual ranges - only show starting point
+    delete sanitized.minDiscountBps;
+    delete sanitized.maxLockupDays;
+    delete sanitized.fixedDiscountBps;
+    delete sanitized.fixedLockupDays;
+  } else {
+    // Fixed deal - show actual terms
+    sanitized.displayDiscountBps = consignment.fixedDiscountBps ?? 0;
+    sanitized.displayLockupDays = consignment.fixedLockupDays ?? 0;
+  }
+
   sanitized.termsType = consignment.isNegotiable ? "negotiable" : "fixed";
 
   return sanitized as SanitizedConsignment;

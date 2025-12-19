@@ -1,9 +1,9 @@
 {
   "network": "solana-mainnet",
-  "rpc": "https://api.mainnet-beta.solana.com",
+  "rpc": "/api/rpc/solana",
   "deployer": "G34tHccEJXA5kQXAk2AcfXKmfwNDu2ArAb3d1w4RX9e1",
   "programId": "q9MhHpeydqTdtPaNpzDoWvP1qY5s3sFHTF1uYcXjdsc",
-  "desk": "6CBcxFR6dSMJJ7Y4dQZTshJT2KxuwnSXioXEABxNVZPW",
+  "desk": "6JhZCfPXWfXBTrkK2RL79qPLW46z3P6pHFM6M4zUqQ4R",
   "deskOwner": "G34tHccEJXA5kQXAk2AcfXKmfwNDu2ArAb3d1w4RX9e1",
   "usdcMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   "features": {

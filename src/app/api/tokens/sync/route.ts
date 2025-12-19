@@ -3,6 +3,7 @@ import { createPublicClient, http, parseAbi } from "viem";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { TokenRegistryService } from "@/services/tokenRegistry";
 import { TokenDB } from "@/services/database";
+import { getHeliusRpcUrl, getNetwork } from "@/config/env";
 
 // register_token instruction discriminator from IDL
 const REGISTER_TOKEN_DISCRIMINATOR = Buffer.from([32, 146, 36, 240, 80, 183, 36, 84]);
@@ -12,6 +13,50 @@ const ERC20_ABI = parseAbi([
   "function name() view returns (string)",
   "function decimals() view returns (uint8)",
 ]);
+
+/**
+ * Fetch token logo URL from Alchemy metadata
+ */
+async function fetchAlchemyLogoUrl(
+  tokenAddress: string,
+  chain: string,
+  alchemyKey: string,
+): Promise<string> {
+  const alchemyNetwork =
+    chain === "ethereum"
+      ? "eth-mainnet"
+      : chain === "bsc"
+        ? "bnb-mainnet"
+        : "base-mainnet";
+
+  try {
+    const url = `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyKey}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "alchemy_getTokenMetadata",
+        params: [tokenAddress],
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const logo = data.result?.logo;
+      if (logo) {
+        console.log(`[Sync] Found logo for ${tokenAddress}: ${logo.slice(0, 50)}...`);
+        return logo;
+      }
+    }
+  } catch (error) {
+    console.log(`[Sync] Failed to fetch logo for ${tokenAddress}:`, error);
+  }
+
+  return "";
+}
 
 /**
  * Sync a specific token registration immediately after on-chain registration
@@ -174,7 +219,7 @@ async function syncEvmToken(
         const readContract = client.readContract as (
           params: unknown,
         ) => Promise<unknown>;
-        const [symbol, name, decimals] = await Promise.all([
+        const [symbol, name, decimals, logoUrl] = await Promise.all([
           readContract({
             address: tokenAddress as `0x${string}`,
             abi: ERC20_ABI,
@@ -190,6 +235,7 @@ async function syncEvmToken(
             abi: ERC20_ABI,
             functionName: "decimals",
           }),
+          alchemyKey ? fetchAlchemyLogoUrl(tokenAddress, chain, alchemyKey) : Promise.resolve(""),
         ]);
 
         // Register to database - use the chain parameter (ethereum, base or bsc)
@@ -201,7 +247,7 @@ async function syncEvmToken(
           contractAddress: tokenAddress.toLowerCase(),
           chain: dbChain,
           decimals: Number(decimals),
-          logoUrl: undefined,
+          logoUrl: logoUrl || undefined,
           description: `Registered via RegistrationHelper by ${registeredBy}`,
         });
 
@@ -248,8 +294,9 @@ async function syncSolanaToken(signature: string) {
     );
   }
 
-  const rpcUrl =
-    process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
+  const network = getNetwork();
+  const rpcUrl = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
+  console.log(`[Sync Solana] Using Helius RPC`);
   const connection = new Connection(rpcUrl, "confirmed");
 
   try {
@@ -306,12 +353,8 @@ async function syncSolanaToken(signature: string) {
       contractAddress: parsed.tokenMint,
       decimals: tokenData.decimals,
       isActive: true,
-      logoUrl: null,
-      priceUsd: null,
-      marketCap: null,
-      volume24h: null,
-      priceChange24h: null,
-      poolAddress: parsed.poolAddress || null,
+      logoUrl: "",
+      description: "",
     });
 
     console.log(`[Sync Solana] ✅ Registered token: ${token.symbol} (${parsed.tokenMint})`);

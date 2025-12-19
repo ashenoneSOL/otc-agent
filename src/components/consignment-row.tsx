@@ -141,7 +141,11 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
       setIsWithdrawing(true);
 
       try {
-        const connection = new Connection(SOLANA_RPC, "confirmed");
+        // Use HTTP-only connection (no WebSocket) since we're using a proxy
+        const connection = new Connection(SOLANA_RPC, {
+          commitment: "confirmed",
+          wsEndpoint: undefined, // Disable WebSocket - proxy doesn't support it
+        });
         
         if (!SOLANA_DESK) {
           throw new Error("SOLANA_DESK not configured");

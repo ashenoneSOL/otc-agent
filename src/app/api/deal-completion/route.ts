@@ -12,6 +12,7 @@ import { createPublicClient, http, type Address, type Abi } from "viem";
 import { Connection } from "@solana/web3.js";
 import { getChain, getRpcUrl } from "@/lib/getChain";
 import { getContractAddress } from "@/lib/getContractAddress";
+import { getHeliusRpcUrl, getNetwork } from "@/config/env";
 
 // Type-safe wrapper for readContract with dynamic ABIs
 interface ReadContractParams {
@@ -176,9 +177,9 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const rpcUrl =
-          process.env.NEXT_PUBLIC_SOLANA_RPC ||
-          "https://api.mainnet-beta.solana.com";
+        const network = getNetwork();
+        const rpcUrl = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
+        console.log(`[Deal Completion] Using Helius RPC for Solana`);
         const connection = new Connection(rpcUrl, "confirmed");
 
         console.log(

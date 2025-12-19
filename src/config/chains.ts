@@ -8,7 +8,8 @@ import {
   localhost,
   type Chain as ViemChain,
 } from "viem/chains";
-import { getContracts, getCurrentNetwork } from "./contracts";
+import { getContracts, getNetwork } from "./contracts";
+import { LOCAL_DEFAULTS, getSolanaRpcProxyUrl } from "./env";
 
 // String-based chain identifier for database/API (lowercase, URL-safe)
 export type Chain = "ethereum" | "base" | "bsc" | "solana";
@@ -35,7 +36,7 @@ export interface ChainConfig {
 }
 
 // Use centralized network resolution from contracts.ts
-const env = getCurrentNetwork();
+const env = getNetwork();
 const deployments = getContracts(env);
 
 export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
@@ -46,20 +47,11 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
     // Local dev uses localhost/Anvil, testnet uses Sepolia, mainnet uses Ethereum mainnet
     const chain = isLocal ? localhost : isMainnet ? mainnet : sepolia;
     
-    // Hardcoded mainnet addresses from deployment (v2 with authorizedRegistrar)
-    const MAINNET_OTC = "0xBD1DfF36696d5ce706ad4D475B0270a88675bd24";
-    const MAINNET_REGISTRATION_HELPER = "0x00ca6e384a5B8A43E95b46943E8B142cfAC90Fdb";
+    // Get addresses from deployment config
+    const networkConfig = deployments.evm?.networks?.ethereum;
     
-    const otc = isMainnet
-      ? MAINNET_OTC
-      : isLocal
-        ? (deployments.evm?.contracts?.otc || process.env.NEXT_PUBLIC_OTC_ADDRESS)
-        : process.env.NEXT_PUBLIC_ETH_OTC_ADDRESS;
-
-    // RPC URL: local uses Anvil, mainnet/testnet use proxy
-    const rpcUrl = isLocal
-      ? (process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545")
-      : "/api/rpc/ethereum";
+    // RPC URL: local uses Anvil, mainnet/testnet use proxy to keep API key server-side
+    const rpcUrl = isLocal ? LOCAL_DEFAULTS.evmRpc : "/api/rpc/ethereum";
 
     return {
       id: chain.id.toString(),
@@ -72,17 +64,13 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
           : "https://sepolia.etherscan.io",
       nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
       contracts: {
-        otc: otc,
-        usdc: isMainnet
-          ? "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" // USDC on Ethereum mainnet
-          : isLocal
-            ? (deployments.evm?.contracts?.usdc || process.env.NEXT_PUBLIC_USDC_ADDRESS)
-            : "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", // USDC on Sepolia
-        registrationHelper: isMainnet
-          ? MAINNET_REGISTRATION_HELPER
-          : isLocal
-            ? (deployments.evm?.contracts?.registrationHelper || process.env.NEXT_PUBLIC_REGISTRATION_HELPER_ADDRESS)
-            : process.env.NEXT_PUBLIC_ETH_REGISTRATION_HELPER_ADDRESS,
+        otc: networkConfig?.otc || deployments.evm?.contracts?.otc,
+        usdc: networkConfig?.usdc || (isMainnet 
+          ? "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  // USDC on Ethereum mainnet
+          : isLocal 
+            ? deployments.evm?.contracts?.usdc
+            : "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"), // USDC on Sepolia
+        registrationHelper: networkConfig?.registrationHelper || deployments.evm?.contracts?.registrationHelper,
       },
       type: "evm" as ChainFamily,
       viemChain: chain,
@@ -91,71 +79,58 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
   })(),
   base: (() => {
     const isMainnet = env === "mainnet";
-    const chain = isMainnet ? base : baseSepolia;
+    const isLocal = env === "local";
+    const chain = isLocal ? localhost : isMainnet ? base : baseSepolia;
     
-    // Hardcoded mainnet/testnet OTC addresses from deployment configs
-    const MAINNET_OTC = "0x12FA61c9d77AEd9BeDA0FF4bF2E900F31bdBdc45";
-    const TESTNET_OTC = "0x08cAa161780d195E0799b73b318da5D175b85313";
+    // Get addresses from deployment config
+    const networkConfig = deployments.evm?.networks?.base;
     
-    // Use deployments if available, else env vars, else hardcoded defaults
-    const otc =
-      deployments.evm?.contracts?.otc ||
-      process.env.NEXT_PUBLIC_BASE_OTC_ADDRESS ||
-      (isMainnet ? MAINNET_OTC : TESTNET_OTC);
-
     // Use proxy route to keep Alchemy key server-side
-    const rpcUrl = "/api/rpc/base";
+    const rpcUrl = isLocal ? LOCAL_DEFAULTS.evmRpc : "/api/rpc/base";
 
     return {
       id: chain.id.toString(),
-      name: isMainnet ? "Base" : "Base Sepolia",
+      name: isLocal ? "Anvil Local" : isMainnet ? "Base" : "Base Sepolia",
       rpcUrl,
-      explorerUrl: isMainnet
-        ? "https://basescan.org"
-        : "https://sepolia.basescan.org",
+      explorerUrl: isLocal
+        ? "http://localhost:8545"
+        : isMainnet
+          ? "https://basescan.org"
+          : "https://sepolia.basescan.org",
       nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
       contracts: {
-        otc: otc,
-        usdc: isMainnet
+        otc: networkConfig?.otc || deployments.evm?.contracts?.otc,
+        usdc: networkConfig?.usdc || (isMainnet
           ? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-          : "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        registrationHelper: process.env.NEXT_PUBLIC_REGISTRATION_HELPER_ADDRESS,
+          : "0x036CbD53842c5426634e7929541eC2318f3dCF7e"),
+        registrationHelper: networkConfig?.registrationHelper || deployments.evm?.contracts?.registrationHelper,
       },
       type: "evm" as ChainFamily,
       viemChain: chain,
-      chainId: chain.id,
+      chainId: isLocal ? 31337 : chain.id,
     };
   })(),
   bsc: (() => {
     const isMainnet = env === "mainnet";
     const chain = isMainnet ? bsc : bscTestnet;
     
-    // Hardcoded mainnet addresses from deployment (v2 with authorizedRegistrar)
-    const MAINNET_OTC = "0x0A4AC866833400F91D0E4d7Be28De54b0FD2995E";
-    const MAINNET_REGISTRATION_HELPER = "0x4CE191081D27F1b98378b2FbeC17C85c5909eF92";
-    
-    const otc = isMainnet
-      ? MAINNET_OTC
-      : process.env.NEXT_PUBLIC_BSC_OTC_ADDRESS;
+    // Get addresses from deployment config
+    const networkConfig = deployments.evm?.networks?.bsc;
 
     return {
       id: chain.id.toString(),
       name: isMainnet ? "BSC" : "BSC Testnet",
-      rpcUrl:
-        process.env.NEXT_PUBLIC_BSC_RPC_URL ||
-        (isMainnet
-          ? "https://bsc-dataseed1.binance.org"
-          : "https://data-seed-prebsc-1-s1.binance.org:8545"),
+      rpcUrl: isMainnet
+        ? "https://bsc-dataseed1.binance.org"
+        : "https://data-seed-prebsc-1-s1.binance.org:8545",
       explorerUrl: isMainnet
         ? "https://bscscan.com"
         : "https://testnet.bscscan.com",
       nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
       contracts: {
-        otc: otc,
-        usdc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-        registrationHelper: isMainnet
-          ? MAINNET_REGISTRATION_HELPER
-          : process.env.NEXT_PUBLIC_BSC_REGISTRATION_HELPER_ADDRESS,
+        otc: networkConfig?.otc,
+        usdc: networkConfig?.usdc || "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+        registrationHelper: networkConfig?.registrationHelper,
       },
       type: "evm" as ChainFamily,
       viemChain: chain,
@@ -166,12 +141,13 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
     const isMainnet = env === "mainnet";
     const isLocal = env === "local";
 
-    const otc =
-      deployments.solana?.desk ||
-      process.env.NEXT_PUBLIC_SOLANA_DESK;
-    const usdc =
-      deployments.solana?.usdcMint ||
-      process.env.NEXT_PUBLIC_SOLANA_USDC_MINT;
+    // Client-side: always proxy through backend for mainnet
+    // Local uses direct localhost URL
+    const rpcUrl = isLocal
+      ? LOCAL_DEFAULTS.solanaRpc
+      : isMainnet
+        ? getSolanaRpcProxyUrl()  // Proxy to /api/rpc/solana -> Helius
+        : "https://api.devnet.solana.com";
 
     return {
       id: isMainnet
@@ -184,20 +160,14 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
         : isLocal
           ? "Solana Localnet"
           : "Solana Devnet",
-      rpcUrl:
-        process.env.NEXT_PUBLIC_SOLANA_RPC ||
-        (isMainnet
-          ? "https://api.mainnet-beta.solana.com"
-          : isLocal
-            ? "http://127.0.0.1:8899"
-            : "https://api.devnet.solana.com"),
+      rpcUrl,
       explorerUrl: "https://explorer.solana.com",
       nativeCurrency: { name: "SOL", symbol: "SOL", decimals: 9 },
       contracts: {
-        otc: otc,
-        usdc: isMainnet
+        otc: deployments.solana?.desk,
+        usdc: deployments.solana?.usdcMint || (isMainnet
           ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-          : usdc || "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr", // Default to Devnet USDC if not in deployment
+          : "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr"), // Devnet USDC
       },
       type: "solana" as ChainFamily,
     };

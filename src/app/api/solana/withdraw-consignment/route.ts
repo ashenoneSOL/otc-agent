@@ -10,6 +10,8 @@ import {
 import { promises as fs } from "fs";
 import path from "path";
 import bs58 from "bs58";
+import { getSolanaConfig } from "@/config/contracts";
+import { getHeliusRpcUrl, getNetwork } from "@/config/env";
 
 // Wallet interface for Anchor (matches @coral-xyz/anchor's Wallet type)
 interface AnchorWallet {
@@ -41,6 +43,8 @@ async function loadDeskKeypair(): Promise<Keypair> {
     path.join(process.cwd(), "solana/otc-program/desk-keypair.json"),
     path.join(process.cwd(), "solana/otc-program/desk-mainnet-keypair.json"),
     path.join(process.cwd(), "solana/otc-program/desk-devnet-keypair.json"),
+    path.join(process.cwd(), "solana/otc-program/mainnet-deployer.json"),
+    path.join(process.cwd(), "solana/otc-program/id.json"),
   ];
 
   for (const keypairPath of possiblePaths) {
@@ -53,7 +57,7 @@ async function loadDeskKeypair(): Promise<Keypair> {
   }
 
   throw new Error(
-    "Desk keypair not found. Set SOLANA_DESK_PRIVATE_KEY env var or create desk-keypair.json",
+    "Desk keypair not found. Set SOLANA_DESK_PRIVATE_KEY env var (base58 or JSON array) with the private key for the desk address.",
   );
 }
 
@@ -69,27 +73,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const SOLANA_RPC =
-      process.env.NEXT_PUBLIC_SOLANA_RPC || "http://127.0.0.1:8899";
-    const SOLANA_DESK = process.env.NEXT_PUBLIC_SOLANA_DESK;
+    // Get Solana config from deployment
+    const network = getNetwork();
+    const solanaConfig = getSolanaConfig();
+    const SOLANA_RPC = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
+    const SOLANA_DESK = solanaConfig.desk;
 
     if (!SOLANA_DESK) {
       return NextResponse.json(
-        { error: "SOLANA_DESK not configured" },
+        { error: "SOLANA_DESK not configured in deployment" },
         { status: 500 },
       );
     }
 
+    console.log(`[Withdraw Consignment API] Using Helius RPC`);
     const connection = new Connection(SOLANA_RPC, "confirmed");
 
     // Load desk keypair (supports env var and file-based)
     let deskKeypair: Keypair;
     try {
       deskKeypair = await loadDeskKeypair();
+      console.log("[Withdraw Consignment API] Loaded desk keypair:", deskKeypair.publicKey.toBase58());
     } catch (error) {
       console.error("[Withdraw Consignment API] Failed to load desk keypair:", error);
+      console.error("[Withdraw Consignment API] Expected desk address:", SOLANA_DESK);
+      console.error("[Withdraw Consignment API] Set SOLANA_DESK_PRIVATE_KEY env var with the private key for this address");
       return NextResponse.json(
-        { error: "Desk keypair not configured" },
+        { error: `Desk keypair not configured. Expected desk: ${SOLANA_DESK}. Set SOLANA_DESK_PRIVATE_KEY env var.` },
         { status: 500 },
       );
     }
@@ -204,8 +214,14 @@ export async function POST(request: NextRequest) {
 
     // Verify desk public key matches
     if (!deskKeypair.publicKey.equals(desk)) {
+      console.error(
+        "[Withdraw Consignment API] Desk keypair mismatch. Expected:",
+        desk.toBase58(),
+        "Got:",
+        deskKeypair.publicKey.toBase58(),
+      );
       return NextResponse.json(
-        { error: "Desk keypair mismatch" },
+        { error: `Desk keypair mismatch. Expected: ${desk.toBase58()}, Got: ${deskKeypair.publicKey.toBase58()}` },
         { status: 500 },
       );
     }

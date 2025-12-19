@@ -10,6 +10,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import agent from "./agent";
+import { getDatabaseUrl, getGroqApiKey, getGroqModels, isProduction } from "@/config/env";
 
 // Global state for serverless environment persistence
 interface GlobalElizaState {
@@ -118,52 +119,22 @@ class AgentRuntimeManager {
   private async createRuntime(): Promise<AgentRuntime> {
     console.log("[AgentRuntime] Creating runtime instance");
 
-    // Initialize runtime with database configuration for SQL plugin
-    // In localnet mode, connects to Docker PostgreSQL on port 5439
-    // In production (Vercel), uses Neon Storage integration variables
-    const dbPort =
-      process.env.POSTGRES_DEV_PORT ||
-      process.env.VENDOR_OTC_DESK_DB_PORT ||
-      5439;
-    const DEFAULT_POSTGRES_URL = `postgres://eliza:password@localhost:${dbPort}/eliza`;
+    // Get database URL from centralized config
+    const postgresUrl = getDatabaseUrl();
+    const isLocalDb = postgresUrl.includes("localhost") || postgresUrl.includes("127.0.0.1");
 
-    // Check for Vercel Neon Storage variables first, then fallback to standard names
-    // Log which env vars are present (without values) for debugging
-    const dbEnvVars = {
-      DATABASE_POSTGRES_URL: !!process.env.DATABASE_POSTGRES_URL,
-      DATABASE_URL_UNPOOLED: !!process.env.DATABASE_URL_UNPOOLED,
-      POSTGRES_URL: !!process.env.POSTGRES_URL,
-      POSTGRES_DATABASE_URL: !!process.env.POSTGRES_DATABASE_URL,
-    };
-    console.log("[AgentRuntime] Database env vars present:", dbEnvVars);
-
-    const postgresUrl =
-      process.env.DATABASE_POSTGRES_URL || // Vercel Neon Storage (pooled)
-      process.env.DATABASE_URL_UNPOOLED || // Vercel Neon Storage (unpooled)
-      process.env.POSTGRES_URL || // Standard
-      process.env.POSTGRES_DATABASE_URL || // Alternative standard
-      DEFAULT_POSTGRES_URL; // Local development
-
-    // Validate database URL format
-    if (!postgresUrl || postgresUrl === DEFAULT_POSTGRES_URL) {
-      const isProduction = process.env.NODE_ENV === "production";
-      if (isProduction && postgresUrl === DEFAULT_POSTGRES_URL) {
-        console.error(
-          "[AgentRuntime] ERROR: No database URL found in production!",
-        );
-        console.error(
-          "[AgentRuntime] Expected one of: DATABASE_POSTGRES_URL, DATABASE_URL_UNPOOLED, POSTGRES_URL, POSTGRES_DATABASE_URL",
-        );
-        throw new Error(
-          "Database connection failed: No database URL configured in production. " +
-            "Vercel Neon Storage should provide DATABASE_POSTGRES_URL automatically. " +
-            "Please check your Vercel project settings.",
-        );
-      }
+    // Validate database URL in production
+    if (isProduction() && isLocalDb) {
+      console.error("[AgentRuntime] ERROR: No database URL found in production");
+      throw new Error(
+        "Database connection failed: No database URL configured in production. " +
+          "Vercel Neon Storage should provide DATABASE_POSTGRES_URL automatically. " +
+          "Please check your Vercel project settings.",
+      );
     }
 
-    // Validate URL format (basic check)
-    if (postgresUrl && !postgresUrl.includes("localhost")) {
+    // Validate URL format (basic check) for remote databases
+    if (!isLocalDb) {
       const isValidFormat =
         postgresUrl.startsWith("postgres://") ||
         postgresUrl.startsWith("postgresql://");
@@ -184,8 +155,11 @@ class AgentRuntimeManager {
     }
 
     console.log(
-      `[AgentRuntime] Database config: ${postgresUrl.includes("localhost") ? "localhost:" + dbPort : "remote (Vercel/Neon)"}`,
+      `[AgentRuntime] Database config: ${isLocalDb ? "localhost" : "remote (Vercel/Neon)"}`,
     );
+
+    // Get model configuration from centralized config
+    const models = getGroqModels();
 
     // Use the existing agent ID from DB (b850bc30-45f8-0041-a00a-83df46d8555d)
     const RUNTIME_AGENT_ID = "b850bc30-45f8-0041-a00a-83df46d8555d" as UUID;
@@ -193,10 +167,9 @@ class AgentRuntimeManager {
       ...agent,
       agentId: RUNTIME_AGENT_ID,
       settings: {
-        GROQ_API_KEY: process.env.GROQ_API_KEY || "",
-        SMALL_GROQ_MODEL: process.env.SMALL_GROQ_MODEL || "qwen/qwen3-32b",
-        LARGE_GROQ_MODEL:
-          process.env.LARGE_GROQ_MODEL || "moonshotai/kimi-k2-instruct-0905",
+        GROQ_API_KEY: getGroqApiKey() || "",
+        SMALL_GROQ_MODEL: models.small,
+        LARGE_GROQ_MODEL: models.large,
         POSTGRES_URL: postgresUrl,
         ...agent.character.settings,
       },

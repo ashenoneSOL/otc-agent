@@ -11,6 +11,7 @@ import {
   type TokenizeTextParams,
   logger,
 } from "@elizaos/core";
+import { getGroqApiKey, getGroqModels } from "@/config/env";
 
 /**
  * Retrieves the Groq API base URL, using runtime settings or environment variables if available.
@@ -30,18 +31,17 @@ import { type TiktokenModel, encodingForModel } from "js-tiktoken";
 /**
  * Returns the appropriate Groq model name string for the specified model type.
  *
- * If environment variables for model names are set, they are used; otherwise, defaults are returned.
+ * Uses centralized config for model names with sensible defaults.
  *
  * @param model - The model type for which to retrieve the model name.
  * @returns The model name string corresponding to the given {@link model}.
- *
- * @remark If an error occurs, returns the default model name 'llama-3.1-8b-instant'.
  */
 function findModelName(model: ModelTypeName): TiktokenModel {
+  const models = getGroqModels();
   const name =
     model === ModelType.TEXT_SMALL
-      ? (process.env.SMALL_GROQ_MODEL ?? "llama-3.1-8b-instant")
-      : (process.env.LARGE_GROQ_MODEL ?? "llama-3.3-70b-versatile");
+      ? (models.small ?? "llama-3.1-8b-instant")
+      : (models.large ?? "llama-3.3-70b-versatile");
   return name as TiktokenModel;
 }
 
@@ -114,13 +114,13 @@ export const groqPlugin: Plugin = {
   name: "groq",
   description: "Groq plugin",
   config: {
-    GROQ_API_KEY: process.env.GROQ_API_KEY,
-    SMALL_GROQ_MODEL: process.env.SMALL_GROQ_MODEL,
-    MEDIUM_GROQ_MODEL: process.env.MEDIUM_GROQ_MODEL,
-    LARGE_GROQ_MODEL: process.env.LARGE_GROQ_MODEL,
+    GROQ_API_KEY: getGroqApiKey(),
+    SMALL_GROQ_MODEL: getGroqModels().small,
+    MEDIUM_GROQ_MODEL: getGroqModels().medium,
+    LARGE_GROQ_MODEL: getGroqModels().large,
   },
   async init() {
-    if (!process.env.GROQ_API_KEY) {
+    if (!getGroqApiKey()) {
       throw Error("Missing GROQ_API_KEY in environment variables");
     }
   },

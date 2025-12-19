@@ -140,6 +140,14 @@ async function main() {
   console.log(`   Desk Address: ${deskKeypair.publicKey.toBase58()}`);
   console.log();
 
+  // CRITICAL: Save desk keypair for signing withdrawals
+  const deskKeypairPath = "/Users/shawwalters/otc-agent/solana/otc-program/desk-mainnet-keypair.json";
+  await Bun.write(deskKeypairPath, JSON.stringify(Array.from(deskKeypair.secretKey)));
+  console.log(`IMPORTANT: Saved desk keypair to: ${deskKeypairPath}`);
+  console.log(`IMPORTANT: Also set SOLANA_DESK_PRIVATE_KEY in .env.local with this base58 key:`);
+  console.log(`   ${bs58.encode(deskKeypair.secretKey)}`);
+  console.log();
+
   // Update config
   const configPath = "/Users/shawwalters/otc-agent/src/config/deployments/mainnet-solana.json";
   const config = JSON.parse(await Bun.file(configPath).text());

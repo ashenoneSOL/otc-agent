@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useMultiWallet } from "../multiwallet";
 import { Button } from "../button";
-import { Copy, Check, ArrowLeft, AlertCircle, Info, Loader2 } from "lucide-react";
+import { Copy, Check, ArrowLeft, AlertCircle } from "lucide-react";
 
 interface PoolCheckResult {
   success: boolean;
@@ -144,17 +144,11 @@ export function ReviewStep({
       return;
     }
 
-    // For EVM tokens, require a valid pool
-    if (tokenChain !== "solana") {
-      if (isCheckingPool) {
-        setError("Please wait for pool status check to complete");
+      // For EVM tokens, require a valid pool (blocking handled by button disabled state)
+      if (tokenChain !== "solana" && poolCheck && !poolCheck.hasPool) {
+        setError("No liquidity pool found. This token needs a Uniswap V3/V4, Aerodrome, or Pancakeswap pool to be listed.");
         return;
       }
-      if (poolCheck && !poolCheck.hasPool) {
-        setError("This token requires a liquidity pool to be listed. Please create a pool on Uniswap V3 or a compatible DEX first.");
-        return;
-      }
-    }
 
     // Proceed to submission step
     onNext();
@@ -221,86 +215,6 @@ export function ReviewStep({
         </div>
       </div>
 
-      {/* Pool Status Section - EVM only */}
-      {tokenChain !== "solana" && (
-        <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/30 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            <Info className="w-4 h-4" />
-            Token Registration Status
-          </div>
-
-          {isCheckingPool ? (
-            <div className="flex items-center gap-2 text-sm text-zinc-500">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Checking pool status...
-            </div>
-          ) : poolCheck ? (
-            <div className="space-y-2">
-              {/* Registration Status */}
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-zinc-600 dark:text-zinc-400">Registered:</span>
-                <span className={poolCheck.isRegistered ? "text-green-600" : "text-amber-600"}>
-                  {poolCheck.isRegistered ? "Yes" : "No (will register automatically)"}
-                </span>
-              </div>
-
-              {/* Pool Info */}
-              {poolCheck.hasPool && poolCheck.pool && (
-                <>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-zinc-600 dark:text-zinc-400">Price Oracle:</span>
-                    <span className="text-zinc-900 dark:text-zinc-100">
-                      {poolCheck.pool.protocol} ({poolCheck.pool.baseToken})
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-zinc-600 dark:text-zinc-400">Pool Liquidity:</span>
-                    <span className={`${poolCheck.pool.tvlUsd < 10000 ? "text-amber-600" : "text-green-600"}`}>
-                      ${poolCheck.pool.tvlUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </span>
-                  </div>
-                  {poolCheck.pool.priceUsd && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-600 dark:text-zinc-400">Current Price:</span>
-                      <span className="text-zinc-900 dark:text-zinc-100">
-                        ${poolCheck.pool.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                      </span>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* Registration Fee */}
-              {!poolCheck.isRegistered && poolCheck.registrationFeeEth && (
-                <div className="flex items-center justify-between text-sm pt-1 border-t border-zinc-200 dark:border-zinc-700">
-                  <span className="text-zinc-600 dark:text-zinc-400">Registration Fee:</span>
-                  <span className="text-zinc-900 dark:text-zinc-100 font-medium">
-                    {poolCheck.registrationFeeEth} ETH
-                  </span>
-                </div>
-              )}
-
-              {/* Warning */}
-              {poolCheck.warning && (
-                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-amber-700 dark:text-amber-400">{poolCheck.warning}</p>
-                </div>
-              )}
-
-              {/* No Pool Error */}
-              {!poolCheck.hasPool && poolCheck.error && (
-                <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-red-600 dark:text-red-400">
-                    {poolCheck.error}. This token cannot be listed until a liquidity pool is created.
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
-      )}
 
       {/* Details Grid */}
       <div className="grid gap-2">
@@ -349,16 +263,6 @@ export function ReviewStep({
         )}
 
         <div className="flex justify-between items-center p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/30">
-          <span className="text-zinc-600 dark:text-zinc-400">
-            Deal Size Range
-          </span>
-          <span className="font-medium text-zinc-900 dark:text-zinc-100">
-            {formatAmount(formData.minDealAmount)} –{" "}
-            {formatAmount(formData.maxDealAmount)} {selectedTokenSymbol}
-          </span>
-        </div>
-
-        <div className="flex justify-between items-center p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/30">
           <span className="text-zinc-600 dark:text-zinc-400">Visibility</span>
           <span className="font-medium text-zinc-900 dark:text-zinc-100">
             {formData.isPrivate ? "Private" : "Public"}
@@ -400,8 +304,13 @@ export function ReviewStep({
               : "Loading..."}
           </Button>
         ) : (
-          <Button onClick={handleProceed} color="brand" className="flex-1 py-3">
-            Create Listing
+          <Button
+            onClick={handleProceed}
+            disabled={tokenChain !== "solana" && (isCheckingPool || (poolCheck && !poolCheck.hasPool))}
+            color="brand"
+            className="flex-1 py-3"
+          >
+            {isCheckingPool ? "Checking pool..." : "Create Listing"}
           </Button>
         )}
       </div>

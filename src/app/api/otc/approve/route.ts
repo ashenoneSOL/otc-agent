@@ -21,6 +21,8 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { QuoteService } from "@/lib/plugin-otc-desk/services/quoteService";
 import type { QuoteMemory } from "@/types";
+import { getEvmPrivateKey, isProduction, getNetwork, getHeliusRpcUrl } from "@/config/env";
+import { getSolanaConfig } from "@/config/contracts";
 
 // Helper to safely read from contract bypassing viem's strict authorizationList requirement
 type ReadContractFn = (params: unknown) => Promise<unknown>;
@@ -65,12 +67,11 @@ export async function POST(request: NextRequest) {
   };
 
   const OTC_ADDRESS = await resolveOtcAddress();
-  const RAW_PK = process.env.EVM_PRIVATE_KEY as string | undefined;
-  const EVM_PRIVATE_KEY =
-    RAW_PK && /^0x[0-9a-fA-F]{64}$/.test(RAW_PK)
-      ? (RAW_PK as `0x${string}`)
-      : undefined;
-  if (RAW_PK && !EVM_PRIVATE_KEY) {
+  const evmKey = getEvmPrivateKey();
+  const EVM_PRIVATE_KEY = evmKey && /^0x[0-9a-fA-F]{64}$/.test(evmKey)
+    ? (evmKey as `0x${string}`)
+    : undefined;
+  if (evmKey && !EVM_PRIVATE_KEY) {
     console.warn(
       "[Approve API] Ignoring invalid EVM_PRIVATE_KEY format. Falling back to impersonation.",
     );
@@ -116,11 +117,13 @@ export async function POST(request: NextRequest) {
     const anchor = await import("@coral-xyz/anchor");
     const { Connection, PublicKey, Keypair } = await import("@solana/web3.js");
 
-    const SOLANA_RPC =
-      process.env.NEXT_PUBLIC_SOLANA_RPC || "http://127.0.0.1:8899";
-    const SOLANA_DESK = process.env.NEXT_PUBLIC_SOLANA_DESK;
+    const solanaConfig = getSolanaConfig();
+    const network = getNetwork();
+    const SOLANA_RPC = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
+    const SOLANA_DESK = solanaConfig.desk;
 
-    if (!SOLANA_DESK) throw new Error("SOLANA_DESK not configured");
+    console.log(`[Solana Approve] Using Helius RPC`);
+    if (!SOLANA_DESK) throw new Error("SOLANA_DESK not configured in deployment");
 
     const connection = new Connection(SOLANA_RPC, "confirmed");
 
@@ -456,10 +459,7 @@ export async function POST(request: NextRequest) {
 
   // SECURITY: Only skip validation in development AND when explicitly running locally
   // In production, this is ALWAYS false regardless of environment variables
-  const isLocalNetwork =
-    process.env.NODE_ENV !== "production" &&
-    (process.env.NEXT_PUBLIC_NETWORK === "localhost" ||
-      process.env.NEXT_PUBLIC_NETWORK === "anvil");
+  const isLocalNetwork = !isProduction() && getNetwork() === "local";
 
   if (isLocalNetwork) {
     console.log("[Approve API] Development mode: price validation relaxed");
@@ -587,7 +587,7 @@ export async function POST(request: NextRequest) {
   } catch (priceError) {
     // In production, price validation failures should block the transaction
     // The price-validator already handles this, but we add an extra safety net here
-    if (process.env.NODE_ENV === "production") {
+    if (isProduction()) {
       console.error("[Approve API] Price validation error in production:", priceError);
       return NextResponse.json(
         {

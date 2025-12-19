@@ -48,13 +48,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Filter by fractionalized if specified
+    // Filter out any null/undefined entries and by fractionalized if specified
+    consignments = consignments.filter((c) => c != null);
     if (isFractionalized === "true") {
       consignments = consignments.filter((c) => c.isFractionalized);
     }
 
     if (consignerAddress) {
       consignments = consignments.filter((c) => {
+        if (!c || !c.consignerAddress) return false;
         // Solana addresses are case-sensitive, EVM addresses are case-insensitive
         if (c.chain === "solana") {
           return c.consignerAddress === consignerAddress;
@@ -67,6 +69,7 @@ export async function GET(request: NextRequest) {
 
     if (requesterAddress) {
       consignments = consignments.filter((c) => {
+        if (!c) return false;
         if (!c.isPrivate) return true;
         // Solana addresses are case-sensitive, EVM addresses are case-insensitive
         if (c.chain === "solana") {
@@ -74,7 +77,7 @@ export async function GET(request: NextRequest) {
           if (c.allowedBuyers?.includes(requesterAddress)) return true;
         } else {
           const requester = requesterAddress.toLowerCase();
-          if (c.consignerAddress.toLowerCase() === requester) return true;
+          if (c.consignerAddress?.toLowerCase() === requester) return true;
           if (c.allowedBuyers?.some((b) => b.toLowerCase() === requester))
             return true;
         }

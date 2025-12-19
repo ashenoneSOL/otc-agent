@@ -8,7 +8,8 @@ import {
   localhost,
   type Chain,
 } from "viem/chains";
-import { getCurrentNetwork, getEvmConfig } from "@/config/contracts";
+import { getNetwork, getEvmConfig } from "@/config/contracts";
+import { LOCAL_DEFAULTS } from "@/config/env";
 
 // Anvil chain with correct chain ID (31337)
 const anvil: Chain = {
@@ -22,7 +23,7 @@ const anvil: Chain = {
  * Supports: Base, BSC, Anvil/localhost
  */
 export function getChain(): Chain {
-  const network = getCurrentNetwork();
+  const network = getNetwork();
 
   // Handle unified network names
   if (network === "mainnet") return base;
@@ -35,34 +36,32 @@ export function getChain(): Chain {
 
 /**
  * Get RPC URL for the current chain
- * Uses deployment config with env override support
+ * Uses deployment config
  */
 export function getRpcUrl(): string {
   const config = getEvmConfig();
-  return config.rpc;
+  return config.rpc || LOCAL_DEFAULTS.evmRpc;
 }
 
 /**
  * Get RPC URL for a specific chain type
+ * Uses proxy routes for mainnet to keep API keys server-side
  * @param chainType - Chain identifier (ethereum, base, bsc, localhost, etc.)
  */
 export function getRpcUrlForChain(chainType: string): string {
   switch (chainType) {
     case "ethereum":
-      return "/api/rpc/ethereum";
     case "sepolia":
       return "/api/rpc/ethereum";
     case "base":
-      return "/api/rpc/base";
     case "base-sepolia":
       return "/api/rpc/base";
     case "bsc":
-      return process.env.NEXT_PUBLIC_BSC_RPC_URL!;
     case "bsc-testnet":
-      return process.env.NEXT_PUBLIC_BSC_RPC_URL!;
+      return "https://bsc-dataseed1.binance.org";
     case "localhost":
     case "anvil":
-      return process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545";
+      return LOCAL_DEFAULTS.evmRpc;
     default:
       return getRpcUrl();
   }

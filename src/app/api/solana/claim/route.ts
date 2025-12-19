@@ -11,6 +11,8 @@ import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { promises as fs } from "fs";
 import path from "path";
 import bs58 from "bs58";
+import { getSolanaConfig } from "@/config/contracts";
+import { getHeliusRpcUrl, getNetwork } from "@/config/env";
 
 // Wallet interface for Anchor (matches @coral-xyz/anchor's Wallet type)
 interface AnchorWallet {
@@ -42,6 +44,8 @@ async function loadDeskKeypair(): Promise<Keypair> {
     path.join(process.cwd(), "solana/otc-program/desk-keypair.json"),
     path.join(process.cwd(), "solana/otc-program/desk-mainnet-keypair.json"),
     path.join(process.cwd(), "solana/otc-program/desk-devnet-keypair.json"),
+    path.join(process.cwd(), "solana/otc-program/mainnet-deployer.json"),
+    path.join(process.cwd(), "solana/otc-program/id.json"),
   ];
 
   for (const keypairPath of possiblePaths) {
@@ -69,16 +73,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const SOLANA_RPC =
-      process.env.NEXT_PUBLIC_SOLANA_RPC || "http://127.0.0.1:8899";
-    const SOLANA_DESK = process.env.NEXT_PUBLIC_SOLANA_DESK;
+    // Get Solana config from deployment
+    const network = getNetwork();
+    const solanaConfig = getSolanaConfig();
+    const SOLANA_RPC = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
+    const SOLANA_DESK = solanaConfig.desk;
 
     if (!SOLANA_DESK) {
       return NextResponse.json(
-        { error: "SOLANA_DESK not configured" },
+        { error: "SOLANA_DESK not configured in deployment" },
         { status: 500 },
       );
     }
+    
+    console.log(`[Solana Claim API] Using Helius RPC`);
 
     // Load desk keypair (supports env var and file-based)
     let deskKeypair: Keypair;

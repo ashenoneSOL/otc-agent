@@ -3,27 +3,21 @@ import type { Config } from "wagmi";
 import { mainnet, sepolia, localhost, base, baseSepolia, bsc, bscTestnet } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 import { farcasterMiniApp } from "@farcaster/miniapp-wagmi-connector";
-
-// Custom RPC URLs - use proxy routes to keep API keys server-side
-const ethRpcUrl = process.env.NEXT_PUBLIC_ETH_RPC_URL;
-const baseRpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL;
-const bscRpcUrl = process.env.NEXT_PUBLIC_BSC_RPC_URL;
-const anvilRpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545";
+import { getNetwork, getAppUrl, LOCAL_DEFAULTS } from "@/config/env";
 
 // Get absolute URL for proxy routes (needed for wagmi HTTP transport)
 function getProxyUrl(path: string): string {
   if (typeof window !== "undefined") {
     return `${window.location.origin}${path}`;
   }
-  // Server-side fallback - use env or default
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:4444";
-  return `${appUrl}${path}`;
+  // Server-side fallback - use centralized config
+  return `${getAppUrl()}${path}`;
 }
 
 // Determine available chains based on configuration
 function getAvailableChains() {
-  const network = process.env.NEXT_PUBLIC_NETWORK;
-  const isLocalNetwork = network === "local" || network === "localnet";
+  const network = getNetwork();
+  const isLocalNetwork = network === "local";
   const chains = [];
 
   // Only add localhost when explicitly using local network
@@ -49,27 +43,25 @@ const chains = getAvailableChains();
 function getTransports() {
   const transports: Record<number, ReturnType<typeof http>> = {};
 
-  const network = process.env.NEXT_PUBLIC_NETWORK;
-  const isLocalNetwork = network === "local" || network === "localnet";
+  const network = getNetwork();
+  const isLocalNetwork = network === "local";
 
   // Only add localhost transport when explicitly using local network
   if (isLocalNetwork) {
-    transports[localhost.id] = http(anvilRpcUrl);
+    transports[localhost.id] = http(LOCAL_DEFAULTS.evmRpc);
   }
 
   // Add Ethereum transports - use proxy to keep Alchemy key server-side
-  transports[mainnet.id] = http(ethRpcUrl || getProxyUrl("/api/rpc/ethereum"));
-  transports[sepolia.id] = http(ethRpcUrl || getProxyUrl("/api/rpc/ethereum"));
+  transports[mainnet.id] = http(getProxyUrl("/api/rpc/ethereum"));
+  transports[sepolia.id] = http(getProxyUrl("/api/rpc/ethereum"));
 
   // Add Base transports - use proxy to keep Alchemy key server-side
-  transports[base.id] = http(baseRpcUrl || getProxyUrl("/api/rpc/base"));
-  transports[baseSepolia.id] = http(baseRpcUrl || getProxyUrl("/api/rpc/base"));
+  transports[base.id] = http(getProxyUrl("/api/rpc/base"));
+  transports[baseSepolia.id] = http(getProxyUrl("/api/rpc/base"));
 
-  // Add BSC transports
-  if (bscRpcUrl) {
-    transports[bsc.id] = http(bscRpcUrl);
-    transports[bscTestnet.id] = http(bscRpcUrl);
-  }
+  // Add BSC transports - public RPC
+  transports[bsc.id] = http("https://bsc-dataseed1.binance.org");
+  transports[bscTestnet.id] = http("https://data-seed-prebsc-1-s1.binance.org:8545");
 
   return transports;
 }

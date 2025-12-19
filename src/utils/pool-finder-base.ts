@@ -2,6 +2,8 @@ import {
   createPublicClient,
   http,
   parseAbi,
+  keccak256,
+  encodeAbiParameters,
   type PublicClient,
   type Abi,
   type Address,
@@ -36,6 +38,9 @@ const CONFIG: Record<
   number,
   {
     uniV3Factory: string;
+    uniV4PoolManager?: string;
+    uniV4StateView?: string;
+    clankerHook?: string; // Clanker v4 uses specific hook
     aerodromeFactory?: string;
     aerodromeCLFactory?: string;
     pancakeswapFactory?: string;
@@ -68,6 +73,11 @@ const CONFIG: Record<
   // Base Mainnet
   8453: {
     uniV3Factory: "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+    // Uniswap V4 addresses - for Clanker v4 support
+    uniV4PoolManager: "0x498581ff718922c3f8e6a244956af099b2652b2b",
+    uniV4StateView: "0xa3c0c9b65bad0b08107aa264b0f3db444b867a71",
+    // ClankerHookStaticFee - the main hook used by Clanker v4 tokens
+    clankerHook: "0x6C24D0bCC264EF6A740754A11cA579b9d225e8Cc",
     aerodromeFactory: "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
     // Aerodrome Slipstream (Velodrome CL) PoolFactory - verified from official deployment
     // https://github.com/velodrome-finance/slipstream
@@ -169,6 +179,22 @@ const aeroPoolAbi = parseAbi([
   "function symbol() external view returns (string)",
 ]);
 
+// Uniswap V4 StateView ABI - for reading pool state
+const stateViewAbi = parseAbi([
+  "function getSlot0(bytes32 poolId) external view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)",
+  "function getLiquidity(bytes32 poolId) external view returns (uint128 liquidity)",
+]);
+
+// V4 fee tiers and tick spacings used by Clanker
+// Clanker typically uses 10000 (1%) fee with tickSpacing 200
+const V4_FEE_TIERS = [100, 500, 3000, 10000];
+const V4_TICK_SPACINGS: Record<number, number> = {
+  100: 1,
+  500: 10,
+  3000: 60,
+  10000: 200,
+};
+
 /**
  * Find all pools (Uniswap V3 + Aerodrome) for a given token
  * @param tokenAddress The token to find pools for
@@ -226,6 +252,11 @@ export async function findBestPool(
   }) as unknown as PublicClient;
 
   const promises = [findUniswapV3Pools(client, tokenAddress, config)];
+
+  // Uniswap V4 pools (for Clanker v4 support)
+  if (config.uniV4PoolManager && config.uniV4StateView) {
+    promises.push(findUniswapV4Pools(client, tokenAddress, config));
+  }
 
   // Aerodrome Slipstream (CL) pools - compatible with UniswapV3TWAPOracle (Uniswap V3 interface)
   // Note: Aerodrome V2 pools (Basic/Volatile) do NOT support the IUniswapV3Pool interface
@@ -341,6 +372,208 @@ async function findUniswapV3Pools(
 }
 
 /**
+ * Compute Uniswap V4 PoolId from PoolKey components
+ * PoolId = keccak256(abi.encode(currency0, currency1, fee, tickSpacing, hooks))
+ * In V4, Currency is just address (address(0) for native ETH)
+ */
+function computeV4PoolId(
+  currency0: Address,
+  currency1: Address,
+  fee: number,
+  tickSpacing: number,
+  hooks: Address,
+): `0x${string}` {
+  // Sort currencies - currency0 must be < currency1
+  const [sorted0, sorted1] = BigInt(currency0) < BigInt(currency1)
+    ? [currency0, currency1]
+    : [currency1, currency0];
+
+  // PoolKey struct: (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks)
+  // Use abi.encode (not packed) - each field is padded to 32 bytes
+  const encoded = encodeAbiParameters(
+    [
+      { name: "currency0", type: "address" },
+      { name: "currency1", type: "address" },
+      { name: "fee", type: "uint24" },
+      { name: "tickSpacing", type: "int24" },
+      { name: "hooks", type: "address" },
+    ],
+    [sorted0, sorted1, fee, tickSpacing, hooks],
+  );
+  return keccak256(encoded);
+}
+
+/**
+ * Find Uniswap V4 pools (for Clanker v4 support)
+ * V4 uses a singleton PoolManager - pools are identified by PoolKey hash
+ */
+async function findUniswapV4Pools(
+  client: PublicClient,
+  tokenAddress: string,
+  config: (typeof CONFIG)[number],
+): Promise<PoolInfo[]> {
+  if (!config.uniV4PoolManager || !config.uniV4StateView) return [];
+
+  const pools: PoolInfo[] = [];
+
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[PoolFinder] Checking V4 pools for ${tokenAddress}`);
+  }
+
+  // Helper to check a V4 pool
+  const checkPool = async (
+    baseTokenAddress: string,
+    baseTokenSymbol: "USDC" | "WETH",
+    fee: number,
+    hookAddress: Address,
+  ) => {
+    try {
+      const tickSpacing = V4_TICK_SPACINGS[fee] || 60;
+      const poolId = computeV4PoolId(
+        tokenAddress as Address,
+        baseTokenAddress as Address,
+        fee,
+        tickSpacing,
+        hookAddress,
+      );
+
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[PoolFinder] V4 checking poolId=${poolId.slice(0, 18)}... fee=${fee} tick=${tickSpacing} hook=${hookAddress.slice(0, 10)}...`);
+      }
+
+      // Try to get slot0 - if it reverts, pool doesn't exist
+      const [slot0Result, liquidityResult] = await Promise.all([
+        withRetryAndCache(
+          `v4-slot0:${poolId}`,
+          async () => {
+            return poolReadContract<readonly [bigint, number, number, number]>(client, {
+              address: config.uniV4StateView as Address,
+              abi: stateViewAbi as Abi,
+              functionName: "getSlot0",
+              args: [poolId],
+            });
+          },
+          { cacheTtlMs: POOL_CACHE_TTL_MS },
+        ).catch((err) => {
+          if (process.env.NODE_ENV === "development") {
+            console.log(`[PoolFinder] V4 getSlot0 error for ${poolId.slice(0, 18)}...: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          return null;
+        }),
+        withRetryAndCache(
+          `v4-liq:${poolId}`,
+          async () => {
+            return poolReadContract<bigint>(client, {
+              address: config.uniV4StateView as Address,
+              abi: stateViewAbi as Abi,
+              functionName: "getLiquidity",
+              args: [poolId],
+            });
+          },
+          { cacheTtlMs: POOL_CACHE_TTL_MS },
+        ).catch(() => 0n),
+      ]);
+
+      // If slot0 returns valid data (sqrtPriceX96 > 0), pool exists
+      if (slot0Result && slot0Result[0] > 0n) {
+        const sqrtPriceX96 = slot0Result[0];
+        const liquidity = liquidityResult || 0n;
+
+        // Sort tokens to determine which is token0/token1
+        const [token0, token1] = BigInt(tokenAddress) < BigInt(baseTokenAddress)
+          ? [tokenAddress, baseTokenAddress]
+          : [baseTokenAddress, tokenAddress];
+
+        // Calculate TVL and price
+        const tvlUsd = calculateV3TVL(
+          liquidity,
+          sqrtPriceX96,
+          token0,
+          token1,
+          baseTokenSymbol,
+          config,
+        );
+
+        // Calculate price
+        const isToken0Target = token0.toLowerCase() === tokenAddress.toLowerCase();
+        const Q96 = 2n ** 96n;
+        const sqrtP = Number(sqrtPriceX96) / Number(Q96);
+        const price0in1 = sqrtP * sqrtP;
+
+        // Decimals: token is 18, USDC is 6, WETH is 18
+        const tokenDecimals = 18;
+        const baseDecimals = baseTokenSymbol === "USDC" ? 6 : 18;
+        const decimalAdjustment = isToken0Target
+          ? 10 ** (tokenDecimals - baseDecimals)
+          : 10 ** (baseDecimals - tokenDecimals);
+        const price0in1Adjusted = price0in1 * decimalAdjustment;
+
+        const baseTokenPrice = baseTokenSymbol === "USDC" ? 1 : config.nativeTokenPriceEstimate;
+        const priceUsd = isToken0Target
+          ? price0in1Adjusted * baseTokenPrice
+          : (1 / price0in1Adjusted) * baseTokenPrice;
+
+        pools.push({
+          protocol: "Uniswap V3", // Report as V3 for oracle compatibility
+          address: poolId, // V4 pools don't have separate addresses, use poolId
+          token0,
+          token1,
+          fee,
+          tickSpacing,
+          liquidity,
+          tvlUsd,
+          priceUsd,
+          baseToken: baseTokenSymbol,
+        });
+
+        if (process.env.NODE_ENV === "development") {
+          console.log(`[PoolFinder] Found V4 pool: ${poolId} fee=${fee} tickSpacing=${tickSpacing} TVL=$${tvlUsd.toFixed(2)}`);
+        }
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn(`[PoolFinder] Error checking V4 pool for ${baseTokenSymbol}/${fee}:`, error instanceof Error ? error.message : error);
+      }
+    }
+  };
+
+  // Check pools with known hooks
+  const hookAddresses: Address[] = [];
+  
+  // Add Clanker hook if configured
+  if (config.clankerHook) {
+    hookAddresses.push(config.clankerHook as Address);
+  }
+  
+  // Also try other known Clanker hooks (dynamic fee, older versions)
+  const additionalHooks: Address[] = [
+    "0x34a45c6b61876d739400bd71228cbcbd4f53e8cc", // ClankerHookDynamicFee v4.0.0
+    "0x0000000000000000000000000000000000000000", // No hook
+  ];
+  
+  for (const hook of additionalHooks) {
+    if (!hookAddresses.includes(hook)) {
+      hookAddresses.push(hook);
+    }
+  }
+
+  // Check all combinations
+  const checks: Promise<void>[] = [];
+  for (const hook of hookAddresses) {
+    for (const fee of V4_FEE_TIERS) {
+      // Check WETH pairs
+      checks.push(checkPool(config.weth, "WETH", fee, hook));
+      // V4 uses address(0) for native ETH - check those too
+      checks.push(checkPool("0x0000000000000000000000000000000000000000", "WETH", fee, hook));
+    }
+  }
+
+  await Promise.all(checks);
+
+  return pools;
+}
+
+/**
  * Find Aerodrome Slipstream (CL) pools
  * These are compatible with UniswapV3TWAPOracle (Uniswap V3 interface)
  * Uses the official Velodrome Slipstream PoolFactory
@@ -351,6 +584,10 @@ async function findAerodromeCLPools(
   config: (typeof CONFIG)[number],
 ): Promise<PoolInfo[]> {
   if (!config.aerodromeCLFactory) return [];
+
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[PoolFinder] Checking Aerodrome CL pools for ${tokenAddress}`);
+  }
 
   const pools: PoolInfo[] = [];
 
@@ -378,6 +615,10 @@ async function findAerodromeCLPools(
         { cacheTtlMs: POOL_CACHE_TTL_MS },
       );
 
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[PoolFinder] Aerodrome CL ${baseTokenSymbol}/${tickSpacing}: ${poolAddress}`);
+      }
+
       if (
         poolAddress &&
         poolAddress !== "0x0000000000000000000000000000000000000000"
@@ -396,6 +637,9 @@ async function findAerodromeCLPools(
           poolInfo.tickSpacing = tickSpacing;
           delete poolInfo.fee; // CL pools don't use fee tier in same way (fee is dynamic or based on tickSpacing)
           pools.push(poolInfo);
+          if (process.env.NODE_ENV === "development") {
+            console.log(`[PoolFinder] Found Aerodrome CL pool: ${poolAddress} TVL=$${poolInfo.tvlUsd.toFixed(2)}`);
+          }
         }
       }
     } catch (error) {

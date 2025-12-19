@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import Image from "next/image";
 import { Button } from "../button";
 import {
@@ -17,10 +17,28 @@ import {
   TrendingDown,
   Calendar,
   AlertCircle,
+  Info,
+  Loader2,
 } from "lucide-react";
+
+interface PoolCheckResult {
+  success: boolean;
+  isRegistered: boolean;
+  hasPool: boolean;
+  pool?: {
+    address: string;
+    protocol: string;
+    tvlUsd: number;
+    priceUsd?: number;
+    baseToken: "USDC" | "WETH";
+  };
+  warning?: string;
+  error?: string;
+}
 
 interface FormStepProps {
   formData: {
+    tokenId: string;
     amount: string;
     isNegotiable: boolean;
     fixedDiscountBps: number;
@@ -152,6 +170,14 @@ function SingleSlider({
   );
 }
 
+// Extract chain and address from tokenId (format: token-{chain}-{address})
+function getTokenInfo(tokenId: string) {
+  const parts = tokenId?.split("-") || [];
+  const chain = parts[1] || "";
+  const address = parts.slice(2).join("-") || "";
+  return { chain, address };
+}
+
 export function FormStep({
   formData,
   updateFormData,
@@ -164,6 +190,41 @@ export function FormStep({
 }: FormStepProps) {
   const [logoError, setLogoError] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [poolCheck, setPoolCheck] = useState<PoolCheckResult | null>(null);
+  const [isCheckingPool, setIsCheckingPool] = useState(false);
+
+  const { chain: tokenChain, address: rawTokenAddress } = getTokenInfo(formData.tokenId);
+
+  // Check pool status for EVM tokens
+  useEffect(() => {
+    if (tokenChain === "solana" || !rawTokenAddress) {
+      setPoolCheck(null);
+      return;
+    }
+
+    const checkPool = async () => {
+      setIsCheckingPool(true);
+      try {
+        const res = await fetch(
+          `/api/token-pool-check?address=${encodeURIComponent(rawTokenAddress)}&chain=${tokenChain}`,
+        );
+        const data = await res.json();
+        setPoolCheck(data);
+      } catch (err) {
+        console.error("[FormStep] Pool check error:", err);
+        setPoolCheck({
+          success: false,
+          isRegistered: false,
+          hasPool: false,
+          error: "Failed to check token pool status",
+        });
+      } finally {
+        setIsCheckingPool(false);
+      }
+    };
+
+    checkPool();
+  }, [tokenChain, rawTokenAddress]);
 
   const maxBalance = useMemo(() => {
     const raw = BigInt(selectedTokenBalance || "0");
@@ -204,7 +265,9 @@ export function FormStep({
     return errors;
   }, [formData, currentAmount, maxBalance, selectedTokenSymbol]);
 
-  const isValid = validationErrors.length === 0 && currentAmount > 0;
+  // For EVM tokens, also require a valid pool
+  const poolValid = tokenChain === "solana" || !isCheckingPool && poolCheck?.hasPool;
+  const isValid = validationErrors.length === 0 && currentAmount > 0 && poolValid;
 
   const setAmountPercentage = useCallback(
     (pct: number) => {
@@ -485,6 +548,69 @@ export function FormStep({
         )}
       </div>
 
+      {/* Pool Status Section - EVM only */}
+      {tokenChain !== "solana" && (
+        <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/30 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <Info className="w-4 h-4" />
+            Price Oracle
+          </div>
+
+          {isCheckingPool ? (
+            <div className="flex items-center gap-2 text-sm text-zinc-500">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Checking pool status...
+            </div>
+          ) : poolCheck ? (
+            <div className="space-y-2">
+              {/* Pool Info */}
+              {poolCheck.hasPool && poolCheck.pool && (
+                <>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-zinc-600 dark:text-zinc-400">Source:</span>
+                    <span className="text-zinc-900 dark:text-zinc-100">
+                      {poolCheck.pool.protocol} ({poolCheck.pool.baseToken})
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-zinc-600 dark:text-zinc-400">Pool Liquidity:</span>
+                    <span className={`${poolCheck.pool.tvlUsd < 10000 ? "text-amber-600" : "text-green-600"}`}>
+                      ${poolCheck.pool.tvlUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                  {poolCheck.pool.priceUsd && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-zinc-600 dark:text-zinc-400">Current Price:</span>
+                      <span className="text-zinc-900 dark:text-zinc-100">
+                        ${poolCheck.pool.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Warning */}
+              {poolCheck.warning && (
+                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-700 dark:text-amber-400">{poolCheck.warning}</p>
+                </div>
+              )}
+
+              {/* No Pool Error */}
+              {!poolCheck.hasPool && (
+                <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    No liquidity pool found. This token needs a Uniswap V3/V4, Aerodrome, or Pancakeswap pool to be listed.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
+
       {/* Advanced Settings Toggle */}
       <button
         type="button"
@@ -622,7 +748,7 @@ export function FormStep({
           color="brand"
           className="flex-1 px-6 py-3"
         >
-          Review Listing
+          {tokenChain !== "solana" && isCheckingPool ? "Checking pool..." : "Review Listing"}
         </Button>
       </div>
     </div>

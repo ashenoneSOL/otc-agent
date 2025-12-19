@@ -1,9 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Connection, PublicKey, Keypair, ComputeBudgetProgram } from "@solana/web3.js";
-import { AnchorProvider, Program, Wallet, BN } from "@coral-xyz/anchor";
+import { AnchorProvider, Program, BN } from "@coral-xyz/anchor";
+import type { Wallet } from "@coral-xyz/anchor";
 import bs58 from "bs58";
 import idl from "@/contracts/solana-otc.idl.json";
 import { getSolanaConfig } from "@/config/contracts";
+import { getHeliusRpcUrl, getNetwork } from "@/config/env";
+
+// Wallet adapter for Anchor that wraps a Keypair
+class KeypairWallet implements Wallet {
+  constructor(readonly payer: Keypair) {}
+  get publicKey() { return this.payer.publicKey; }
+  async signTransaction<T extends import("@solana/web3.js").Transaction | import("@solana/web3.js").VersionedTransaction>(tx: T): Promise<T> {
+    if ("version" in tx) {
+      tx.sign([this.payer]);
+    } else {
+      (tx as import("@solana/web3.js").Transaction).partialSign(this.payer);
+    }
+    return tx;
+  }
+  async signAllTransactions<T extends import("@solana/web3.js").Transaction | import("@solana/web3.js").VersionedTransaction>(txs: T[]): Promise<T[]> {
+    return Promise.all(txs.map(tx => this.signTransaction(tx)));
+  }
+}
 
 /**
  * Lazy Price Update API
@@ -69,9 +88,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const connection = new Connection(solanaConfig.rpc, "confirmed");
+    const network = getNetwork();
+    const rpcUrl = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
+    const connection = new Connection(rpcUrl, "confirmed");
     const programId = new PublicKey(solanaConfig.programId);
     const deskPubkey = new PublicKey(solanaConfig.desk);
+    console.log(`[Update Price] Using Helius RPC`);
     const tokenMintPubkey = new PublicKey(tokenMint);
 
     // Find token registry PDA
@@ -140,7 +162,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update on-chain
-    const wallet = new Wallet(keypair);
+    const wallet = new KeypairWallet(keypair);
     const provider = new AnchorProvider(connection, wallet, { commitment: "confirmed" });
     const program = new Program(idl as never, provider);
 
@@ -195,7 +217,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const connection = new Connection(solanaConfig.rpc, "confirmed");
+  const network = getNetwork();
+  const rpcUrl = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
+  const connection = new Connection(rpcUrl, "confirmed");
   const programId = new PublicKey(solanaConfig.programId);
   const deskPubkey = new PublicKey(solanaConfig.desk);
   const tokenMintPubkey = new PublicKey(tokenMint);
