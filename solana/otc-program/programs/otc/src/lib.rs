@@ -4,10 +4,12 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(unexpected_cfgs)]
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer as SplTransfer};
+use anchor_spl::token_interface::{
+    Mint, TokenAccount, TokenInterface, TransferChecked, transfer_checked,
+};
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
-declare_id!("q9MhHpeydqTdtPaNpzDoWvP1qY5s3sFHTF1uYcXjdsc");
+declare_id!("3uTdWzoAcBFKTVYRd2z2jDKAcuyW64rQLxa9wMreDJKo");
 
 #[event]
 pub struct OfferCreated {
@@ -91,6 +93,7 @@ pub mod otc {
         desk.emergency_refund_enabled = false;
         desk.emergency_refund_deadline_secs = 30 * 86400; // 30 days default
         desk.approvers = Vec::new();
+        desk.p2p_commission_bps = 25; // Default: 0.25% commission for P2P deals
         Ok(())
     }
 
@@ -157,13 +160,14 @@ pub mod otc {
         require!(fixed_discount_bps <= 10000, OtcError::Discount); // Max 100% discount
         require!(min_lockup_days <= max_lockup_days, OtcError::LockupTooLong);
 
-        let cpi_accounts = SplTransfer {
+        let cpi_accounts = TransferChecked {
             from: ctx.accounts.consigner_token_ata.to_account_info(),
             to: ctx.accounts.desk_token_treasury.to_account_info(),
             authority: ctx.accounts.consigner.to_account_info(),
+            mint: ctx.accounts.token_mint.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
-        token::transfer(cpi_ctx, amount)?;
+        transfer_checked(cpi_ctx, amount, ctx.accounts.token_mint.decimals)?;
 
         let consignment_id = desk.next_consignment_id;
         desk.next_consignment_id = consignment_id.checked_add(1).ok_or(OtcError::Overflow)?;
@@ -650,13 +654,14 @@ pub mod otc {
         require!(!ctx.accounts.desk.paused, OtcError::Paused);
         require!(ctx.accounts.token_registry.is_active, OtcError::BadState);
         only_owner(&ctx.accounts.desk, &ctx.accounts.owner.key())?;
-        let cpi_accounts = SplTransfer {
+        let cpi_accounts = TransferChecked {
             from: ctx.accounts.owner_token_ata.to_account_info(),
             to: ctx.accounts.desk_token_treasury.to_account_info(),
             authority: ctx.accounts.owner.to_account_info(),
+            mint: ctx.accounts.token_mint.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
-        token::transfer(cpi_ctx, amount)?;
+        transfer_checked(cpi_ctx, amount, ctx.accounts.token_registry.decimals)?;
         // Note: We don't track desk.token_deposited since all tokens are equal
         // and we use TokenRegistry per token. Treasury balance is the source of truth.
         Ok(())
@@ -735,7 +740,8 @@ pub mod otc {
     }
 
     /// Create an offer from a consignment
-    /// agent_commission_bps: 0 for P2P (non-negotiable), 25-150 for negotiated deals
+    /// agent_commission_bps: For negotiated deals: 25-150 bps (0.25% - 1.5%)
+    ///                       For P2P (non-negotiable): ignored, uses desk.p2p_commission_bps (default 0.25%)
     /// Commission is paid to desk.agent from seller proceeds at fulfillment
     pub fn create_offer_from_consignment(
         ctx: Context<CreateOfferFromConsignment>,
@@ -769,18 +775,23 @@ pub mod otc {
         require!(token_amount >= consignment.min_deal_amount && token_amount <= consignment.max_deal_amount, OtcError::AmountRange);
         require!(token_amount <= consignment.remaining_amount, OtcError::InsuffInv);
 
+        // Determine effective commission for the offer
+        let effective_commission_bps: u16;
+        
         if consignment.is_negotiable {
             require!(discount_bps >= consignment.min_discount_bps && discount_bps <= consignment.max_discount_bps, OtcError::Discount);
             let lockup_days = lockup_secs / 86400;
             require!(lockup_days >= consignment.min_lockup_days as i64 && lockup_days <= consignment.max_lockup_days as i64, OtcError::LockupTooLong);
             // Negotiated deals: commission must be 25-150 bps (0.25% - 1.5%)
             require!(agent_commission_bps >= 25 && agent_commission_bps <= 150, OtcError::CommissionRange);
+            effective_commission_bps = agent_commission_bps;
         } else {
             require!(discount_bps == consignment.fixed_discount_bps, OtcError::Discount);
             let lockup_days = lockup_secs / 86400;
             require!(lockup_days == consignment.fixed_lockup_days as i64, OtcError::LockupTooLong);
-            // P2P deals: no commission allowed
-            require!(agent_commission_bps == 0, OtcError::CommissionRange);
+            // P2P deals: use the configured p2p_commission_bps (default 0.25%)
+            // agent_commission_bps parameter is ignored for P2P - uses desk-wide setting
+            effective_commission_bps = desk.p2p_commission_bps;
         }
 
         // Use registry price for multi-token support
@@ -839,7 +850,7 @@ pub mod otc {
         offer.cancelled = false;
         offer.payer = Pubkey::default();
         offer.amount_paid = 0;
-        offer.agent_commission_bps = agent_commission_bps;
+        offer.agent_commission_bps = effective_commission_bps;
 
         emit!(OfferCreated {
             desk: offer.desk,
@@ -868,13 +879,14 @@ pub mod otc {
         consignment.is_active = false;
         consignment.remaining_amount = 0;
 
-        let cpi_accounts = SplTransfer {
+        let cpi_accounts = TransferChecked {
             from: ctx.accounts.desk_token_treasury.to_account_info(),
             to: ctx.accounts.consigner_token_ata.to_account_info(),
             authority: ctx.accounts.desk_signer.to_account_info(),
+            mint: ctx.accounts.token_mint.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
-        token::transfer(cpi_ctx, withdraw_amount)?;
+        transfer_checked(cpi_ctx, withdraw_amount, ctx.accounts.token_mint.decimals)?;
         Ok(())
     }
 
@@ -993,21 +1005,27 @@ pub mod otc {
         let commission_usdc = safe_u128_to_u64(mul_div_u128(commission_usd_8d as u128, 1_000_000u128, 100_000_000u128)?)?;
         
         // Transfer full payment from buyer to desk treasury
-        let cpi_accounts = SplTransfer { from: ctx.accounts.payer_usdc_ata.to_account_info(), to: ctx.accounts.desk_usdc_treasury.to_account_info(), authority: ctx.accounts.payer.to_account_info() };
+        let cpi_accounts = TransferChecked { 
+            from: ctx.accounts.payer_usdc_ata.to_account_info(), 
+            to: ctx.accounts.desk_usdc_treasury.to_account_info(), 
+            authority: ctx.accounts.payer.to_account_info(),
+            mint: ctx.accounts.usdc_mint.to_account_info(),
+        };
         let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
-        token::transfer(cpi_ctx, usdc_amount)?;
+        transfer_checked(cpi_ctx, usdc_amount, desk.usdc_decimals)?;
         
         // If there's a commission and agent USDC account is provided, transfer commission to agent
         if commission_usdc > 0 {
             if let Some(agent_usdc_ata) = &ctx.accounts.agent_usdc_ata {
                 // Transfer commission from desk treasury to agent (desk_signer authorizes)
-                let cpi_accounts_commission = SplTransfer { 
+                let cpi_accounts_commission = TransferChecked { 
                     from: ctx.accounts.desk_usdc_treasury.to_account_info(), 
                     to: agent_usdc_ata.to_account_info(), 
-                    authority: ctx.accounts.desk_signer.to_account_info() 
+                    authority: ctx.accounts.desk_signer.to_account_info(),
+                    mint: ctx.accounts.usdc_mint.to_account_info(),
                 };
                 let cpi_ctx_commission = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts_commission);
-                token::transfer(cpi_ctx_commission, commission_usdc)?;
+                transfer_checked(cpi_ctx_commission, commission_usdc, desk.usdc_decimals)?;
                 emit!(AgentCommissionPaid { offer: offer_key, agent: desk.agent, amount: commission_usdc, currency: 1 });
             }
         }
@@ -1090,13 +1108,14 @@ pub mod otc {
         require!(now >= offer.unlock_time, OtcError::Locked);
         
         // Transfer tokens from desk treasury to beneficiary (desk_signer authorizes)
-        let cpi_accounts = SplTransfer {
+        let cpi_accounts = TransferChecked {
             from: ctx.accounts.desk_token_treasury.to_account_info(),
             to: ctx.accounts.beneficiary_token_ata.to_account_info(),
             authority: ctx.accounts.desk_signer.to_account_info(),
+            mint: ctx.accounts.token_mint.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
-        token::transfer(cpi_ctx, offer.token_amount)?;
+        transfer_checked(cpi_ctx, offer.token_amount, offer.token_decimals)?;
         
         // Note: desk.token_reserved is deprecated - multi-token model uses per-token treasury balances
         offer.fulfilled = true;
@@ -1111,13 +1130,14 @@ pub mod otc {
         require!(ctx.accounts.desk_signer.key() == ctx.accounts.desk.key(), OtcError::NotOwner);
         require!(ctx.accounts.token_registry.is_active, OtcError::BadState);
         // No reserved amount check - multi-token model uses treasury balance as source of truth
-        let cpi_accounts = SplTransfer {
+        let cpi_accounts = TransferChecked {
             from: ctx.accounts.desk_token_treasury.to_account_info(),
             to: ctx.accounts.owner_token_ata.to_account_info(),
             authority: ctx.accounts.desk_signer.to_account_info(),
+            mint: ctx.accounts.token_mint.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
-        token::transfer(cpi_ctx, amount)?;
+        transfer_checked(cpi_ctx, amount, ctx.accounts.token_registry.decimals)?;
         Ok(())
     }
 
@@ -1125,13 +1145,14 @@ pub mod otc {
         // Desk keypair signs to authorize withdrawal
         only_owner(&ctx.accounts.desk, &ctx.accounts.owner.key())?;
         require!(ctx.accounts.desk_signer.key() == ctx.accounts.desk.key(), OtcError::NotOwner);
-        let cpi_accounts = SplTransfer {
+        let cpi_accounts = TransferChecked {
             from: ctx.accounts.desk_usdc_treasury.to_account_info(),
             to: ctx.accounts.to_usdc_ata.to_account_info(),
             authority: ctx.accounts.desk_signer.to_account_info(),
+            mint: ctx.accounts.usdc_mint.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
-        token::transfer(cpi_ctx, amount)?;
+        transfer_checked(cpi_ctx, amount, ctx.accounts.desk.usdc_decimals)?;
         Ok(())
     }
 
@@ -1155,6 +1176,15 @@ pub mod otc {
         let desk = &mut ctx.accounts.desk;
         desk.emergency_refund_enabled = enabled;
         desk.emergency_refund_deadline_secs = deadline_secs;
+        Ok(())
+    }
+
+    /// Set P2P commission rate for non-negotiable fixed-price deals
+    /// Default is 25 bps (0.25%), max 500 bps (5%)
+    pub fn set_p2p_commission(ctx: Context<OnlyOwnerDesk>, bps: u16) -> Result<()> {
+        require!(bps <= 500, OtcError::CommissionRange); // Max 5% for P2P
+        let desk = &mut ctx.accounts.desk;
+        desk.p2p_commission_bps = bps;
         Ok(())
     }
 
@@ -1224,13 +1254,14 @@ pub mod otc {
         // Note: desk.token_reserved is deprecated - multi-token model doesn't use it
         
         // Refund USDC to payer
-        let cpi_accounts = SplTransfer {
+        let cpi_accounts = TransferChecked {
             from: ctx.accounts.desk_usdc_treasury.to_account_info(),
             to: ctx.accounts.payer_usdc_refund.to_account_info(),
             authority: ctx.accounts.desk_signer.to_account_info(),
+            mint: ctx.accounts.usdc_mint.to_account_info(),
         };
         let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
-        token::transfer(cpi_ctx, offer.amount_paid)?;
+        transfer_checked(cpi_ctx, offer.amount_paid, ctx.accounts.desk.usdc_decimals)?;
         
         Ok(())
     }
@@ -1244,7 +1275,7 @@ pub struct InitDesk<'info> {
     pub owner: Signer<'info>,
     /// CHECK: Agent can be any account
     pub agent: UncheckedAccount<'info>,
-    pub usdc_mint: Account<'info, Mint>,
+    pub usdc_mint: InterfaceAccount<'info, Mint>,
     pub system_program: Program<'info, System>,
     #[account(init, payer = payer, space = 8 + Desk::SIZE)]
     pub desk: Account<'info, Desk>,
@@ -1255,7 +1286,7 @@ pub struct RegisterToken<'info> {
     pub desk: Account<'info, Desk>,
     #[account(mut)]
     pub payer: Signer<'info>,
-    pub token_mint: Account<'info, Mint>,
+    pub token_mint: InterfaceAccount<'info, Mint>,
     #[account(
         init, 
         payer = payer, 
@@ -1273,14 +1304,14 @@ pub struct CreateConsignment<'info> {
     pub desk: Account<'info, Desk>,
     #[account(mut)]
     pub consigner: Signer<'info>,
-    pub token_mint: Account<'info, Mint>,
+    pub token_mint: InterfaceAccount<'info, Mint>,
     #[account(mut, constraint = consigner_token_ata.mint == token_mint.key() @ OtcError::BadState, constraint = consigner_token_ata.owner == consigner.key() @ OtcError::BadState)]
-    pub consigner_token_ata: Account<'info, TokenAccount>,
+    pub consigner_token_ata: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, constraint = desk_token_treasury.mint == token_mint.key() @ OtcError::BadState, constraint = desk_token_treasury.owner == desk.key() @ OtcError::BadState)]
-    pub desk_token_treasury: Account<'info, TokenAccount>,
+    pub desk_token_treasury: InterfaceAccount<'info, TokenAccount>,
     #[account(init, payer = consigner, space = 8 + Consignment::SIZE)]
     pub consignment: Account<'info, Consignment>,
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 
@@ -1344,11 +1375,11 @@ pub struct UpdateTokenPriceFromPool<'info> {
     pub pool: UncheckedAccount<'info>,
     /// Token vault (vault_a) - contains the token being priced
     #[account(constraint = vault_a.owner == token_registry.pool_address @ OtcError::BadState)]
-    pub vault_a: Account<'info, TokenAccount>,
+    pub vault_a: InterfaceAccount<'info, TokenAccount>,
     /// Quote vault (vault_b) - contains USDC or SOL
     #[account(constraint = vault_b.owner == token_registry.pool_address @ OtcError::BadState)]
-    pub vault_b: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub vault_b: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 /// PumpSwap / Pump.fun bonding curve price update
@@ -1365,7 +1396,7 @@ pub struct UpdateTokenPriceFromPumpswap<'info> {
     pub sol_vault: UncheckedAccount<'info>,
     /// Token vault holding the bonding curve's tokens - must match token mint and be owned by pool
     #[account(constraint = token_vault.mint == token_registry.token_mint @ OtcError::BadState)]
-    pub token_vault: Account<'info, TokenAccount>,
+    pub token_vault: InterfaceAccount<'info, TokenAccount>,
 }
 
 #[derive(Accounts)]
@@ -1403,13 +1434,14 @@ pub struct DepositTokens<'info> {
     /// Token registry - must belong to this desk
     #[account(constraint = token_registry.desk == desk.key() @ OtcError::BadState)]
     pub token_registry: Account<'info, TokenRegistry>,
+    pub token_mint: InterfaceAccount<'info, Mint>,
     #[account(mut)]
     pub owner: Signer<'info>,
     #[account(mut, constraint = owner_token_ata.mint == token_registry.token_mint, constraint = owner_token_ata.owner == owner.key())]
-    pub owner_token_ata: Account<'info, TokenAccount>,
+    pub owner_token_ata: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, constraint = desk_token_treasury.mint == token_registry.token_mint, constraint = desk_token_treasury.owner == desk.key())]
-    pub desk_token_treasury: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub desk_token_treasury: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[derive(Accounts)]
@@ -1420,7 +1452,7 @@ pub struct CreateOffer<'info> {
     #[account(constraint = token_registry.desk == desk.key() @ OtcError::BadState)]
     pub token_registry: Account<'info, TokenRegistry>,
     #[account(mut, constraint = desk_token_treasury.mint == token_registry.token_mint, constraint = desk_token_treasury.owner == desk.key())]
-    pub desk_token_treasury: Account<'info, TokenAccount>,
+    pub desk_token_treasury: InterfaceAccount<'info, TokenAccount>,
     #[account(mut)]
     pub beneficiary: Signer<'info>,
     #[account(init_if_needed, payer = beneficiary, space = 8 + Offer::SIZE)]
@@ -1463,21 +1495,22 @@ pub struct FulfillOfferUsdc<'info> {
     pub desk: Account<'info, Desk>,
     #[account(mut, constraint = offer.desk == desk.key() @ OtcError::BadState)]
     pub offer: Account<'info, Offer>,
+    pub usdc_mint: InterfaceAccount<'info, Mint>,
     /// Token treasury - must match the token_mint in the offer
     #[account(mut, constraint = desk_token_treasury.mint == offer.token_mint, constraint = desk_token_treasury.owner == desk.key())]
-    pub desk_token_treasury: Account<'info, TokenAccount>,
+    pub desk_token_treasury: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, constraint = desk_usdc_treasury.mint == desk.usdc_mint, constraint = desk_usdc_treasury.owner == desk.key())]
-    pub desk_usdc_treasury: Account<'info, TokenAccount>,
+    pub desk_usdc_treasury: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, constraint = payer_usdc_ata.mint == desk.usdc_mint, constraint = payer_usdc_ata.owner == payer.key())]
-    pub payer_usdc_ata: Account<'info, TokenAccount>,
+    pub payer_usdc_ata: InterfaceAccount<'info, TokenAccount>,
     /// Agent USDC account for receiving commission (optional - only needed if commission > 0)
     #[account(mut)]
-    pub agent_usdc_ata: Option<Account<'info, TokenAccount>>,
+    pub agent_usdc_ata: Option<InterfaceAccount<'info, TokenAccount>>,
     /// Desk signer for authorizing commission transfer from treasury
     pub desk_signer: Signer<'info>,
     #[account(mut)]
     pub payer: Signer<'info>,
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 
@@ -1489,7 +1522,7 @@ pub struct FulfillOfferSol<'info> {
     pub offer: Account<'info, Offer>,
     /// Token treasury - must match the token_mint in the offer
     #[account(mut, constraint = desk_token_treasury.mint == offer.token_mint, constraint = desk_token_treasury.owner == desk.key())]
-    pub desk_token_treasury: Account<'info, TokenAccount>,
+    pub desk_token_treasury: InterfaceAccount<'info, TokenAccount>,
     /// Agent account for receiving SOL commission (optional - only needed if commission > 0)
     /// CHECK: This is the agent's wallet address, we're just sending SOL to it
     #[account(mut)]
@@ -1508,14 +1541,15 @@ pub struct Claim<'info> {
     pub desk_signer: Signer<'info>,
     #[account(mut, constraint = offer.desk == desk.key() @ OtcError::BadState)]
     pub offer: Account<'info, Offer>,
+    pub token_mint: InterfaceAccount<'info, Mint>,
     /// Treasury must match the token in the offer and be owned by desk
     #[account(mut, constraint = desk_token_treasury.mint == offer.token_mint, constraint = desk_token_treasury.owner == desk.key() @ OtcError::BadState)]
-    pub desk_token_treasury: Account<'info, TokenAccount>,
+    pub desk_token_treasury: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, constraint = beneficiary_token_ata.mint == offer.token_mint, constraint = beneficiary_token_ata.owner == offer.beneficiary @ OtcError::BadState)]
-    pub beneficiary_token_ata: Account<'info, TokenAccount>,
+    pub beneficiary_token_ata: InterfaceAccount<'info, TokenAccount>,
     /// CHECK: Validated against offer.beneficiary in instruction
     pub beneficiary: UncheckedAccount<'info>,
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[derive(Accounts)]
@@ -1526,12 +1560,13 @@ pub struct WithdrawTokens<'info> {
     /// Token registry - must belong to this desk
     #[account(constraint = token_registry.desk == desk.key() @ OtcError::BadState)]
     pub token_registry: Account<'info, TokenRegistry>,
+    pub token_mint: InterfaceAccount<'info, Mint>,
     pub desk_signer: Signer<'info>,
     #[account(mut, constraint = desk_token_treasury.mint == token_registry.token_mint, constraint = desk_token_treasury.owner == desk.key() @ OtcError::BadState)]
-    pub desk_token_treasury: Account<'info, TokenAccount>,
+    pub desk_token_treasury: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, constraint = owner_token_ata.mint == token_registry.token_mint)]
-    pub owner_token_ata: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub owner_token_ata: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[derive(Accounts)]
@@ -1539,13 +1574,14 @@ pub struct WithdrawUsdc<'info> {
     pub owner: Signer<'info>,
     #[account(mut, has_one = owner)]
     pub desk: Account<'info, Desk>,
+    pub usdc_mint: InterfaceAccount<'info, Mint>,
     #[account(constraint = desk_signer.key() == desk.key() @ OtcError::NotOwner)]
     pub desk_signer: Signer<'info>,
     #[account(mut, constraint = desk_usdc_treasury.mint == desk.usdc_mint @ OtcError::BadState, constraint = desk_usdc_treasury.owner == desk.key() @ OtcError::BadState)]
-    pub desk_usdc_treasury: Account<'info, TokenAccount>,
+    pub desk_usdc_treasury: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, constraint = to_usdc_ata.mint == desk.usdc_mint @ OtcError::BadState)]
-    pub to_usdc_ata: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub to_usdc_ata: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[derive(Accounts)]
@@ -1553,15 +1589,16 @@ pub struct WithdrawConsignment<'info> {
     #[account(mut, constraint = consignment.desk == desk.key() @ OtcError::BadState)]
     pub consignment: Account<'info, Consignment>,
     pub desk: Account<'info, Desk>,
+    pub token_mint: InterfaceAccount<'info, Mint>,
     #[account(constraint = desk_signer.key() == desk.key() @ OtcError::NotOwner)]
     pub desk_signer: Signer<'info>,
     #[account(mut)]
     pub consigner: Signer<'info>,
     #[account(mut, constraint = desk_token_treasury.mint == consignment.token_mint @ OtcError::BadState, constraint = desk_token_treasury.owner == desk.key() @ OtcError::BadState)]
-    pub desk_token_treasury: Account<'info, TokenAccount>,
+    pub desk_token_treasury: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, constraint = consigner_token_ata.mint == consignment.token_mint @ OtcError::BadState, constraint = consigner_token_ata.owner == consigner.key() @ OtcError::BadState)]
-    pub consigner_token_ata: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub consigner_token_ata: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[derive(Accounts)]
@@ -1597,12 +1634,13 @@ pub struct EmergencyRefundUsdc<'info> {
     pub desk_signer: Signer<'info>,
     #[account(mut, constraint = offer.desk == desk.key() @ OtcError::BadState)]
     pub offer: Account<'info, Offer>,
+    pub usdc_mint: InterfaceAccount<'info, Mint>,
     pub caller: Signer<'info>,
     #[account(mut, constraint = desk_usdc_treasury.owner == desk.key() @ OtcError::BadState)]
-    pub desk_usdc_treasury: Account<'info, TokenAccount>,
+    pub desk_usdc_treasury: InterfaceAccount<'info, TokenAccount>,
     #[account(mut, constraint = payer_usdc_refund.owner == offer.payer @ OtcError::BadState)]
-    pub payer_usdc_refund: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub payer_usdc_refund: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 /// OTC Trading Desk - manages multi-token OTC trading
@@ -1667,9 +1705,11 @@ pub struct Desk {
     pub emergency_refund_enabled: bool,
     /// Deadline for emergency refunds (seconds from offer creation)
     pub emergency_refund_deadline_secs: i64,
+    /// P2P commission in basis points (default 25 = 0.25%) for non-negotiable fixed-price deals
+    pub p2p_commission_bps: u16,
 }
 
-impl Desk { pub const SIZE: usize = 32+32+32+1+8+8+8+1+4+(32*32)+8+8+1+32+8+8+32+1+8+8+32+8+8+8+8+1+8; }
+impl Desk { pub const SIZE: usize = 32+32+32+1+8+8+8+1+4+(32*32)+8+8+1+32+8+8+32+1+8+8+32+8+8+8+8+1+8+2; } // +2 for p2p_commission_bps
 
 /// Pool type for on-chain price discovery
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Default)]
@@ -1781,7 +1821,7 @@ pub struct Offer {
     pub cancelled: bool,
     pub payer: Pubkey,
     pub amount_paid: u64,
-    pub agent_commission_bps: u16, // 0 for P2P, 25-150 for negotiated deals
+    pub agent_commission_bps: u16, // p2p_commission_bps for P2P (default 0.25%), 25-150 for negotiated deals
 }
 
 impl Offer { pub const SIZE: usize = 32+8+32+1+8+32+8+2+8+8+8+2+8+1+1+1+1+1+32+8+2; } // +2 for agent_commission_bps
@@ -1829,6 +1869,8 @@ pub fn calculate_agent_commission(discount_bps: u16, lockup_days: u32) -> u16 {
     let total = discount_component + lockup_component;
     
     // Ensure within bounds (25-150 bps)
+    // SAFETY: After bounds checking, total is guaranteed to be 25-150, which fits in u16
+    #[allow(clippy::cast_possible_truncation)]
     if total < 25 { 25 } else if total > 150 { 150 } else { total as u16 }
 }
 

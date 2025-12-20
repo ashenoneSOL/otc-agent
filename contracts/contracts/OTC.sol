@@ -6,15 +6,86 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IAggregatorV3 as AggregatorV3Interface} from "./interfaces/IAggregatorV3.sol";
 import {IOTC} from "./interfaces/IOTC.sol";
 
+// Custom errors for gas-efficient reverts
+error NotApprover();
+error ZeroAddress();
+error ZeroAgent();
+error InvalidUsdcDecimals();
+error InvalidEthFeedDecimals();
+error InvalidRequiredApprovals();
+error LockupTooLong();
+error GasDepositTooHigh();
+error NotAuthorized();
+error TokenExists();
+error InvalidDecimals();
+error TokenNotActive();
+error ZeroAmount();
+error InvalidDealAmounts();
+error InvalidDiscountRange();
+error InvalidLockupRange();
+error InsufficientGasDeposit();
+error ZeroAmountReceived();
+error RefundFailed();
+error NotConsigner();
+error NotActive();
+error NothingToWithdraw();
+error InvalidToken();
+error InsufficientDepositedBalance();
+error GasRefundFailed();
+error BatchTooLarge();
+error NoGasDepositsToWithdraw();
+error WithdrawalFailed();
+error TokenNotRegistered();
+error ConsignmentNotActive();
+error AmountOutOfRange();
+error InsufficientRemaining();
+error DiscountOutOfRange();
+error LockupOutOfRange();
+error CommissionOutOfRange();
+error MustUseFixedDiscount();
+error MustUseFixedLockup();
+error P2PNoCommission();
+error MinUsdNotMet();
+error NoOffer();
+error BadState();
+error AlreadyApproved();
+error NonNegotiableP2P();
+error AlreadyApprovedByYou();
+error PriceVolatilityExceeded();
+error AlreadyPaid();
+error NoAuth();
+error NotExpired();
+error NotApproved();
+error Expired();
+error FulfillApproverOnly();
+error FulfillRestricted();
+error InsufficientEth();
+error Locked();
+error NotBeneficiary();
+error InvalidMax();
+error EmergencyRefundsDisabled();
+error InvalidStateForRefund();
+error NotAuthorizedForRefund();
+error TooEarlyForEmergencyRefund();
+error EthRefundFailed();
+error MustWait180Days();
+error BadPrice();
+error StaleRound();
+error StalePrice();
+error EthTransferFailed();
+error NotEth();
+error NotUsdc();
+
 /// @title OTC-like Token Sale Desk - Multi-Token Support
 /// @notice Permissionless consignment creation, approver-gated approvals, price snapshot on creation using Chainlink.
 ///         Multi-token support with per-token consignments. Supports ETH or USDC payments.
-contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
+contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
   using SafeERC20 for IERC20;
   using Math for uint256;
   enum PaymentCurrency { ETH, USDC }
@@ -63,7 +134,7 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     bool cancelled;
     address payer;
     uint256 amountPaid;
-    uint16 agentCommissionBps; // 0 for P2P, 25-150 for negotiated deals
+    uint16 agentCommissionBps; // p2pCommissionBps for P2P (default 0.25%), 25-150 for negotiated deals
   }
 
   // Multi-token registry
@@ -83,15 +154,18 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
   uint256 public minUsdAmount = 5 * 1e8; // $5 with 8 decimals
   uint256 public maxTokenPerOrder = 10_000 * 1e18; // 10,000 tokens
   uint256 public quoteExpirySeconds = 30 minutes;
-  uint256 public defaultUnlockDelaySeconds = 0; // can be set by admin
+  uint256 public defaultUnlockDelaySeconds; // can be set by admin
   uint256 public maxFeedAgeSeconds = 1 hours; // max allowed staleness for price feeds
   uint256 public maxLockupSeconds = 365 days; // max 1 year lockup
   uint256 public constant MAX_OPEN_OFFERS_TO_RETURN = 100; // limit for getOpenOfferIds()
 
+  // P2P commission (for non-negotiable fixed-price deals)
+  uint16 public p2pCommissionBps = 25; // Default: 0.25% commission for P2P deals
+
   // Optional restriction: if true, only beneficiary/agent/approver may fulfill
-  bool public restrictFulfillToBeneficiaryOrApprover = false;
+  bool public restrictFulfillToBeneficiaryOrApprover;
   // If true, only the agent or an approver may fulfill. Takes precedence over restrictFulfillToBeneficiaryOrApprover.
-  bool public requireApproverToFulfill = false;
+  bool public requireApproverToFulfill;
 
   // Treasury tracking (per-token)
   mapping(bytes32 => uint256) public tokenDeposited;
@@ -116,7 +190,7 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
   mapping(address => uint256[]) private _beneficiaryOfferIds;
   
   // Emergency recovery
-  bool public emergencyRefundsEnabled = false;
+  bool public emergencyRefundsEnabled;
   uint256 public emergencyRefundDeadline = 30 days; // Time after creation when emergency refund is allowed (reduced from 90d for better UX)
 
   // Events
@@ -146,10 +220,10 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
   event EmergencyRefundEnabled(bool enabled);
   event EmergencyRefund(uint256 indexed offerId, address indexed recipient, uint256 amount, PaymentCurrency currency);
   event StorageCleaned(uint256 offersRemoved);
-  event RefundFailed(address indexed payer, uint256 amount);
+  event RefundAttemptFailed(address indexed payer, uint256 amount);
 
   modifier onlyApproverRole() {
-    require(msg.sender == agent || isApprover[msg.sender], "Not approver");
+    if (msg.sender != agent && !isApprover[msg.sender]) revert NotApprover();
     _;
   }
 
@@ -158,21 +232,21 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     IERC20 usdc_,
     AggregatorV3Interface ethUsdFeed_,
     address agent_
-  ) Ownable(owner_) {
-    require(address(usdc_) != address(0), "bad usdc");
-    require(agent_ != address(0), "bad agent");
+  ) payable Ownable(owner_) {
+    if (address(usdc_) == address(0)) revert ZeroAddress();
+    if (agent_ == address(0)) revert ZeroAgent();
     usdc = usdc_;
     uint8 decimals_ = IERC20Metadata(address(usdc_)).decimals();
-    require(decimals_ == 6 || decimals_ == 18, "usdc decimals must be 6 or 18");
+    if (decimals_ != 6 && decimals_ != 18) revert InvalidUsdcDecimals();
     usdcDecimals = decimals_;
     ethUsdFeed = ethUsdFeed_;
     agent = agent_;
-    require(ethUsdFeed.decimals() == 8, "eth feed decimals");
+    if (ethUsdFeed.decimals() != 8) revert InvalidEthFeedDecimals();
   }
 
   // Admin
   function setAgent(address newAgent) external onlyOwner { 
-    require(newAgent != address(0), "zero agent");
+    if (newAgent == address(0)) revert ZeroAgent();
     emit AgentUpdated(agent, newAgent); 
     agent = newAgent; 
   }
@@ -182,17 +256,17 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     emit AuthorizedRegistrarUpdated(registrar, allowed); 
   }
   function setRequiredApprovals(uint256 required) external onlyOwner {
-    require(required > 0 && required <= 10, "invalid required approvals");
+    if (required == 0 || required > 10) revert InvalidRequiredApprovals();
     requiredApprovals = required;
   }
   function setEthFeed(AggregatorV3Interface ethUsd) external onlyOwner {
-    require(ethUsd.decimals() == 8, "eth feed decimals");
+    if (ethUsd.decimals() != 8) revert InvalidEthFeedDecimals();
     ethUsdFeed = ethUsd;
     emit FeedsUpdated(address(0), address(ethUsd));
   }
   function setMaxFeedAge(uint256 secs) external onlyOwner { maxFeedAgeSeconds = secs; emit MaxFeedAgeUpdated(secs); }
   function setLimits(uint256 minUsd, uint256 maxToken, uint256 expirySecs, uint256 unlockDelaySecs) external onlyOwner {
-    require(unlockDelaySecs <= maxLockupSeconds, "lockup too long");
+    if (unlockDelaySecs > maxLockupSeconds) revert LockupTooLong();
     minUsdAmount = minUsd; maxTokenPerOrder = maxToken; quoteExpirySeconds = expirySecs; defaultUnlockDelaySeconds = unlockDelaySecs;
     emit LimitsUpdated(minUsdAmount, maxTokenPerOrder, quoteExpirySeconds, defaultUnlockDelaySeconds);
   }
@@ -200,7 +274,7 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     maxLockupSeconds = maxSecs; 
   }
   function setRequiredGasDeposit(uint256 amount) external onlyOwner {
-    require(amount <= 0.1 ether, "gas deposit too high");
+    if (amount > 0.1 ether) revert GasDepositTooHigh();
     requiredGasDepositPerConsignment = amount;
     emit RequiredGasDepositUpdated(amount);
   }
@@ -208,17 +282,21 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
   function setRequireApproverToFulfill(bool enabled) external onlyOwner { requireApproverToFulfill = enabled; emit RequireApproverFulfillUpdated(enabled); }
   function setEmergencyRefund(bool enabled) external onlyOwner { emergencyRefundsEnabled = enabled; emit EmergencyRefundEnabled(enabled); }
   function setEmergencyRefundDeadline(uint256 days_) external onlyOwner { emergencyRefundDeadline = days_ * 1 days; }
+  function setP2PCommission(uint16 bps) external onlyOwner { 
+    if (bps > 500) revert CommissionOutOfRange(); // Max 5% for P2P
+    p2pCommissionBps = bps;
+  }
 
   function pause() external onlyOwner { _pause(); }
   function unpause() external onlyOwner { _unpause(); }
 
   // Multi-token management
   function registerToken(bytes32 tokenId, address tokenAddress, address priceOracle) external {
-    require(msg.sender == owner() || authorizedRegistrar[msg.sender], "not authorized");
-    require(tokens[tokenId].tokenAddress == address(0), "token exists");
-    require(tokenAddress != address(0), "zero address");
+    if (msg.sender != owner() && !authorizedRegistrar[msg.sender]) revert NotAuthorized();
+    if (tokens[tokenId].tokenAddress != address(0)) revert TokenExists();
+    if (tokenAddress == address(0)) revert ZeroAddress();
     uint8 decimals = IERC20Metadata(tokenAddress).decimals();
-    require(decimals <= 18, "invalid decimals");
+    if (decimals > 18) revert InvalidDecimals();
     tokens[tokenId] = RegisteredToken({
       tokenAddress: tokenAddress,
       decimals: decimals,
@@ -244,23 +322,24 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     uint16 maxPriceVolatilityBps
   ) external payable nonReentrant whenNotPaused returns (uint256) {
     RegisteredToken memory tkn = tokens[tokenId];
-    require(tkn.isActive, "token not active");
-    require(amount > 0, "zero amount");
-    require(minDealAmount <= maxDealAmount, "invalid deal amounts");
-    require(minDiscountBps <= maxDiscountBps, "invalid discount range");
-    require(minLockupDays <= maxLockupDays, "invalid lockup range");
-    require(msg.value >= requiredGasDepositPerConsignment, "insufficient gas deposit");
+    if (!tkn.isActive) revert TokenNotActive();
+    if (amount == 0) revert ZeroAmount();
+    if (minDealAmount > maxDealAmount) revert InvalidDealAmounts();
+    if (minDiscountBps > maxDiscountBps) revert InvalidDiscountRange();
+    if (minLockupDays > maxLockupDays) revert InvalidLockupRange();
+    if (msg.value < requiredGasDepositPerConsignment) revert InsufficientGasDeposit();
 
     uint256 balanceBefore = IERC20(tkn.tokenAddress).balanceOf(address(this));
     IERC20(tkn.tokenAddress).safeTransferFrom(msg.sender, address(this), amount);
     uint256 balanceAfter = IERC20(tkn.tokenAddress).balanceOf(address(this));
     uint256 actualAmount = balanceAfter - balanceBefore;
-    require(actualAmount > 0, "zero amount received");
+    if (actualAmount == 0) revert ZeroAmountReceived();
     
     // Update tracked deposit with actual amount received
     tokenDeposited[tokenId] += actualAmount;
 
-    uint256 consignmentId = nextConsignmentId++;
+    uint256 consignmentId;
+    unchecked { consignmentId = nextConsignmentId++; }
     consignments[consignmentId] = Consignment({
       tokenId: tokenId,
       consigner: msg.sender,
@@ -288,7 +367,7 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     if (msg.value > requiredGasDepositPerConsignment) {
       uint256 refund = msg.value - requiredGasDepositPerConsignment;
       (bool success, ) = payable(msg.sender).call{value: refund}("");
-      require(success, "refund failed");
+      if (!success) revert RefundFailed();
     }
 
     emit ConsignmentCreated(consignmentId, tokenId, msg.sender, actualAmount);
@@ -297,18 +376,18 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
 
   function withdrawConsignment(uint256 consignmentId) external nonReentrant {
     Consignment storage c = consignments[consignmentId];
-    require(c.consigner == msg.sender, "not consigner");
-    require(c.isActive, "not active");
+    if (c.consigner != msg.sender) revert NotConsigner();
+    if (!c.isActive) revert NotActive();
     uint256 withdrawAmount = c.remainingAmount;
-    require(withdrawAmount > 0, "nothing to withdraw");
+    if (withdrawAmount == 0) revert NothingToWithdraw();
 
     // CEI: Cache all values first
     bytes32 tokenId_ = c.tokenId;
     uint256 gasDeposit = consignmentGasDeposit[consignmentId];
     
     RegisteredToken memory tkn = tokens[tokenId_];
-    require(tkn.tokenAddress != address(0), "invalid token");
-    require(tokenDeposited[tokenId_] >= withdrawAmount, "insufficient deposited balance");
+    if (tkn.tokenAddress == address(0)) revert InvalidToken();
+    if (tokenDeposited[tokenId_] < withdrawAmount) revert InsufficientDepositedBalance();
 
     // CEI: Update ALL state before ANY external calls
     c.isActive = false;
@@ -322,7 +401,7 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     // External call 2: ETH refund (if any)
     if (gasDeposit > 0) {
       (bool success, ) = payable(msg.sender).call{value: gasDeposit}("");
-      require(success, "gas refund failed");
+      if (!success) revert GasRefundFailed();
       emit GasDepositRefunded(consignmentId, msg.sender, gasDeposit);
     }
 
@@ -331,16 +410,17 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
 
   // Treasury management
   function withdrawStable(address to, uint256 usdcAmount, uint256 ethAmount) external onlyOwner nonReentrant {
-    require(to != address(0), "zero addr");
+    if (to == address(0)) revert ZeroAddress();
     if (usdcAmount > 0) { usdc.safeTransfer(to, usdcAmount); }
-    if (ethAmount > 0) { (bool ok, ) = payable(to).call{ value: ethAmount }(""); require(ok, "eth xfer"); }
+    if (ethAmount > 0) { (bool ok, ) = payable(to).call{ value: ethAmount }(""); if (!ok) revert EthTransferFailed(); }
     emit StableWithdrawn(to, usdcAmount, ethAmount);
   }
 
   function withdrawGasDeposits(uint256[] calldata consignmentIds) external onlyApproverRole nonReentrant {
-    require(consignmentIds.length <= 50, "batch too large");
-    uint256 totalWithdrawn = 0;
-    for (uint256 i = 0; i < consignmentIds.length; i++) {
+    if (consignmentIds.length > 50) revert BatchTooLarge();
+    uint256 totalWithdrawn;
+    uint256 len = consignmentIds.length;
+    for (uint256 i; i < len;) {
       uint256 id = consignmentIds[i];
       Consignment storage c = consignments[id];
       // Only allow withdrawal if consignment is inactive (withdrawn or depleted)
@@ -349,23 +429,25 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
         consignmentGasDeposit[id] = 0;
         totalWithdrawn += amount;
       }
+      unchecked { ++i; }
     }
-    require(totalWithdrawn > 0, "no gas deposits to withdraw");
+    if (totalWithdrawn == 0) revert NoGasDepositsToWithdraw();
     (bool success, ) = payable(msg.sender).call{value: totalWithdrawn}("");
-    require(success, "withdrawal failed");
+    if (!success) revert WithdrawalFailed();
     emit GasDepositWithdrawn(msg.sender, totalWithdrawn);
   }
 
   function availableTokenInventoryForToken(bytes32 tokenId) public view returns (uint256) {
     RegisteredToken memory tkn = tokens[tokenId];
-    require(tkn.tokenAddress != address(0), "token not registered");
+    if (tkn.tokenAddress == address(0)) revert TokenNotRegistered();
     uint256 bal = IERC20(tkn.tokenAddress).balanceOf(address(this));
     if (bal < tokenReserved[tokenId]) return 0;
     return bal - tokenReserved[tokenId];
   }
 
   // Multi-token offer creation
-  // agentCommissionBps: 0 for P2P (non-negotiable), 25-150 for negotiated deals
+  // agentCommissionBps: For negotiated deals: 25-150 bps (0.25% - 1.5%)
+  //                     For P2P (non-negotiable): ignored, uses desk-wide p2pCommissionBps (default 0.25%)
   // Commission is calculated as: discount component (25-100 bps) + lockup component (0-50 bps)
   function createOfferFromConsignment(
     uint256 consignmentId,
@@ -376,22 +458,27 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     uint16 agentCommissionBps
   ) external nonReentrant whenNotPaused returns (uint256) {
     Consignment storage c = consignments[consignmentId];
-    require(c.isActive, "consignment not active");
-    require(tokenAmount >= c.minDealAmount && tokenAmount <= c.maxDealAmount, "amount out of range");
-    require(tokenAmount <= c.remainingAmount, "insufficient remaining");
+    if (!c.isActive) revert ConsignmentNotActive();
+    if (tokenAmount < c.minDealAmount || tokenAmount > c.maxDealAmount) revert AmountOutOfRange();
+    if (tokenAmount > c.remainingAmount) revert InsufficientRemaining();
 
+    // Determine effective commission for the offer
+    uint16 effectiveCommissionBps;
+    
     if (c.isNegotiable) {
-      require(discountBps >= c.minDiscountBps && discountBps <= c.maxDiscountBps, "discount out of range");
+      if (discountBps < c.minDiscountBps || discountBps > c.maxDiscountBps) revert DiscountOutOfRange();
       uint256 lockupDays = lockupSeconds / 1 days;
-      require(lockupDays >= c.minLockupDays && lockupDays <= c.maxLockupDays, "lockup out of range");
+      if (lockupDays < c.minLockupDays || lockupDays > c.maxLockupDays) revert LockupOutOfRange();
       // Negotiated deals: commission must be 25-150 bps (0.25% - 1.5%)
-      require(agentCommissionBps >= 25 && agentCommissionBps <= 150, "commission out of range");
+      if (agentCommissionBps < 25 || agentCommissionBps > 150) revert CommissionOutOfRange();
+      effectiveCommissionBps = agentCommissionBps;
     } else {
-      require(discountBps == c.fixedDiscountBps, "must use fixed discount");
+      if (discountBps != c.fixedDiscountBps) revert MustUseFixedDiscount();
       uint256 lockupDays = lockupSeconds / 1 days;
-      require(lockupDays == c.fixedLockupDays, "must use fixed lockup");
-      // P2P deals: no commission allowed
-      require(agentCommissionBps == 0, "P2P deals have no commission");
+      if (lockupDays != c.fixedLockupDays) revert MustUseFixedLockup();
+      // P2P deals: use the configured p2pCommissionBps (default 0.25%)
+      // agentCommissionBps parameter is ignored for P2P - uses desk-wide setting
+      effectiveCommissionBps = p2pCommissionBps;
     }
 
     RegisteredToken memory tkn = tokens[c.tokenId];
@@ -400,13 +487,14 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     uint256 tokenDecimalsFactor = 10 ** tkn.decimals;
     uint256 totalUsd = _mulDiv(tokenAmount, priceUsdPerToken, tokenDecimalsFactor);
     totalUsd = (totalUsd * (10_000 - discountBps)) / 10_000;
-    require(totalUsd >= minUsdAmount, "min usd not met");
+    if (totalUsd < minUsdAmount) revert MinUsdNotMet();
 
     c.remainingAmount -= tokenAmount;
     tokenReserved[c.tokenId] += tokenAmount;
     if (c.remainingAmount == 0) c.isActive = false;
 
-    uint256 offerId = nextOfferId++;
+    uint256 offerId;
+    unchecked { offerId = nextOfferId++; }
     
     // Non-negotiable offers are auto-approved for P2P (permissionless)
     // Negotiable offers require agent/approver approval
@@ -430,12 +518,12 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
       cancelled: false,
       payer: address(0),
       amountPaid: 0,
-      agentCommissionBps: agentCommissionBps
+      agentCommissionBps: effectiveCommissionBps
     });
 
     _beneficiaryOfferIds[msg.sender].push(offerId);
     openOfferIds.push(offerId);
-    emit OfferCreated(offerId, msg.sender, tokenAmount, discountBps, currency, agentCommissionBps);
+    emit OfferCreated(offerId, msg.sender, tokenAmount, discountBps, currency, effectiveCommissionBps);
     
     // Emit approval event for non-negotiable (P2P) offers
     if (autoApproved) {
@@ -448,27 +536,27 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
 
   function approveOffer(uint256 offerId) external onlyApproverRole whenNotPaused {
     Offer storage o = offers[offerId];
-    require(o.beneficiary != address(0), "no offer");
-    require(!o.cancelled && !o.paid, "bad state");
-    require(!o.approved, "already approved");
+    if (o.beneficiary == address(0)) revert NoOffer();
+    if (o.cancelled || o.paid) revert BadState();
+    if (o.approved) revert AlreadyApproved();
     
     // Non-negotiable offers are P2P (auto-approved at creation) - cannot be manually approved
     Consignment storage c = consignments[o.consignmentId];
-    require(c.isNegotiable, "non-negotiable offers are P2P");
+    if (!c.isNegotiable) revert NonNegotiableP2P();
     
-    require(!offerApprovals[offerId][msg.sender], "already approved by you");
+    if (offerApprovals[offerId][msg.sender]) revert AlreadyApprovedByYou();
     
     RegisteredToken memory tkn = tokens[o.tokenId];
-    require(tkn.tokenAddress != address(0), "token not registered");
+    if (tkn.tokenAddress == address(0)) revert TokenNotRegistered();
     uint256 currentPrice = _readTokenPrice(o.tokenId);
     
     uint256 priceDiff = currentPrice > o.priceUsdPerToken ? 
       currentPrice - o.priceUsdPerToken : o.priceUsdPerToken - currentPrice;
     uint256 deviationBps = (priceDiff * 10000) / o.priceUsdPerToken;
-    require(deviationBps <= o.maxPriceDeviation, "price volatility exceeded");
+    if (deviationBps > o.maxPriceDeviation) revert PriceVolatilityExceeded();
     
     offerApprovals[offerId][msg.sender] = true;
-    approvalCount[offerId]++;
+    unchecked { approvalCount[offerId]++; }
     
     if (approvalCount[offerId] >= requiredApprovals) {
       o.approved = true;
@@ -479,12 +567,12 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
 
   function cancelOffer(uint256 offerId) external nonReentrant whenNotPaused {
     Offer storage o = offers[offerId];
-    require(o.beneficiary != address(0), "no offer");
-    require(!o.paid && !o.fulfilled, "already paid");
-    require(msg.sender == o.beneficiary || msg.sender == owner() || msg.sender == agent || isApprover[msg.sender], "no auth");
+    if (o.beneficiary == address(0)) revert NoOffer();
+    if (o.paid || o.fulfilled) revert AlreadyPaid();
+    if (msg.sender != o.beneficiary && msg.sender != owner() && msg.sender != agent && !isApprover[msg.sender]) revert NoAuth();
     // Users can cancel after expiry window
     if (msg.sender == o.beneficiary) {
-      require(block.timestamp >= o.createdAt + quoteExpirySeconds, "not expired");
+      if (block.timestamp < o.createdAt + quoteExpirySeconds) revert NotExpired();
     }
     o.cancelled = true;
     tokenReserved[o.tokenId] -= o.tokenAmount;
@@ -502,10 +590,10 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
 
   function totalUsdForOffer(uint256 offerId) public view returns (uint256) {
     Offer storage o = offers[offerId];
-    require(o.beneficiary != address(0), "no offer");
+    if (o.beneficiary == address(0)) revert NoOffer();
     
     RegisteredToken memory tkn = tokens[o.tokenId];
-    require(tkn.tokenAddress != address(0), "token not registered");
+    if (tkn.tokenAddress == address(0)) revert TokenNotRegistered();
     uint256 tokenDecimalsFactor = 10 ** tkn.decimals;
     
     uint256 totalUsd = _mulDiv(o.tokenAmount, o.priceUsdPerToken, tokenDecimalsFactor);
@@ -599,17 +687,17 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     if (refundAmount > 0) {
       (bool refunded, ) = payable(msg.sender).call{ value: refundAmount }("");
       if (!refunded) {
-        emit RefundFailed(msg.sender, refundAmount);
+        emit RefundAttemptFailed(msg.sender, refundAmount);
       }
     }
   }
 
   function claim(uint256 offerId) external nonReentrant whenNotPaused {
     Offer storage o = offers[offerId];
-    require(o.beneficiary != address(0), "no offer");
-    require(o.paid && !o.cancelled && !o.fulfilled, "bad state");
-    require(block.timestamp >= o.unlockTime, "locked");
-    require(msg.sender == o.beneficiary, "not beneficiary");
+    if (o.beneficiary == address(0)) revert NoOffer();
+    if (!o.paid || o.cancelled || o.fulfilled) revert BadState();
+    if (block.timestamp < o.unlockTime) revert Locked();
+    if (msg.sender != o.beneficiary) revert NotBeneficiary();
     
     // CEI: Cache values and update state before external call
     address beneficiary = o.beneficiary;
@@ -621,37 +709,46 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     tokenDeposited[tokenId_] -= tokenAmount; // Fix: decrement deposited on claim
     
     RegisteredToken memory tkn = tokens[tokenId_];
-    require(tkn.tokenAddress != address(0), "token not registered");
+    if (tkn.tokenAddress == address(0)) revert TokenNotRegistered();
     IERC20(tkn.tokenAddress).safeTransfer(beneficiary, tokenAmount);
     
     emit TokensClaimed(offerId, beneficiary, tokenAmount);
   }
 
+  /// @notice Batch claim tokens for multiple offers (approver-only)
+  /// @dev Uses CEI pattern within each iteration. Reentrancy protection via nonReentrant modifier.
+  ///      Slither may report false positive reentrancy due to loop structure, but each iteration
+  ///      fully updates state before external call, and offers are marked fulfilled preventing reprocessing.
+  // slither-disable-next-line reentrancy-benign,reentrancy-no-eth
   function autoClaim(uint256[] calldata offerIds) external onlyApproverRole nonReentrant whenNotPaused {
-    require(offerIds.length <= 50, "batch too large");
-    for (uint256 i = 0; i < offerIds.length; i++) {
+    if (offerIds.length > 50) revert BatchTooLarge();
+    uint256 len = offerIds.length;
+    uint256 nextId = nextOfferId;
+    for (uint256 i; i < len;) {
       uint256 id = offerIds[i];
-      if (id == 0 || id >= nextOfferId) continue;
+      if (id == 0 || id >= nextId) { unchecked { ++i; } continue; }
       Offer storage o = offers[id];
-      if (o.beneficiary == address(0) || !o.paid || o.cancelled || o.fulfilled) continue;
-      if (block.timestamp < o.unlockTime) continue;
+      if (o.beneficiary == address(0) || !o.paid || o.cancelled || o.fulfilled) { unchecked { ++i; } continue; }
+      if (block.timestamp < o.unlockTime) { unchecked { ++i; } continue; }
       
       RegisteredToken memory tkn = tokens[o.tokenId];
-      if (tkn.tokenAddress == address(0)) continue; // Skip if token not registered
+      if (tkn.tokenAddress == address(0)) { unchecked { ++i; } continue; } // Skip if token not registered
       
-      // CEI: Update state BEFORE external call
+      // CEI Pattern: Cache values, update all state, then make external call
       address beneficiary = o.beneficiary;
       uint256 tokenAmount = o.tokenAmount;
       bytes32 tknId = o.tokenId;
       
+      // Effects: Update all state before external call
       o.fulfilled = true;
       tokenReserved[tknId] -= tokenAmount;
-      tokenDeposited[tknId] -= tokenAmount; // Fix: decrement deposited on claim
+      tokenDeposited[tknId] -= tokenAmount;
       
-      // External call after state updates
+      // Interactions: External call after all state updates
       IERC20(tkn.tokenAddress).safeTransfer(beneficiary, tokenAmount);
       
       emit TokensClaimed(id, beneficiary, tokenAmount);
+      unchecked { ++i; }
     }
   }
 
@@ -659,23 +756,27 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     uint256 total = openOfferIds.length;
     // Start from the end for more recent offers
     uint256 startIdx = total > MAX_OPEN_OFFERS_TO_RETURN ? total - MAX_OPEN_OFFERS_TO_RETURN : 0;
-    uint256 count = 0;
+    uint256 count;
+    uint256 expiry = quoteExpirySeconds; // Cache state variable
     
     // First pass: count valid offers
-    for (uint256 i = startIdx; i < total && count < MAX_OPEN_OFFERS_TO_RETURN; i++) {
+    for (uint256 i = startIdx; i < total && count < MAX_OPEN_OFFERS_TO_RETURN;) {
       Offer storage o = offers[openOfferIds[i]];
-      if (!o.cancelled && !o.paid && block.timestamp <= o.createdAt + quoteExpirySeconds) { count++; }
+      if (!o.cancelled && !o.paid && block.timestamp <= o.createdAt + expiry) { unchecked { ++count; } }
+      unchecked { ++i; }
     }
     
     uint256[] memory result = new uint256[](count);
-    uint256 idx = 0;
+    uint256 idx;
     
     // Second pass: collect valid offers
-    for (uint256 j = startIdx; j < total && idx < count; j++) {
+    for (uint256 j = startIdx; j < total && idx < count;) {
       Offer storage o2 = offers[openOfferIds[j]];
-      if (!o2.cancelled && !o2.paid && block.timestamp <= o2.createdAt + quoteExpirySeconds) { 
-        result[idx++] = openOfferIds[j]; 
+      if (!o2.cancelled && !o2.paid && block.timestamp <= o2.createdAt + expiry) { 
+        result[idx] = openOfferIds[j];
+        unchecked { ++idx; }
       }
+      unchecked { ++j; }
     }
     return result;
   }
@@ -690,17 +791,17 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
   function _readTokenUsdPriceFromOracle(address oracle) internal view returns (uint256) {
     AggregatorV3Interface feed = AggregatorV3Interface(oracle);
     (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) = feed.latestRoundData();
-    require(answer > 0, "bad price");
-    require(answeredInRound >= roundId, "stale round");
-    require(updatedAt > 0 && block.timestamp - updatedAt <= maxFeedAgeSeconds, "stale price");
+    if (answer <= 0) revert BadPrice();
+    if (answeredInRound < roundId) revert StaleRound();
+    if (updatedAt == 0 || block.timestamp - updatedAt > maxFeedAgeSeconds) revert StalePrice();
     return uint256(answer);
   }
   
   function _readEthUsdPrice() internal view returns (uint256) {
     (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) = ethUsdFeed.latestRoundData();
-    require(answer > 0, "bad price");
-    require(answeredInRound >= roundId, "stale round");
-    require(updatedAt > 0 && block.timestamp - updatedAt <= maxFeedAgeSeconds, "stale price");
+    if (answer <= 0) revert BadPrice();
+    if (answeredInRound < roundId) revert StaleRound();
+    if (updatedAt == 0 || block.timestamp - updatedAt > maxFeedAgeSeconds) revert StalePrice();
     return uint256(answer);
   }
 
@@ -752,41 +853,35 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
   
   function requiredEthWei(uint256 offerId) external view returns (uint256) {
     Offer storage o = offers[offerId];
-    require(o.beneficiary != address(0), "no offer");
-    require(o.currency == PaymentCurrency.ETH, "not ETH");
+    if (o.beneficiary == address(0)) revert NoOffer();
+    if (o.currency != PaymentCurrency.ETH) revert NotEth();
     uint256 usd = totalUsdForOffer(offerId);
     uint256 ethUsd = o.ethUsdPrice > 0 ? o.ethUsdPrice : _readEthUsdPrice();
     return _mulDivRoundingUp(usd, 1e18, ethUsd);
   }
   function requiredUsdcAmount(uint256 offerId) external view returns (uint256) {
     Offer storage o = offers[offerId];
-    require(o.beneficiary != address(0), "no offer");
-    require(o.currency == PaymentCurrency.USDC, "not USDC");
+    if (o.beneficiary == address(0)) revert NoOffer();
+    if (o.currency != PaymentCurrency.USDC) revert NotUsdc();
     uint256 usd = totalUsdForOffer(offerId);
     return _mulDivRoundingUp(usd, 10 ** usdcDecimals, 1e8);
   }
 
   // Emergency functions
   function emergencyRefund(uint256 offerId) external nonReentrant {
-    require(emergencyRefundsEnabled, "emergency refunds disabled");
+    if (!emergencyRefundsEnabled) revert EmergencyRefundsDisabled();
     Offer storage o = offers[offerId];
-    require(o.beneficiary != address(0), "no offer");
-    require(o.paid && !o.fulfilled && !o.cancelled, "invalid state for refund");
-    require(
-      msg.sender == o.payer || 
-      msg.sender == o.beneficiary || 
-      msg.sender == owner() || 
-      msg.sender == agent || 
-      isApprover[msg.sender],
-      "not authorized for refund"
-    );
+    if (o.beneficiary == address(0)) revert NoOffer();
+    if (!o.paid || o.fulfilled || o.cancelled) revert InvalidStateForRefund();
+    if (msg.sender != o.payer && 
+        msg.sender != o.beneficiary && 
+        msg.sender != owner() && 
+        msg.sender != agent && 
+        !isApprover[msg.sender]) revert NotAuthorizedForRefund();
     
     // Check if enough time has passed for emergency refund
-    require(
-      block.timestamp >= o.createdAt + emergencyRefundDeadline ||
-      block.timestamp >= o.unlockTime + 30 days, // Or 30 days after unlock
-      "too early for emergency refund"
-    );
+    if (block.timestamp < o.createdAt + emergencyRefundDeadline &&
+        block.timestamp < o.unlockTime + 30 days) revert TooEarlyForEmergencyRefund();
     
     // CEI: Cache values before state changes
     uint256 consignmentId = o.consignmentId;
@@ -814,7 +909,7 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
     // Refund payment (external calls at the end)
     if (currency == PaymentCurrency.ETH) {
       (bool success, ) = payable(payer).call{value: amountPaid}("");
-      require(success, "ETH refund failed");
+      if (!success) revert EthRefundFailed();
     } else {
       usdc.safeTransfer(payer, amountPaid);
     }
@@ -825,9 +920,9 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
   function adminEmergencyWithdraw(uint256 offerId) external onlyOwner nonReentrant {
     // Only for truly stuck funds after all parties have been given chance to claim
     Offer storage o = offers[offerId];
-    require(o.beneficiary != address(0), "no offer");
-    require(o.paid && !o.fulfilled && !o.cancelled, "invalid state");
-    require(block.timestamp >= o.unlockTime + 180 days, "must wait 180 days after unlock");
+    if (o.beneficiary == address(0)) revert NoOffer();
+    if (!o.paid || o.fulfilled || o.cancelled) revert BadState();
+    if (block.timestamp < o.unlockTime + 180 days) revert MustWait180Days();
     
     // CEI: Cache values before state changes
     address recipient = o.beneficiary;
@@ -849,11 +944,13 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
   
   function _cleanupOldOffers() private {
     uint256 currentTime = block.timestamp;
-    uint256 removed = 0;
-    uint256 newLength = 0;
+    uint256 removed;
+    uint256 newLength;
+    uint256 len = openOfferIds.length;
+    uint256 expiry = quoteExpirySeconds; // Cache state variable
     
     // Create new array without old expired/completed offers
-    for (uint256 i = 0; i < openOfferIds.length && removed < 100; i++) {
+    for (uint256 i; i < len && removed < 100;) {
       uint256 id = openOfferIds[i];
       Offer storage o = offers[id];
       
@@ -861,16 +958,17 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
       bool shouldKeep = o.beneficiary != address(0) && 
                        !o.cancelled && 
                        !o.paid && 
-                       currentTime <= o.createdAt + quoteExpirySeconds + 1 days;
+                       currentTime <= o.createdAt + expiry + 1 days;
       
       if (shouldKeep) {
         if (newLength != i) {
           openOfferIds[newLength] = id;
         }
-        newLength++;
+        unchecked { ++newLength; }
       } else {
-        removed++;
+        unchecked { ++removed; }
       }
+      unchecked { ++i; }
     }
     
     // Resize array
@@ -885,18 +983,20 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
   
   function cleanupExpiredOffers(uint256 maxToClean) external whenNotPaused {
     // Public function to allow anyone to help clean storage
-    require(maxToClean > 0 && maxToClean <= 100, "invalid max");
+    if (maxToClean == 0 || maxToClean > 100) revert InvalidMax();
     uint256 currentTime = block.timestamp;
-    uint256 cleaned = 0;
+    uint256 cleaned;
+    uint256 len = openOfferIds.length;
+    uint256 expiry = quoteExpirySeconds; // Cache state variable
     
-    for (uint256 i = 0; i < openOfferIds.length && cleaned < maxToClean; i++) {
+    for (uint256 i; i < len && cleaned < maxToClean;) {
       uint256 id = openOfferIds[i];
       Offer storage o = offers[id];
       
       if (o.beneficiary != address(0) && 
           !o.paid && 
           !o.cancelled &&
-          currentTime > o.createdAt + quoteExpirySeconds + 1 days) {
+          currentTime > o.createdAt + expiry + 1 days) {
         // Mark as cancelled to clean up
         o.cancelled = true;
         tokenReserved[o.tokenId] -= o.tokenAmount;
@@ -909,8 +1009,9 @@ contract OTC is IOTC, Ownable, Pausable, ReentrancyGuard {
           }
         }
         
-        cleaned++;
+        unchecked { ++cleaned; }
       }
+      unchecked { ++i; }
     }
     
     if (cleaned > 0) {

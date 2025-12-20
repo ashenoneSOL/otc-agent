@@ -311,18 +311,23 @@ async function fetchAlchemyBalances(
       ...bulkCache,
     };
     const needsMetadata: string[] = [];
+    const needsLogoEnrichment: string[] = [];
 
     for (const t of nonZeroBalances) {
       const addr = (
         t as { contractAddress: string }
       ).contractAddress.toLowerCase();
       if (!cachedMetadata[addr]) {
+        // Token not in cache - need full metadata fetch
         needsMetadata.push(addr);
+      } else if (!cachedMetadata[addr].logoUrl) {
+        // Token in cache but missing logo - try to enrich
+        needsLogoEnrichment.push(addr);
       }
     }
 
     console.log(
-      `[EVM Balances] ${Object.keys(cachedMetadata).length} cached, ${needsMetadata.length} need metadata`,
+      `[EVM Balances] ${Object.keys(cachedMetadata).length} cached, ${needsMetadata.length} need metadata, ${needsLogoEnrichment.length} need logo enrichment`,
     );
 
     // Step 3: Fetch metadata for uncached tokens (parallel, fast)
@@ -382,6 +387,70 @@ async function fetchAlchemyBalances(
         .catch((err) => {
           console.debug("[EVM Balances] Cache read failed (non-critical):", err);
         });
+    }
+
+    // Step 3.1: Enrich cached tokens that are missing logos (limit to avoid hammering API)
+    const MAX_LOGO_ENRICHMENT = 10;
+    const tokensToEnrich = needsLogoEnrichment.slice(0, MAX_LOGO_ENRICHMENT);
+    if (tokensToEnrich.length > 0) {
+      console.log(`[EVM Balances] Enriching ${tokensToEnrich.length} tokens with logos`);
+      
+      const logoResults = await Promise.all(
+        tokensToEnrich.map(async (contractAddress) => {
+          try {
+            const metaRes = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: 1,
+                method: "alchemy_getTokenMetadata",
+                params: [contractAddress],
+              }),
+              signal: AbortSignal.timeout(3000),
+            });
+
+            if (metaRes.ok) {
+              const metaData = await metaRes.json();
+              const result = metaData.result || {};
+              const logo = result.logo;
+              console.log(`[EVM Balances] Logo check for ${result.symbol || contractAddress.slice(0, 10)}: ${logo ? 'found' : 'not found'}`);
+              if (logo) {
+                return { contractAddress, logo };
+              }
+            }
+          } catch (err) {
+            console.log(`[EVM Balances] Logo fetch error for ${contractAddress.slice(0, 10)}:`, err);
+          }
+          return { contractAddress, logo: null };
+        }),
+      );
+
+      // Update cached metadata with logos
+      let enrichedCount = 0;
+      for (const { contractAddress, logo } of logoResults) {
+        if (logo && cachedMetadata[contractAddress]) {
+          cachedMetadata[contractAddress] = {
+            ...cachedMetadata[contractAddress],
+            logoUrl: logo,
+          };
+          enrichedCount++;
+        }
+      }
+
+      // Persist enriched logos to cache (fire-and-forget)
+      if (enrichedCount > 0) {
+        getBulkMetadataCache(chain)
+          .then((existing) => {
+            const merged = { ...existing, ...cachedMetadata };
+            setBulkMetadataCache(chain, merged).catch((err) => {
+              console.debug("[EVM Balances] Logo cache write failed:", err);
+            });
+          })
+          .catch((err) => {
+            console.debug("[EVM Balances] Logo cache read failed:", err);
+          });
+      }
     }
 
     // Step 3.5: Check blob cache for all logo URLs and cache missing ones
@@ -662,6 +731,7 @@ async function upgradeToBlobUrls(tokens: TokenBalance[]): Promise<TokenBalance[]
 
 /**
  * GET /api/evm-balances?address=0x...&chain=base&refresh=true
+ * Fetches EVM token balances with logo enrichment
  */
 export async function GET(request: NextRequest) {
   const address = request.nextUrl.searchParams.get("address");
@@ -681,12 +751,75 @@ export async function GET(request: NextRequest) {
     if (!forceRefresh) {
       const cachedTokens = await getCachedWalletBalances(chain, address);
       if (cachedTokens) {
+        console.log(`[EVM Balances] Using cached wallet data (${cachedTokens.length} tokens)`);
+        
         // Upgrade cached tokens to blob URLs if needed
-        const upgradedTokens = await upgradeToBlobUrls(cachedTokens);
+        let upgradedTokens = await upgradeToBlobUrls(cachedTokens);
+        
+        // Enrich cached tokens missing logos (best-effort, limit 5 per request)
+        const tokensNeedingLogos = upgradedTokens.filter(t => !t.logoUrl);
+        if (tokensNeedingLogos.length > 0) {
+          console.log(`[EVM Balances] ${tokensNeedingLogos.length} cached tokens missing logos, enriching up to 5`);
+          
+          const alchemyKey = process.env.ALCHEMY_API_KEY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
+          if (alchemyKey) {
+            const config = CHAIN_CONFIG[chain];
+            const alchemyUrl = `https://${config.alchemyNetwork}.g.alchemy.com/v2/${alchemyKey}`;
+            
+            // Limit to 5 tokens per request to keep response fast
+            const toEnrich = tokensNeedingLogos.slice(0, 5);
+            const logoResults = await Promise.all(
+              toEnrich.map(async (token) => {
+                try {
+                  const metaRes = await fetch(alchemyUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      jsonrpc: "2.0",
+                      id: 1,
+                      method: "alchemy_getTokenMetadata",
+                      params: [token.contractAddress],
+                    }),
+                    signal: AbortSignal.timeout(3000),
+                  });
+                  
+                  if (metaRes.ok) {
+                    const data = await metaRes.json();
+                    const logo = data.result?.logo;
+                    console.log(`[EVM Balances] Cache enrichment for ${token.symbol}: ${logo ? 'found logo' : 'no logo'}`);
+                    return { contractAddress: token.contractAddress, logo };
+                  }
+                } catch {
+                  // Ignore
+                }
+                return { contractAddress: token.contractAddress, logo: null };
+              }),
+            );
+            
+            // Apply logos to tokens
+            const logoMap: Record<string, string> = {};
+            for (const { contractAddress, logo } of logoResults) {
+              if (logo) {
+                logoMap[contractAddress.toLowerCase()] = logo;
+              }
+            }
+            
+            if (Object.keys(logoMap).length > 0) {
+              upgradedTokens = upgradedTokens.map(t => {
+                const logo = logoMap[t.contractAddress.toLowerCase()];
+                if (logo) {
+                  return { ...t, logoUrl: logo };
+                }
+                return t;
+              });
+            }
+          }
+        }
         
         // If any tokens were upgraded, update the cache
         const hasUpgrades = upgradedTokens.some((t, i) => t.logoUrl !== cachedTokens[i].logoUrl);
         if (hasUpgrades) {
+          console.log(`[EVM Balances] Updating wallet cache with ${upgradedTokens.filter(t => t.logoUrl).length} logos`);
           setCachedWalletBalances(chain, address, upgradedTokens).catch((err) => {
             console.debug("[EVM Balances] Failed to update wallet cache:", err);
           });

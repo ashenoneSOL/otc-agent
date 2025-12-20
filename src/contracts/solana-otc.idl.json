@@ -1,5 +1,5 @@
 {
-  "address": "q9MhHpeydqTdtPaNpzDoWvP1qY5s3sFHTF1uYcXjdsc",
+  "address": "3uTdWzoAcBFKTVYRd2z2jDKAcuyW64rQLxa9wMreDJKo",
   "metadata": {
     "name": "otc",
     "version": "0.1.0",
@@ -25,6 +25,12 @@
         {
           "name": "offer",
           "writable": true
+        },
+        {
+          "name": "consignment",
+          "docs": [
+            "Consignment account - required for negotiable check"
+          ]
         },
         {
           "name": "approver",
@@ -125,6 +131,9 @@
           "writable": true
         },
         {
+          "name": "token_mint"
+        },
+        {
           "name": "desk_token_treasury",
           "docs": [
             "Treasury must match the token in the offer and be owned by desk"
@@ -139,8 +148,7 @@
           "name": "beneficiary"
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         }
       ],
       "args": [
@@ -232,8 +240,7 @@
           "signer": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         },
         {
           "name": "system_program",
@@ -366,6 +373,12 @@
     },
     {
       "name": "create_offer_from_consignment",
+      "docs": [
+        "Create an offer from a consignment",
+        "agent_commission_bps: For negotiated deals: 25-150 bps (0.25% - 1.5%)",
+        "For P2P (non-negotiable): ignored, uses desk.p2p_commission_bps (default 0.25%)",
+        "Commission is paid to desk.agent from seller proceeds at fulfillment"
+      ],
       "discriminator": [
         129,
         162,
@@ -423,6 +436,10 @@
         {
           "name": "lockup_secs",
           "type": "i64"
+        },
+        {
+          "name": "agent_commission_bps",
+          "type": "u16"
         }
       ]
     },
@@ -453,6 +470,9 @@
           ]
         },
         {
+          "name": "token_mint"
+        },
+        {
           "name": "owner",
           "writable": true,
           "signer": true
@@ -466,8 +486,7 @@
           "writable": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         }
       ],
       "args": [
@@ -548,6 +567,9 @@
           "writable": true
         },
         {
+          "name": "usdc_mint"
+        },
+        {
           "name": "caller",
           "signer": true
         },
@@ -560,8 +582,7 @@
           "writable": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         }
       ],
       "args": [
@@ -598,6 +619,21 @@
             "Token treasury - must match the token_mint in the offer"
           ],
           "writable": true
+        },
+        {
+          "name": "agent",
+          "docs": [
+            "Agent account for receiving SOL commission (optional - only needed if commission > 0)"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "desk_signer",
+          "docs": [
+            "Desk signer for authorizing lamport transfer"
+          ],
+          "signer": true
         },
         {
           "name": "payer",
@@ -638,6 +674,9 @@
           "writable": true
         },
         {
+          "name": "usdc_mint"
+        },
+        {
           "name": "desk_token_treasury",
           "docs": [
             "Token treasury - must match the token_mint in the offer"
@@ -653,13 +692,27 @@
           "writable": true
         },
         {
+          "name": "agent_usdc_ata",
+          "docs": [
+            "Agent USDC account for receiving commission (optional - only needed if commission > 0)"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "desk_signer",
+          "docs": [
+            "Desk signer for authorizing commission transfer from treasury"
+          ],
+          "signer": true
+        },
+        {
           "name": "payer",
           "writable": true,
           "signer": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         },
         {
           "name": "system_program",
@@ -1017,6 +1070,42 @@
       ]
     },
     {
+      "name": "set_p2p_commission",
+      "docs": [
+        "Set P2P commission rate for non-negotiable fixed-price deals",
+        "Default is 25 bps (0.25%), max 500 bps (5%)"
+      ],
+      "discriminator": [
+        15,
+        21,
+        41,
+        88,
+        122,
+        56,
+        241,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "desk"
+          ]
+        },
+        {
+          "name": "desk",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
       "name": "set_prices",
       "discriminator": [
         155,
@@ -1346,8 +1435,7 @@
           ]
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         }
       ],
       "args": []
@@ -1452,6 +1540,9 @@
           "name": "desk"
         },
         {
+          "name": "token_mint"
+        },
+        {
           "name": "desk_signer",
           "signer": true
         },
@@ -1469,8 +1560,7 @@
           "writable": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         }
       ],
       "args": [
@@ -1555,6 +1645,9 @@
           ]
         },
         {
+          "name": "token_mint"
+        },
+        {
           "name": "desk_signer",
           "signer": true
         },
@@ -1567,8 +1660,7 @@
           "writable": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         }
       ],
       "args": [
@@ -1603,6 +1695,9 @@
           "writable": true
         },
         {
+          "name": "usdc_mint"
+        },
+        {
           "name": "desk_signer",
           "signer": true
         },
@@ -1615,8 +1710,7 @@
           "writable": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         }
       ],
       "args": [
@@ -1695,6 +1789,19 @@
     }
   ],
   "events": [
+    {
+      "name": "AgentCommissionPaid",
+      "discriminator": [
+        42,
+        152,
+        243,
+        224,
+        169,
+        171,
+        99,
+        192
+      ]
+    },
     {
       "name": "LimitsUpdated",
       "discriminator": [
@@ -1958,9 +2065,43 @@
       "code": 6028,
       "name": "UpdateTooFrequent",
       "msg": "Price update too frequent"
+    },
+    {
+      "code": 6029,
+      "name": "CommissionRange",
+      "msg": "Commission must be 0 for P2P or 25-150 bps for negotiated"
+    },
+    {
+      "code": 6030,
+      "name": "NonNegotiableP2P",
+      "msg": "Non-negotiable offers are P2P (auto-approved)"
     }
   ],
   "types": [
+    {
+      "name": "AgentCommissionPaid",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "currency",
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "Consignment",
       "type": {
@@ -2254,6 +2395,13 @@
               "Deadline for emergency refunds (seconds from offer creation)"
             ],
             "type": "i64"
+          },
+          {
+            "name": "p2p_commission_bps",
+            "docs": [
+              "P2P commission in basis points (default 25 = 0.25%) for non-negotiable fixed-price deals"
+            ],
+            "type": "u16"
           }
         ]
       }
@@ -2370,6 +2518,10 @@
           {
             "name": "amount_paid",
             "type": "u64"
+          },
+          {
+            "name": "agent_commission_bps",
+            "type": "u16"
           }
         ]
       }
