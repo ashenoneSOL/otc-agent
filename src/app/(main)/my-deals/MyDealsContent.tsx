@@ -184,7 +184,7 @@ export function MyDealsContent() {
     // Transform Solana deals
     if (solanaDeals.length > 0 && solanaPublicKey) {
       const solanaTransformed = solanaDeals.map((deal) =>
-        transformSolanaDeal(deal, solanaPublicKey),
+        transformSolanaDeal(deal),
       );
       allPurchases.push(...solanaTransformed);
     }
@@ -206,11 +206,7 @@ export function MyDealsContent() {
         tokenLogoUrl: undefined,
         chain: "base", // Default to base for EVM offers
       }));
-      const evmMerged = mergeDealsWithOffers(
-        evmDeals,
-        offersWithMetadata,
-        evmAddress,
-      );
+      const evmMerged = mergeDealsWithOffers(evmDeals, offersWithMetadata);
       allPurchases.push(...evmMerged);
     }
 
