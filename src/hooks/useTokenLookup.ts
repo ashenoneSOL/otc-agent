@@ -81,11 +81,13 @@ export function useTokenLookup(
 
   // Normalize address for cache key
   const normalizedAddress = address?.trim() ?? null;
-  const effectiveChain = chain ?? "base"; // Default chain for cache key
+
+  // Detect chain from address format if not provided
+  const detectedChain = chain ?? (normalizedAddress?.startsWith("0x") ? "base" : "solana");
 
   const query = useQuery({
     queryKey: normalizedAddress
-      ? tokenKeys.lookup(normalizedAddress, effectiveChain)
+      ? tokenKeys.lookup(normalizedAddress, detectedChain)
       : tokenKeys.all,
     queryFn: () => {
       if (!normalizedAddress) {

@@ -32,5 +32,13 @@ export async function throwApiError(
   fallbackMessage: string,
 ): Promise<never> {
   const errorData = await response.json().catch(() => ({}));
-  throw new Error(extractErrorMessage(errorData, fallbackMessage));
+  // Handle null/undefined responses by treating them as empty objects
+  const safeErrorData =
+    errorData && typeof errorData === "object" ? errorData : {};
+  throw new Error(
+    extractErrorMessage(
+      safeErrorData as Record<string, unknown>,
+      fallbackMessage,
+    ),
+  );
 }

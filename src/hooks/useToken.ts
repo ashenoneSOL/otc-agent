@@ -20,7 +20,7 @@ import { tokenKeys, priceKeys } from "./queryKeys";
 const chainConfigs = {
   base: { chain: base, rpcUrl: "/api/rpc/base" },
   ethereum: { chain: mainnet, rpcUrl: "/api/rpc/ethereum" },
-  bsc: { chain: bsc, rpcUrl: "/api/rpc/base" }, // BSC uses same proxy pattern
+  bsc: { chain: bsc, rpcUrl: "/api/rpc/bsc" },
 } as const;
 
 type SupportedEvmChain = keyof typeof chainConfigs;
@@ -150,6 +150,7 @@ async function fetchToken(tokenId: string): Promise<{
 
 /**
  * Fetch market data for a token
+ * Returns null only for 404 (no market data available), throws for other errors
  */
 async function fetchMarketData(
   tokenId: string,
@@ -159,7 +160,12 @@ async function fetchMarketData(
   );
 
   if (!response.ok) {
-    return null;
+    // 404 means no market data available for this token (expected for new/untracked tokens)
+    if (response.status === 404) {
+      return null;
+    }
+    // Other errors should be thrown
+    throw new Error(`Failed to fetch market data: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();

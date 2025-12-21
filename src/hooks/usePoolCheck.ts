@@ -15,6 +15,34 @@ import type { Chain, PoolCheckResult } from "@/types";
 import { poolKeys } from "./queryKeys";
 
 /**
+ * Validate pool check response has required fields
+ * Throws if validation fails
+ */
+function validatePoolCheckResult(data: unknown): PoolCheckResult {
+  if (typeof data !== "object" || data === null) {
+    throw new Error("Invalid pool check response: expected object");
+  }
+
+  const obj = data as Record<string, unknown>;
+
+  // Validate required fields
+  if (typeof obj.success !== "boolean") {
+    throw new Error("Invalid pool check response: missing success field");
+  }
+  if (typeof obj.tokenAddress !== "string") {
+    throw new Error("Invalid pool check response: missing tokenAddress field");
+  }
+  if (typeof obj.chain !== "string") {
+    throw new Error("Invalid pool check response: missing chain field");
+  }
+  if (typeof obj.hasPool !== "boolean") {
+    throw new Error("Invalid pool check response: missing hasPool field");
+  }
+
+  return data as PoolCheckResult;
+}
+
+/**
  * Fetch pool check data from API
  */
 async function fetchPoolCheck(
@@ -32,13 +60,7 @@ async function fetchPoolCheck(
   }
 
   const data = await response.json();
-
-  // Validate response structure
-  if (typeof data !== "object" || data === null) {
-    throw new Error("Invalid pool check response: expected object");
-  }
-
-  return data as PoolCheckResult;
+  return validatePoolCheckResult(data);
 }
 
 /**

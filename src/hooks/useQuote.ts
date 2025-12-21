@@ -12,6 +12,40 @@ import type { DealQuote } from "@/components/deal-completion";
 import { quoteKeys } from "./queryKeys";
 
 /**
+ * Validate quote response has required fields
+ * Throws if validation fails
+ */
+function validateDealQuote(data: unknown): DealQuote {
+  if (typeof data !== "object" || data === null) {
+    throw new Error("Invalid quote response: expected object");
+  }
+
+  const obj = data as Record<string, unknown>;
+
+  // Validate required fields
+  if (typeof obj.quoteId !== "string") {
+    throw new Error("Invalid quote response: missing quoteId");
+  }
+  if (typeof obj.beneficiary !== "string") {
+    throw new Error("Invalid quote response: missing beneficiary");
+  }
+  if (typeof obj.tokenAmount !== "string") {
+    throw new Error("Invalid quote response: missing tokenAmount");
+  }
+  if (typeof obj.discountBps !== "number") {
+    throw new Error("Invalid quote response: missing discountBps");
+  }
+  if (typeof obj.paymentAmount !== "string") {
+    throw new Error("Invalid quote response: missing paymentAmount");
+  }
+  if (typeof obj.paymentCurrency !== "string") {
+    throw new Error("Invalid quote response: missing paymentCurrency");
+  }
+
+  return data as DealQuote;
+}
+
+/**
  * Fetch an executed quote by ID with retry logic
  * Handles the case where the quote may not be immediately available after redirect
  */
@@ -38,11 +72,12 @@ async function fetchExecutedQuote(quoteId: string): Promise<DealQuote> {
     throw new Error(`Quote not found in API response for: ${quoteId}`);
   }
 
-  return data.quote as DealQuote;
+  return validateDealQuote(data.quote);
 }
 
 /**
  * Fetch quote by offer ID (for linking offers to quotes)
+ * Returns null only for 404 (not found), throws for other errors
  */
 async function fetchQuoteByOffer(
   offerId: string,
@@ -52,7 +87,12 @@ async function fetchQuoteByOffer(
   );
 
   if (!response.ok) {
-    return null;
+    // 404 means offer->quote mapping doesn't exist (yet)
+    if (response.status === 404) {
+      return null;
+    }
+    // Other errors should be thrown
+    throw new Error(`Failed to fetch quote by offer: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();

@@ -226,36 +226,48 @@ export function useClaimTokens() {
 }
 
 /**
+ * Input for updating a quote
+ */
+interface UpdateQuoteInput {
+  quoteId: string;
+  beneficiary?: string;
+  tokenAmount?: string;
+  paymentCurrency?: string;
+  totalUsd?: number;
+  discountUsd?: number;
+  discountedUsd?: number;
+  paymentAmount?: string;
+}
+
+/**
+ * Update quote data (for pre-transaction updates)
+ */
+async function updateQuote(input: UpdateQuoteInput): Promise<{ success: boolean }> {
+  const response = await fetch("/api/quote/latest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    // Throw so caller knows the update failed
+    await throwApiError(response, `Quote update failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Hook to update quote (for pre-transaction updates)
+ *
+ * Note: This is a best-effort update. If it fails, the transaction
+ * can still proceed - the quote data will be updated on completion.
  */
 export function useUpdateQuote() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: {
-      quoteId: string;
-      beneficiary?: string;
-      tokenAmount?: string;
-      paymentCurrency?: string;
-      totalUsd?: number;
-      discountUsd?: number;
-      discountedUsd?: number;
-      paymentAmount?: string;
-    }) => {
-      const response = await fetch("/api/quote/latest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-
-      if (!response.ok) {
-        // Non-critical update - log but don't throw
-        console.warn("[useUpdateQuote] Quote update failed:", response.status);
-        return null;
-      }
-
-      return response.json();
-    },
+    mutationFn: updateQuote,
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: quoteKeys.latest(variables.quoteId),
