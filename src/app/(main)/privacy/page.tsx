@@ -2,11 +2,11 @@ import Markdown from "markdown-to-jsx";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-	title: "Eliza.how - Privacy Policy",
+  title: "Eliza.how - Privacy Policy",
 };
 
 export default function Page() {
-	const privacy = `
+  const privacy = `
 **Privacy Policy**
 =======================
 
@@ -140,14 +140,14 @@ Our Services are not intended for children under 13. We do not knowingly collect
 We will notify you of material changes to this Privacy Policy. Your continued use of the Services after such modifications constitutes acceptance of the updated Privacy Policy.
     `.trim();
 
-	return (
-		<div className="flex-1 overflow-y-auto">
-			<div
-				className="prose prose-zinc dark:prose-invert mx-auto p-4 lg:max-w-2xl"
-				suppressHydrationWarning
-			>
-				<Markdown>{privacy}</Markdown>
-			</div>
-		</div>
-	);
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div
+        className="prose prose-zinc dark:prose-invert mx-auto p-4 lg:max-w-2xl"
+        suppressHydrationWarning
+      >
+        <Markdown>{privacy}</Markdown>
+      </div>
+    </div>
+  );
 }

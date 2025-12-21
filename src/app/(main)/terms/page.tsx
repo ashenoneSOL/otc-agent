@@ -2,11 +2,11 @@ import Markdown from "markdown-to-jsx";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-	title: "Eliza.how - Terms of Service",
+  title: "Eliza.how - Terms of Service",
 };
 
 export default function Page() {
-	const termsOfService = `
+  const termsOfService = `
 **Terms of Service**
 ============================================
 
@@ -149,14 +149,14 @@ We do not endorse, recommend, or provide any guidance regarding any cryptocurren
 We may update these Terms at any time. Changes will be effective upon posting to this page. Your continued use of the Services constitutes acceptance of the updated Terms.
   `;
 
-	return (
-		<div className="flex-1 overflow-y-auto">
-			<div
-				className="prose prose-zinc dark:prose-invert mx-auto p-4 lg:max-w-2xl"
-				suppressHydrationWarning
-			>
-				<Markdown>{termsOfService}</Markdown>
-			</div>
-		</div>
-	);
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div
+        className="prose prose-zinc dark:prose-invert mx-auto p-4 lg:max-w-2xl"
+        suppressHydrationWarning
+      >
+        <Markdown>{termsOfService}</Markdown>
+      </div>
+    </div>
+  );
 }
