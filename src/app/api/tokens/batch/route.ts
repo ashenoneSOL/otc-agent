@@ -2,12 +2,12 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCachedTokenBatch } from "@/lib/cache";
 import {
-	validateQueryParams,
-	validationErrorResponse,
+  validateQueryParams,
+  validationErrorResponse,
 } from "@/lib/validation/helpers";
 import {
-	GetTokenBatchQuerySchema,
-	TokenBatchResponseSchema,
+  GetTokenBatchQuerySchema,
+  TokenBatchResponseSchema,
 } from "@/types/validation/api-schemas";
 
 /**
@@ -19,41 +19,41 @@ import {
  * Uses serverless-optimized caching via unstable_cache.
  */
 export async function GET(request: NextRequest) {
-	const { searchParams } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
 
-	// Validate query params - return 400 on invalid params
-	const parseResult = GetTokenBatchQuerySchema.safeParse(
-		Object.fromEntries(searchParams.entries()),
-	);
-	if (!parseResult.success) {
-		return validationErrorResponse(parseResult.error, 400);
-	}
-	const query = parseResult.data;
+  // Validate query params - return 400 on invalid params
+  const parseResult = GetTokenBatchQuerySchema.safeParse(
+    Object.fromEntries(searchParams.entries()),
+  );
+  if (!parseResult.success) {
+    return validationErrorResponse(parseResult.error, 400);
+  }
+  const query = parseResult.data;
 
-	const tokenIds = query.ids;
+  const tokenIds = query.ids;
 
-	if (tokenIds.length === 0) {
-		return NextResponse.json({ success: true, tokens: {} });
-	}
+  if (tokenIds.length === 0) {
+    return NextResponse.json({ success: true, tokens: {} });
+  }
 
-	// Limit batch size to prevent abuse
-	if (tokenIds.length > 50) {
-		return NextResponse.json(
-			{ success: false, error: "Maximum 50 tokens per batch" },
-			{ status: 400 },
-		);
-	}
+  // Limit batch size to prevent abuse
+  if (tokenIds.length > 50) {
+    return NextResponse.json(
+      { success: false, error: "Maximum 50 tokens per batch" },
+      { status: 400 },
+    );
+  }
 
-	// Use serverless-optimized batch cache
-	const tokensMap = await getCachedTokenBatch(tokenIds);
+  // Use serverless-optimized batch cache
+  const tokensMap = await getCachedTokenBatch(tokenIds);
 
-	const batchResponse = { success: true, tokens: tokensMap };
-	const validatedBatch = TokenBatchResponseSchema.parse(batchResponse);
+  const batchResponse = { success: true, tokens: tokensMap };
+  const validatedBatch = TokenBatchResponseSchema.parse(batchResponse);
 
-	// Cache for 2 minutes - token metadata rarely changes
-	return NextResponse.json(validatedBatch, {
-		headers: {
-			"Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
-		},
-	});
+  // Cache for 2 minutes - token metadata rarely changes
+  return NextResponse.json(validatedBatch, {
+    headers: {
+      "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
+    },
+  });
 }

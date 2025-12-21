@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
-	validateQueryParams,
-	validationErrorResponse,
+  validateQueryParams,
+  validationErrorResponse,
 } from "@/lib/validation/helpers";
 import type { TokenInfo } from "@/types/api";
 import {
-	TokenLookupQuerySchema,
-	TokenLookupResponseSchema,
+  TokenLookupQuerySchema,
+  TokenLookupResponseSchema,
 } from "@/types/validation/api-schemas";
 import { isEvmAddress, isSolanaAddress } from "@/utils/address-utils";
 
@@ -19,10 +19,10 @@ const SOLANA_NETWORK_ID = 1399811149;
  * Look up Solana token via Codex API
  */
 async function lookupSolanaToken(
-	address: string,
-	codexKey: string,
+  address: string,
+  codexKey: string,
 ): Promise<TokenInfo | null> {
-	const query = `
+  const query = `
     query GetToken($input: TokenInput!) {
       token(input: $input) {
         name
@@ -36,138 +36,138 @@ async function lookupSolanaToken(
     }
   `;
 
-	const response = await fetch(CODEX_GRAPHQL_URL, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: codexKey,
-		},
-		body: JSON.stringify({
-			query,
-			variables: {
-				input: {
-					address,
-					networkId: SOLANA_NETWORK_ID,
-				},
-			},
-		}),
-		signal: AbortSignal.timeout(8000),
-	});
+  const response = await fetch(CODEX_GRAPHQL_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: codexKey,
+    },
+    body: JSON.stringify({
+      query,
+      variables: {
+        input: {
+          address,
+          networkId: SOLANA_NETWORK_ID,
+        },
+      },
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
 
-	// FAIL-FAST: Check response status
-	if (!response.ok) {
-		// Return null for "not found" - this is expected for invalid addresses
-		// But log other errors for debugging
-		if (response.status !== 404) {
-			console.error(
-				`[Token Lookup] Codex API error: ${response.status} ${response.statusText}`,
-			);
-		}
-		return null;
-	}
+  // FAIL-FAST: Check response status
+  if (!response.ok) {
+    // Return null for "not found" - this is expected for invalid addresses
+    // But log other errors for debugging
+    if (response.status !== 404) {
+      console.error(
+        `[Token Lookup] Codex API error: ${response.status} ${response.statusText}`,
+      );
+    }
+    return null;
+  }
 
-	const data = await response.json();
-	// FAIL-FAST: Validate response structure
-	if (typeof data !== "object" || data === null) {
-		throw new Error("Invalid Codex API response: expected object");
-	}
+  const data = await response.json();
+  // FAIL-FAST: Validate response structure
+  if (typeof data !== "object" || data === null) {
+    throw new Error("Invalid Codex API response: expected object");
+  }
 
-	const token = data.data?.token;
+  const token = data.data?.token;
 
-	if (!token) return null;
+  if (!token) return null;
 
-	// FAIL-FAST: Symbol and name are required - if missing, this indicates a data quality issue
-	if (!token.symbol || typeof token.symbol !== "string") {
-		throw new Error(`Codex token missing symbol for address: ${address}`);
-	}
-	if (!token.name || typeof token.name !== "string") {
-		throw new Error(`Codex token missing name for address: ${address}`);
-	}
+  // FAIL-FAST: Symbol and name are required - if missing, this indicates a data quality issue
+  if (!token.symbol || typeof token.symbol !== "string") {
+    throw new Error(`Codex token missing symbol for address: ${address}`);
+  }
+  if (!token.name || typeof token.name !== "string") {
+    throw new Error(`Codex token missing name for address: ${address}`);
+  }
 
-	return {
-		address: token.address,
-		symbol: token.symbol,
-		name: token.name,
-		decimals: typeof token.decimals === "number" ? token.decimals : 9,
-		logoUrl: token.info?.imageSmallUrl ?? null, // logoUrl is optional
-		chain: "solana",
-		priceUsd: null,
-	};
+  return {
+    address: token.address,
+    symbol: token.symbol,
+    name: token.name,
+    decimals: typeof token.decimals === "number" ? token.decimals : 9,
+    logoUrl: token.info?.imageSmallUrl ?? null, // logoUrl is optional
+    chain: "solana",
+    priceUsd: null,
+  };
 }
 
 /**
  * Look up EVM token via Alchemy API
  */
 async function lookupEvmToken(
-	address: string,
-	chain: string,
-	alchemyKey: string,
+  address: string,
+  chain: string,
+  alchemyKey: string,
 ): Promise<TokenInfo | null> {
-	const alchemyNetwork =
-		chain === "ethereum"
-			? "eth-mainnet"
-			: chain === "bsc"
-				? "bnb-mainnet"
-				: "base-mainnet";
+  const alchemyNetwork =
+    chain === "ethereum"
+      ? "eth-mainnet"
+      : chain === "bsc"
+        ? "bnb-mainnet"
+        : "base-mainnet";
 
-	const url = `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyKey}`;
+  const url = `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyKey}`;
 
-	const response = await fetch(url, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({
-			jsonrpc: "2.0",
-			id: 1,
-			method: "alchemy_getTokenMetadata",
-			params: [address],
-		}),
-		signal: AbortSignal.timeout(5000),
-	});
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "alchemy_getTokenMetadata",
+      params: [address],
+    }),
+    signal: AbortSignal.timeout(5000),
+  });
 
-	// FAIL-FAST: Check response status
-	if (!response.ok) {
-		// Return null for "not found" - this is expected for invalid addresses
-		// But log other errors for debugging
-		if (response.status !== 404) {
-			console.error(
-				`[Token Lookup] Alchemy API error: ${response.status} ${response.statusText}`,
-			);
-		}
-		return null;
-	}
+  // FAIL-FAST: Check response status
+  if (!response.ok) {
+    // Return null for "not found" - this is expected for invalid addresses
+    // But log other errors for debugging
+    if (response.status !== 404) {
+      console.error(
+        `[Token Lookup] Alchemy API error: ${response.status} ${response.statusText}`,
+      );
+    }
+    return null;
+  }
 
-	const data = await response.json();
-	// FAIL-FAST: Validate response structure
-	if (typeof data !== "object" || data === null) {
-		throw new Error("Invalid Alchemy API response: expected object");
-	}
+  const data = await response.json();
+  // FAIL-FAST: Validate response structure
+  if (typeof data !== "object" || data === null) {
+    throw new Error("Invalid Alchemy API response: expected object");
+  }
 
-	const result = data.result;
+  const result = data.result;
 
-	if (!result || !result.symbol) return null;
+  if (!result || !result.symbol) return null;
 
-	if (!result.symbol) {
-		throw new Error("Token metadata missing symbol");
-	}
-	if (!result.name) {
-		throw new Error("Token metadata missing name");
-	}
-	if (typeof result.decimals !== "number") {
-		throw new Error(
-			`Token metadata missing or invalid decimals: ${result.decimals}`,
-		);
-	}
+  if (!result.symbol) {
+    throw new Error("Token metadata missing symbol");
+  }
+  if (!result.name) {
+    throw new Error("Token metadata missing name");
+  }
+  if (typeof result.decimals !== "number") {
+    throw new Error(
+      `Token metadata missing or invalid decimals: ${result.decimals}`,
+    );
+  }
 
-	return {
-		address: address.toLowerCase(),
-		symbol: result.symbol,
-		name: result.name,
-		decimals: result.decimals,
-		// logoUrl is optional - use null if not present
-		logoUrl: result.logo ?? null,
-		chain,
-		priceUsd: null,
-	};
+  return {
+    address: address.toLowerCase(),
+    symbol: result.symbol,
+    name: result.name,
+    decimals: result.decimals,
+    // logoUrl is optional - use null if not present
+    logoUrl: result.logo ?? null,
+    chain,
+    priceUsd: null,
+  };
 }
 
 /**
@@ -178,64 +178,64 @@ async function lookupEvmToken(
  * Auto-detects chain if not provided for Solana addresses.
  */
 export async function GET(request: NextRequest) {
-	const { searchParams } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
 
-	// Validate query params - return 400 on invalid params
-	const parseResult = TokenLookupQuerySchema.safeParse(
-		Object.fromEntries(searchParams.entries()),
-	);
-	if (!parseResult.success) {
-		return validationErrorResponse(parseResult.error, 400);
-	}
-	const { address } = parseResult.data;
-	let { chain } = parseResult.data;
+  // Validate query params - return 400 on invalid params
+  const parseResult = TokenLookupQuerySchema.safeParse(
+    Object.fromEntries(searchParams.entries()),
+  );
+  if (!parseResult.success) {
+    return validationErrorResponse(parseResult.error, 400);
+  }
+  const { address } = parseResult.data;
+  let { chain } = parseResult.data;
 
-	// Auto-detect chain from address format using shared utility
-	const looksLikeSolana = isSolanaAddress(address);
-	const looksLikeEvm = isEvmAddress(address);
+  // Auto-detect chain from address format using shared utility
+  const looksLikeSolana = isSolanaAddress(address);
+  const looksLikeEvm = isEvmAddress(address);
 
-	if (!looksLikeSolana && !looksLikeEvm) {
-		return NextResponse.json(
-			{ error: "Invalid address format" },
-			{ status: 400 },
-		);
-	}
+  if (!looksLikeSolana && !looksLikeEvm) {
+    return NextResponse.json(
+      { error: "Invalid address format" },
+      { status: 400 },
+    );
+  }
 
-	// If chain not provided, infer from address
-	if (!chain) {
-		chain = looksLikeSolana ? "solana" : "base";
-	}
+  // If chain not provided, infer from address
+  if (!chain) {
+    chain = looksLikeSolana ? "solana" : "base";
+  }
 
-	let token: TokenInfo | null = null;
+  let token: TokenInfo | null = null;
 
-	if (chain === "solana") {
-		const codexKey = process.env.CODEX_API_KEY;
-		if (!codexKey) {
-			return NextResponse.json(
-				{ error: "Solana token lookup not configured" },
-				{ status: 503 },
-			);
-		}
-		token = await lookupSolanaToken(address, codexKey);
-	} else {
-		const alchemyKey = process.env.ALCHEMY_API_KEY;
-		if (!alchemyKey) {
-			return NextResponse.json(
-				{ error: "EVM token lookup not configured" },
-				{ status: 503 },
-			);
-		}
-		token = await lookupEvmToken(address, chain, alchemyKey);
-	}
+  if (chain === "solana") {
+    const codexKey = process.env.CODEX_API_KEY;
+    if (!codexKey) {
+      return NextResponse.json(
+        { error: "Solana token lookup not configured" },
+        { status: 503 },
+      );
+    }
+    token = await lookupSolanaToken(address, codexKey);
+  } else {
+    const alchemyKey = process.env.ALCHEMY_API_KEY;
+    if (!alchemyKey) {
+      return NextResponse.json(
+        { error: "EVM token lookup not configured" },
+        { status: 503 },
+      );
+    }
+    token = await lookupEvmToken(address, chain, alchemyKey);
+  }
 
-	if (!token) {
-		return NextResponse.json(
-			{ error: "Token not found", address, chain },
-			{ status: 404 },
-		);
-	}
+  if (!token) {
+    return NextResponse.json(
+      { error: "Token not found", address, chain },
+      { status: 404 },
+    );
+  }
 
-	const response = { success: true, token };
-	const validatedResponse = TokenLookupResponseSchema.parse(response);
-	return NextResponse.json(validatedResponse);
+  const response = { success: true, token };
+  const validatedResponse = TokenLookupResponseSchema.parse(response);
+  return NextResponse.json(validatedResponse);
 }

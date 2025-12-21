@@ -16,87 +16,87 @@ import { CronReconcileResponseSchema } from "@/types/validation/api-schemas";
 
 // FAIL-FAST: At least one cron secret must be configured
 const CRON_SECRET =
-	process.env.CRON_SECRET || process.env.RECONCILIATION_SECRET || undefined;
+  process.env.CRON_SECRET || process.env.RECONCILIATION_SECRET || undefined;
 
 export async function GET(request: NextRequest) {
-	// Verify authorization
-	const authHeader = request.headers.get("authorization");
+  // Verify authorization
+  const authHeader = request.headers.get("authorization");
 
-	// Always require auth in production
-	if (process.env.NODE_ENV === "production" && !CRON_SECRET) {
-		console.error(
-			"[Reconciliation Cron] No CRON_SECRET configured in production",
-		);
-		const configErrorResponse = {
-			success: false,
-			error: "Server configuration error",
-		};
-		const validatedConfigError =
-			CronReconcileResponseSchema.parse(configErrorResponse);
-		return NextResponse.json(validatedConfigError, { status: 500 });
-	}
+  // Always require auth in production
+  if (process.env.NODE_ENV === "production" && !CRON_SECRET) {
+    console.error(
+      "[Reconciliation Cron] No CRON_SECRET configured in production",
+    );
+    const configErrorResponse = {
+      success: false,
+      error: "Server configuration error",
+    };
+    const validatedConfigError =
+      CronReconcileResponseSchema.parse(configErrorResponse);
+    return NextResponse.json(validatedConfigError, { status: 500 });
+  }
 
-	if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
-		console.warn("[Reconciliation Cron] Unauthorized access attempt", {
-			ip:
-				request.headers.get("x-forwarded-for") ||
-				request.headers.get("x-real-ip"),
-			timestamp: new Date().toISOString(),
-		});
-		const unauthorizedResponse = { success: false, error: "Unauthorized" };
-		const validatedUnauthorized =
-			CronReconcileResponseSchema.parse(unauthorizedResponse);
-		return NextResponse.json(validatedUnauthorized, { status: 401 });
-	}
+  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+    console.warn("[Reconciliation Cron] Unauthorized access attempt", {
+      ip:
+        request.headers.get("x-forwarded-for") ||
+        request.headers.get("x-real-ip"),
+      timestamp: new Date().toISOString(),
+    });
+    const unauthorizedResponse = { success: false, error: "Unauthorized" };
+    const validatedUnauthorized =
+      CronReconcileResponseSchema.parse(unauthorizedResponse);
+    return NextResponse.json(validatedUnauthorized, { status: 401 });
+  }
 
-	console.log("[Reconciliation Cron] Starting reconciliation task...");
+  console.log("[Reconciliation Cron] Starting reconciliation task...");
 
-	// Ensure runtime is initialized before running reconciliation
-	const runtime = await agentRuntime.getRuntime();
+  // Ensure runtime is initialized before running reconciliation
+  const runtime = await agentRuntime.getRuntime();
 
-	// Wait a moment for services to be registered after initialization
-	// Services are registered during plugin initialization which happens in runtime.initialize()
-	const maxRetries = 5;
-	let retries = 0;
-	let quoteService = runtime.getService("QuoteService");
+  // Wait a moment for services to be registered after initialization
+  // Services are registered during plugin initialization which happens in runtime.initialize()
+  const maxRetries = 5;
+  let retries = 0;
+  let quoteService = runtime.getService("QuoteService");
 
-	while (!quoteService && retries < maxRetries) {
-		await new Promise((resolve) => setTimeout(resolve, 200));
-		quoteService = runtime.getService("QuoteService");
-		retries++;
-	}
+  while (!quoteService && retries < maxRetries) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    quoteService = runtime.getService("QuoteService");
+    retries++;
+  }
 
-	if (!quoteService) {
-		console.error(
-			"[Reconciliation Cron] QuoteService not available after initialization",
-		);
-		return NextResponse.json(
-			{
-				error:
-					"QuoteService not registered. Please check plugin configuration.",
-			},
-			{ status: 503 },
-		);
-	}
+  if (!quoteService) {
+    console.error(
+      "[Reconciliation Cron] QuoteService not available after initialization",
+    );
+    return NextResponse.json(
+      {
+        error:
+          "QuoteService not registered. Please check plugin configuration.",
+      },
+      { status: 503 },
+    );
+  }
 
-	const startTime = Date.now();
-	await runReconciliationTask();
-	const duration = Date.now() - startTime;
+  const startTime = Date.now();
+  await runReconciliationTask();
+  const duration = Date.now() - startTime;
 
-	console.log(`[Reconciliation Cron] Completed in ${duration}ms`);
+  console.log(`[Reconciliation Cron] Completed in ${duration}ms`);
 
-	const reconcileResponse = {
-		success: true,
-		action: "reconcile_all",
-		duration,
-		timestamp: new Date().toISOString(),
-	};
-	const validatedReconcile =
-		CronReconcileResponseSchema.parse(reconcileResponse);
-	return NextResponse.json(validatedReconcile);
+  const reconcileResponse = {
+    success: true,
+    action: "reconcile_all",
+    duration,
+    timestamp: new Date().toISOString(),
+  };
+  const validatedReconcile =
+    CronReconcileResponseSchema.parse(reconcileResponse);
+  return NextResponse.json(validatedReconcile);
 }
 
 // Support POST for some cron services
 export async function POST(request: NextRequest) {
-	return GET(request);
+  return GET(request);
 }
