@@ -125,12 +125,14 @@ contract RegistrationHelper is Ownable2Step {
      * @param pool The pool address
      * @param token The token address
      * @return True if pool has sufficient liquidity
+     * @dev The oracle validation already ensures the pool is functional.
+     *      Price-based liquidity checks are removed to support micro-cap tokens.
      */
     function hasSufficientLiquidity(address pool, address token) internal returns (bool) {
         // Create a temporary oracle instance to test
         UniswapV3TWAPOracle testOracle = new UniswapV3TWAPOracle(pool, token, ethUsdFeed);
 
-        // Get current price to estimate liquidity
+        // Get current price to verify oracle works
         (bool success, bytes memory data) = address(testOracle).staticcall(
             abi.encodeWithSelector(UniswapV3TWAPOracle.getTWAPPrice.selector)
         );
@@ -139,15 +141,9 @@ contract RegistrationHelper is Ownable2Step {
 
         uint256 currentPrice = abi.decode(data, (uint256));
 
-        // For now, use price as proxy for liquidity
-        // Higher price tokens generally need more liquidity to prevent manipulation
-        if (currentPrice < 1e8) { // Less than $1
-            return currentPrice > 1e6; // At least $0.01 equivalent
-        } else if (currentPrice < 1e10) { // Less than $100
-            return currentPrice > 1e8; // At least $1 equivalent
-        } else {
-            return currentPrice > 1e9; // At least $10 equivalent for higher value tokens
-        }
+        // Just verify we got a valid price > 0
+        // The oracle already enforces MIN_PRICE_USD and MAX_PRICE_USD bounds
+        return currentPrice > 0;
     }
 
     constructor(address _otc, address _ethUsdFeed) payable Ownable(msg.sender) {

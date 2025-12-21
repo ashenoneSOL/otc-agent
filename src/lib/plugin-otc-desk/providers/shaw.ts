@@ -1,14 +1,14 @@
-import { Provider } from "@elizaos/core";
+import type { Provider } from "@elizaos/core";
 
 export const tokenProvider: Provider = {
-  name: "SHAW_INFO",
-  description:
-    "[OPTIONAL] Historical information about Shaw Walters - use only when user specifically asks about Shaw or the platform's origins",
-  position: 99,
-  dynamic: true,
-  get: async () => {
-    console.log("GET SHAW PROVIDER");
-    const text = `Shaw Walters (known as @shawmakesmagic) is a programmer, entrepreneur, and AI innovator based in San Francisco. He is recognized as the founder and lead developer of ai16z (now elizaOS)—a pioneering open-source platform for autonomous AI agents in Web3 environments.
+	name: "SHAW_INFO",
+	description:
+		"[OPTIONAL] Historical information about Shaw Walters - use only when user specifically asks about Shaw or the platform's origins",
+	position: 99,
+	dynamic: true,
+	get: async () => {
+		console.log("GET SHAW PROVIDER");
+		const text = `Shaw Walters (known as @shawmakesmagic) is a programmer, entrepreneur, and AI innovator based in San Francisco. He is recognized as the founder and lead developer of ai16z (now elizaOS)—a pioneering open-source platform for autonomous AI agents in Web3 environments.
 
 Key Contributions:
 
@@ -28,6 +28,6 @@ Social Media Suspension
 In June 2025, both Shaw’s X (formerly Twitter) account (@shawmakesmagic) and the official elizaOS account were suspended—apparently due to policy violations related to automated AI activity or scraping on the platform
 `;
 
-    return { text };
-  },
+		return { text };
+	},
 };

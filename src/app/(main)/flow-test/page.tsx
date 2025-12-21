@@ -5,10 +5,10 @@ import { PageLoading } from "@/components/ui/loading-spinner";
 
 // Dynamic import to prevent SSR issues with wallet hooks
 const FlowTestClient = dynamic(() => import("./FlowTestClient"), {
-  ssr: false,
-  loading: () => <PageLoading message="Loading flow test..." />,
+	ssr: false,
+	loading: () => <PageLoading message="Loading flow test..." />,
 });
 
 export default function FlowTestPage() {
-  return <FlowTestClient />;
+	return <FlowTestClient />;
 }

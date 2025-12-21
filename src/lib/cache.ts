@@ -1,34 +1,34 @@
-import { unstable_cache, revalidateTag } from "next/cache";
-import { TokenDB, MarketDataDB, ConsignmentDB } from "@/services/database";
-import type { Token, TokenMarketData, Chain } from "@/types";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { getAddress } from "viem";
+import { ConsignmentDB, MarketDataDB, TokenDB } from "@/services/database";
+import type { Chain, Token, TokenMarketData } from "@/types";
 
 /**
  * Chain config for logo sources
  */
 const CHAIN_CONFIG: Record<
-  string,
-  {
-    alchemyNetwork: string;
-    trustwalletChain: string;
-    coingeckoPlatform: string;
-  }
+	string,
+	{
+		alchemyNetwork: string;
+		trustwalletChain: string;
+		coingeckoPlatform: string;
+	}
 > = {
-  ethereum: {
-    alchemyNetwork: "eth-mainnet",
-    trustwalletChain: "ethereum",
-    coingeckoPlatform: "ethereum",
-  },
-  base: {
-    alchemyNetwork: "base-mainnet",
-    trustwalletChain: "base",
-    coingeckoPlatform: "base",
-  },
-  bsc: {
-    alchemyNetwork: "bnb-mainnet",
-    trustwalletChain: "smartchain",
-    coingeckoPlatform: "binance-smart-chain",
-  },
+	ethereum: {
+		alchemyNetwork: "eth-mainnet",
+		trustwalletChain: "ethereum",
+		coingeckoPlatform: "ethereum",
+	},
+	base: {
+		alchemyNetwork: "base-mainnet",
+		trustwalletChain: "base",
+		coingeckoPlatform: "base",
+	},
+	bsc: {
+		alchemyNetwork: "bnb-mainnet",
+		trustwalletChain: "smartchain",
+		coingeckoPlatform: "binance-smart-chain",
+	},
 };
 
 /**
@@ -36,67 +36,67 @@ const CHAIN_CONFIG: Record<
  * FAIL-FAST: Throws if address format is invalid
  */
 function checksumAddress(address: string): string {
-  return getAddress(address);
+	return getAddress(address);
 }
 
 /**
  * Try Trust Wallet Assets for logo
  */
 async function fetchTrustWalletLogo(
-  contractAddress: string,
-  chain: string,
+	contractAddress: string,
+	chain: string,
 ): Promise<string | null> {
-  const config = CHAIN_CONFIG[chain];
-  if (!config) return null;
+	const config = CHAIN_CONFIG[chain];
+	if (!config) return null;
 
-  const checksummed = checksumAddress(contractAddress);
-  const url = `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${config.trustwalletChain}/assets/${checksummed}/logo.png`;
+	const checksummed = checksumAddress(contractAddress);
+	const url = `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${config.trustwalletChain}/assets/${checksummed}/logo.png`;
 
-  const response = await fetch(url, {
-    method: "GET",
-    headers: { Range: "bytes=0-0" },
-    signal: AbortSignal.timeout(2000),
-  });
+	const response = await fetch(url, {
+		method: "GET",
+		headers: { Range: "bytes=0-0" },
+		signal: AbortSignal.timeout(2000),
+	});
 
-  if (response.ok || response.status === 206) {
-    return url;
-  }
-  return null;
+	if (response.ok || response.status === 206) {
+		return url;
+	}
+	return null;
 }
 
 /**
  * Try CoinGecko for logo
  */
 async function fetchCoinGeckoLogo(
-  contractAddress: string,
-  chain: string,
+	contractAddress: string,
+	chain: string,
 ): Promise<string | null> {
-  const config = CHAIN_CONFIG[chain];
-  if (!config) return null;
+	const config = CHAIN_CONFIG[chain];
+	if (!config) return null;
 
-  const apiKey = process.env.COINGECKO_API_KEY;
-  const baseUrl = apiKey
-    ? "https://pro-api.coingecko.com/api/v3"
-    : "https://api.coingecko.com/api/v3";
+	const apiKey = process.env.COINGECKO_API_KEY;
+	const baseUrl = apiKey
+		? "https://pro-api.coingecko.com/api/v3"
+		: "https://api.coingecko.com/api/v3";
 
-  const url = `${baseUrl}/coins/${config.coingeckoPlatform}/contract/${contractAddress.toLowerCase()}`;
-  const headers: HeadersInit = {};
-  if (apiKey) headers["X-Cg-Pro-Api-Key"] = apiKey;
+	const url = `${baseUrl}/coins/${config.coingeckoPlatform}/contract/${contractAddress.toLowerCase()}`;
+	const headers: HeadersInit = {};
+	if (apiKey) headers["X-Cg-Pro-Api-Key"] = apiKey;
 
-  const response = await fetch(url, {
-    headers,
-    signal: AbortSignal.timeout(3000),
-  });
-  if (response.ok) {
-    const data = (await response.json()) as {
-      image?: { small?: string; thumb?: string };
-    };
-    // FAIL-FAST: Check for image data explicitly
-    if (!data.image) return null;
-    if (data.image.small) return data.image.small;
-    if (data.image.thumb) return data.image.thumb;
-  }
-  return null;
+	const response = await fetch(url, {
+		headers,
+		signal: AbortSignal.timeout(3000),
+	});
+	if (response.ok) {
+		const data = (await response.json()) as {
+			image?: { small?: string; thumb?: string };
+		};
+		// FAIL-FAST: Check for image data explicitly
+		if (!data.image) return null;
+		if (data.image.small) return data.image.small;
+		if (data.image.thumb) return data.image.thumb;
+	}
+	return null;
 }
 
 /**
@@ -106,70 +106,70 @@ async function fetchCoinGeckoLogo(
  * has the best coverage for popular tokens.
  */
 async function enrichTokenWithLogo(token: Token): Promise<Token> {
-  // Skip if already has logo or is not EVM
-  if (token.logoUrl || token.chain === "solana") {
-    return token;
-  }
+	// Skip if already has logo or is not EVM
+	if (token.logoUrl || token.chain === "solana") {
+		return token;
+	}
 
-  const config = CHAIN_CONFIG[token.chain];
-  if (!config) {
-    return token;
-  }
+	const config = CHAIN_CONFIG[token.chain];
+	if (!config) {
+		return token;
+	}
 
-  // 1. Try TrustWallet + Alchemy in parallel (TrustWallet has best coverage)
-  const alchemyKey = process.env.ALCHEMY_API_KEY;
+	// 1. Try TrustWallet + Alchemy in parallel (TrustWallet has best coverage)
+	const alchemyKey = process.env.ALCHEMY_API_KEY;
 
-  const [trustWalletLogo, alchemyLogo] = await Promise.all([
-    fetchTrustWalletLogo(token.contractAddress, token.chain),
-    alchemyKey
-      ? fetch(
-          `https://${config.alchemyNetwork}.g.alchemy.com/v2/${alchemyKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              method: "alchemy_getTokenMetadata",
-              params: [token.contractAddress],
-            }),
-            signal: AbortSignal.timeout(3000),
-          },
-        )
-          .then((r) => (r.ok ? r.json() : null))
-          .then((data) => {
-            // FAIL-FAST: Validate response structure
-            if (!data || typeof data !== "object" || !("result" in data)) {
-              return null;
-            }
-            const result = data.result as { logo?: string };
-            if (!result || !result.logo) return null;
-            return result.logo;
-          })
-          .catch(() => null)
-      : Promise.resolve(null),
-  ]);
+	const [trustWalletLogo, alchemyLogo] = await Promise.all([
+		fetchTrustWalletLogo(token.contractAddress, token.chain),
+		alchemyKey
+			? fetch(
+					`https://${config.alchemyNetwork}.g.alchemy.com/v2/${alchemyKey}`,
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							jsonrpc: "2.0",
+							id: 1,
+							method: "alchemy_getTokenMetadata",
+							params: [token.contractAddress],
+						}),
+						signal: AbortSignal.timeout(3000),
+					},
+				)
+					.then((r) => (r.ok ? r.json() : null))
+					.then((data) => {
+						// FAIL-FAST: Validate response structure
+						if (!data || typeof data !== "object" || !("result" in data)) {
+							return null;
+						}
+						const result = data.result as { logo?: string };
+						if (!result || !result.logo) return null;
+						return result.logo;
+					})
+					.catch(() => null)
+			: Promise.resolve(null),
+	]);
 
-  // Prefer TrustWallet (most reliable), then Alchemy
-  let logo = trustWalletLogo || alchemyLogo;
-  let source = trustWalletLogo ? "TrustWallet" : alchemyLogo ? "Alchemy" : "";
+	// Prefer TrustWallet (most reliable), then Alchemy
+	let logo = trustWalletLogo || alchemyLogo;
+	let source = trustWalletLogo ? "TrustWallet" : alchemyLogo ? "Alchemy" : "";
 
-  // 2. Try CoinGecko only if both failed
-  if (!logo) {
-    logo = await fetchCoinGeckoLogo(token.contractAddress, token.chain);
-    if (logo) source = "CoinGecko";
-  }
+	// 2. Try CoinGecko only if both failed
+	if (!logo) {
+		logo = await fetchCoinGeckoLogo(token.contractAddress, token.chain);
+		if (logo) source = "CoinGecko";
+	}
 
-  if (logo) {
-    console.log(`[Cache] Enriched ${token.symbol} with logo from ${source}`);
-    // Update the token in the database (fire-and-forget)
-    TokenDB.updateToken(token.id, { logoUrl: logo }).catch((err) =>
-      console.debug(`[Cache] Failed to persist logo for ${token.symbol}:`, err),
-    );
-    return { ...token, logoUrl: logo };
-  }
+	if (logo) {
+		console.log(`[Cache] Enriched ${token.symbol} with logo from ${source}`);
+		// Update the token in the database (fire-and-forget)
+		TokenDB.updateToken(token.id, { logoUrl: logo }).catch((err) =>
+			console.debug(`[Cache] Failed to persist logo for ${token.symbol}:`, err),
+		);
+		return { ...token, logoUrl: logo };
+	}
 
-  return token;
+	return token;
 }
 
 /**
@@ -181,30 +181,30 @@ async function enrichTokenWithLogo(token: Token): Promise<Token> {
  * Invalidate token-related caches (call after token registration/update)
  */
 export function invalidateTokenCache() {
-  revalidateTag("tokens");
+	revalidateTag("tokens");
 }
 
 /**
  * Invalidate market data caches (call after price refresh)
  */
 export function invalidateMarketDataCache() {
-  revalidateTag("market-data");
+	revalidateTag("market-data");
 }
 
 /**
  * Invalidate consignment caches (call after consignment create/update/withdraw)
  */
 export function invalidateConsignmentCache() {
-  revalidateTag("consignments");
+	revalidateTag("consignments");
 }
 
 /**
  * Invalidate all caches (use sparingly)
  */
 export function invalidateAllCaches() {
-  revalidateTag("tokens");
-  revalidateTag("market-data");
-  revalidateTag("consignments");
+	revalidateTag("tokens");
+	revalidateTag("market-data");
+	revalidateTag("consignments");
 }
 
 /**
@@ -221,14 +221,14 @@ export function invalidateAllCaches() {
  * Tag: "tokens" - invalidate when tokens are registered
  */
 export const getCachedTokens = unstable_cache(
-  async (filters?: { chain?: Chain; isActive?: boolean }) => {
-    return TokenDB.getAllTokens(filters);
-  },
-  ["tokens-list"],
-  {
-    revalidate: 300, // 5 minutes
-    tags: ["tokens"],
-  },
+	async (filters?: { chain?: Chain; isActive?: boolean }) => {
+		return TokenDB.getAllTokens(filters);
+	},
+	["tokens-list"],
+	{
+		revalidate: 300, // 5 minutes
+		tags: ["tokens"],
+	},
 );
 
 /**
@@ -237,30 +237,30 @@ export const getCachedTokens = unstable_cache(
  * Also enriches token with logo if missing
  */
 export const getCachedToken = unstable_cache(
-  async (tokenId: string) => {
-    const token = await TokenDB.getToken(tokenId);
-    // Enrich with logo if missing (best-effort)
-    return await enrichTokenWithLogo(token);
-  },
-  ["token"],
-  {
-    revalidate: 300, // 5 minutes
-    tags: ["tokens"],
-  },
+	async (tokenId: string) => {
+		const token = await TokenDB.getToken(tokenId);
+		// Enrich with logo if missing (best-effort)
+		return await enrichTokenWithLogo(token);
+	},
+	["token"],
+	{
+		revalidate: 300, // 5 minutes
+		tags: ["tokens"],
+	},
 );
 
 /**
  * Get token by symbol with caching (5 minute TTL)
  */
 export const getCachedTokenBySymbol = unstable_cache(
-  async (symbol: string) => {
-    return TokenDB.getTokenBySymbol(symbol);
-  },
-  ["token-by-symbol"],
-  {
-    revalidate: 300, // 5 minutes
-    tags: ["tokens"],
-  },
+	async (symbol: string) => {
+		return TokenDB.getTokenBySymbol(symbol);
+	},
+	["token-by-symbol"],
+	{
+		revalidate: 300, // 5 minutes
+		tags: ["tokens"],
+	},
 );
 
 /**
@@ -268,14 +268,14 @@ export const getCachedTokenBySymbol = unstable_cache(
  * Tag: "market-data" - invalidate when prices refresh
  */
 export const getCachedMarketData = unstable_cache(
-  async (tokenId: string) => {
-    return MarketDataDB.getMarketData(tokenId);
-  },
-  ["market-data"],
-  {
-    revalidate: 60, // 1 minute - prices change frequently
-    tags: ["market-data"],
-  },
+	async (tokenId: string) => {
+		return MarketDataDB.getMarketData(tokenId);
+	},
+	["market-data"],
+	{
+		revalidate: 60, // 1 minute - prices change frequently
+		tags: ["market-data"],
+	},
 );
 
 /**
@@ -283,34 +283,34 @@ export const getCachedMarketData = unstable_cache(
  * Tag: "consignments" - invalidate when consignments change
  */
 export const getCachedConsignments = unstable_cache(
-  async (filters?: { chain?: Chain; tokenId?: string }) => {
-    return ConsignmentDB.getAllConsignments(filters);
-  },
-  ["consignments-list"],
-  {
-    revalidate: 60, // 1 minute
-    tags: ["consignments"],
-  },
+	async (filters?: { chain?: Chain; tokenId?: string }) => {
+		return ConsignmentDB.getAllConsignments(filters);
+	},
+	["consignments-list"],
+	{
+		revalidate: 60, // 1 minute
+		tags: ["consignments"],
+	},
 );
 
 /**
  * Get token addresses only (lightweight, 5 minute TTL)
  */
 export const getCachedTokenAddresses = unstable_cache(
-  async (chain?: Chain) => {
-    const tokens = await TokenDB.getAllTokens(
-      chain ? { chain, isActive: true } : { isActive: true },
-    );
-    return tokens.map((t) => ({
-      address: t.contractAddress,
-      chain: t.chain,
-    }));
-  },
-  ["token-addresses"],
-  {
-    revalidate: 300, // 5 minutes
-    tags: ["tokens"],
-  },
+	async (chain?: Chain) => {
+		const tokens = await TokenDB.getAllTokens(
+			chain ? { chain, isActive: true } : { isActive: true },
+		);
+		return tokens.map((t) => ({
+			address: t.contractAddress,
+			chain: t.chain,
+		}));
+	},
+	["token-addresses"],
+	{
+		revalidate: 300, // 5 minutes
+		tags: ["tokens"],
+	},
 );
 
 /**
@@ -318,60 +318,66 @@ export const getCachedTokenAddresses = unstable_cache(
  * Market data is only fetched on token details pages via useMarketDataRefresh
  *
  * Optimized for parallel fetching:
- * 1. Fetch all tokens from DB in parallel
+ * 1. Fetch all tokens from DB in parallel (gracefully handle missing tokens)
  * 2. Identify tokens missing logos
  * 3. Enrich logos in parallel (TrustWallet + Alchemy)
+ *
+ * Returns: Record<tokenId, Token | null> - null for tokens not found
  */
 export const getCachedTokenBatch = unstable_cache(
-  async (tokenIds: string[]) => {
-    const results: Record<
-      string,
-      { token: Token; marketData: TokenMarketData | null } | null
-    > = {};
+	async (tokenIds: string[]): Promise<Record<string, Token | null>> => {
+		const results: Record<string, Token | null> = {};
 
-    // Step 1: Fetch all tokens from DB in parallel
-    const tokenFetches = await Promise.all(
-      tokenIds.map(async (tokenId) => {
-        const token = await TokenDB.getToken(tokenId);
-        return { tokenId, token };
-      }),
-    );
+		// Step 1: Fetch all tokens from DB in parallel
+		// Catch errors for missing tokens and return null instead of crashing
+		const tokenFetches = await Promise.all(
+			tokenIds.map(async (tokenId) => {
+				try {
+					const token = await TokenDB.getToken(tokenId);
+					return { tokenId, token };
+				} catch (err) {
+					// Token not found - return null
+					console.warn(`[TokenBatch] Token ${tokenId} not found`);
+					return { tokenId, token: null };
+				}
+			}),
+		);
 
-    // Step 2: Identify tokens that need logo enrichment
-    const tokensNeedingLogos: Token[] = [];
-    const tokenMap = new Map<string, Token>();
+		// Step 2: Identify tokens that need logo enrichment
+		const tokensNeedingLogos: Token[] = [];
+		const tokenMap = new Map<string, Token | null>();
 
-    for (const { tokenId, token } of tokenFetches) {
-      tokenMap.set(tokenId, token);
-      if (!token.logoUrl && token.chain !== "solana") {
-        tokensNeedingLogos.push(token);
-      }
-    }
+		for (const { tokenId, token } of tokenFetches) {
+			tokenMap.set(tokenId, token);
+			if (token && !token.logoUrl && token.chain !== "solana") {
+				tokensNeedingLogos.push(token);
+			}
+		}
 
-    // Step 3: Enrich logos in parallel (batch to avoid API throttling)
-    const LOGO_BATCH_SIZE = 10;
-    for (let i = 0; i < tokensNeedingLogos.length; i += LOGO_BATCH_SIZE) {
-      const batch = tokensNeedingLogos.slice(i, i + LOGO_BATCH_SIZE);
-      const enrichedBatch = await Promise.all(
-        batch.map((token) => enrichTokenWithLogo(token)),
-      );
+		// Step 3: Enrich logos in parallel (batch to avoid API throttling)
+		const LOGO_BATCH_SIZE = 10;
+		for (let i = 0; i < tokensNeedingLogos.length; i += LOGO_BATCH_SIZE) {
+			const batch = tokensNeedingLogos.slice(i, i + LOGO_BATCH_SIZE);
+			const enrichedBatch = await Promise.all(
+				batch.map((token) => enrichTokenWithLogo(token)),
+			);
 
-      // Update token map with enriched tokens
-      for (const enrichedToken of enrichedBatch) {
-        tokenMap.set(enrichedToken.id, enrichedToken);
-      }
-    }
+			// Update token map with enriched tokens
+			for (const enrichedToken of enrichedBatch) {
+				tokenMap.set(enrichedToken.id, enrichedToken);
+			}
+		}
 
-    // Step 4: Build results
-    for (const [tokenId, token] of tokenMap) {
-      results[tokenId] = { token, marketData: null };
-    }
+		// Step 4: Build results - return Token directly (not wrapped in object)
+		for (const [tokenId, token] of tokenMap) {
+			results[tokenId] = token;
+		}
 
-    return results;
-  },
-  ["token-batch"],
-  {
-    revalidate: 300, // 5 minutes - token metadata rarely changes
-    tags: ["tokens"],
-  },
+		return results;
+	},
+	["token-batch"],
+	{
+		revalidate: 300, // 5 minutes - token metadata rarely changes
+		tags: ["tokens"],
+	},
 );

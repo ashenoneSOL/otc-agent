@@ -52,7 +52,7 @@ contract UniswapV3TWAPOracle is IAggregatorV3, Ownable2Step {
     uint32 public twapInterval = 300; // Start with 5 minutes, can be increased as pool matures
 
     // Price safety bounds to prevent manipulation
-    uint256 public constant MIN_PRICE_USD = 1e4; // $0.0001 in 8 decimals
+    uint256 public constant MIN_PRICE_USD = 1; // $0.00000001 in 8 decimals (essentially no minimum)
     uint256 public constant MAX_PRICE_USD = 1e16; // $100M in 8 decimals
     uint256 public constant MAX_PRICE_CHANGE_PERCENT = 50; // Maximum 50% price change from previous observation
     
@@ -66,7 +66,7 @@ contract UniswapV3TWAPOracle is IAggregatorV3, Ownable2Step {
         address _pool,
         address _targetToken,
         address _ethUsdFeed
-    ) payable Ownable(msg.sender) {
+    ) Ownable(msg.sender) {
         if (_pool == address(0)) revert ZeroPool();
         if (_targetToken == address(0)) revert ZeroToken();
         

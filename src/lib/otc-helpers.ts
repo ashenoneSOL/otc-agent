@@ -3,24 +3,24 @@
  */
 
 export interface ParsedOffer {
-  consignmentId: bigint;
-  tokenId: string;
-  beneficiary: string;
-  tokenAmount: bigint;
-  discountBps: bigint;
-  createdAt: bigint;
-  unlockTime: bigint;
-  priceUsdPerToken: bigint;
-  maxPriceDeviation: bigint;
-  ethUsdPrice: bigint;
-  currency: number;
-  approved: boolean;
-  paid: boolean;
-  fulfilled: boolean;
-  cancelled: boolean;
-  payer: string;
-  amountPaid: bigint;
-  agentCommissionBps: number; // 0 for P2P, 25-150 for negotiated deals
+	consignmentId: bigint;
+	tokenId: string;
+	beneficiary: string;
+	tokenAmount: bigint;
+	discountBps: bigint;
+	createdAt: bigint;
+	unlockTime: bigint;
+	priceUsdPerToken: bigint;
+	maxPriceDeviation: bigint;
+	ethUsdPrice: bigint;
+	currency: number;
+	approved: boolean;
+	paid: boolean;
+	fulfilled: boolean;
+	cancelled: boolean;
+	payer: string;
+	amountPaid: bigint;
+	agentCommissionBps: number; // 0 for P2P, 25-150 for negotiated deals
 }
 
 /**
@@ -28,27 +28,27 @@ export interface ParsedOffer {
  * Array format is the standard Solidity struct tuple return.
  */
 export type RawOfferData =
-  | readonly [
-      bigint, // 0. consignmentId
-      string, // 1. tokenId
-      string, // 2. beneficiary
-      bigint, // 3. tokenAmount
-      bigint, // 4. discountBps
-      bigint, // 5. createdAt
-      bigint, // 6. unlockTime
-      bigint, // 7. priceUsdPerToken
-      bigint, // 8. maxPriceDeviation
-      bigint, // 9. ethUsdPrice
-      number, // 10. currency
-      boolean, // 11. approved
-      boolean, // 12. paid
-      boolean, // 13. fulfilled
-      boolean, // 14. cancelled
-      string, // 15. payer
-      bigint, // 16. amountPaid
-      number, // 17. agentCommissionBps
-    ]
-  | ParsedOffer;
+	| readonly [
+			bigint, // 0. consignmentId
+			string, // 1. tokenId
+			string, // 2. beneficiary
+			bigint, // 3. tokenAmount
+			bigint, // 4. discountBps
+			bigint, // 5. createdAt
+			bigint, // 6. unlockTime
+			bigint, // 7. priceUsdPerToken
+			bigint, // 8. maxPriceDeviation
+			bigint, // 9. ethUsdPrice
+			number, // 10. currency
+			boolean, // 11. approved
+			boolean, // 12. paid
+			boolean, // 13. fulfilled
+			boolean, // 14. cancelled
+			string, // 15. payer
+			bigint, // 16. amountPaid
+			number, // 17. agentCommissionBps
+	  ]
+	| ParsedOffer;
 
 /**
  * Parse an Offer struct from viem contract read.
@@ -75,27 +75,27 @@ export type RawOfferData =
  * 17. agentCommissionBps (uint16) - 0 for P2P, 25-150 for negotiated
  */
 export function parseOfferStruct(offerRaw: RawOfferData): ParsedOffer {
-  if (Array.isArray(offerRaw)) {
-    return {
-      consignmentId: offerRaw[0],
-      tokenId: offerRaw[1],
-      beneficiary: offerRaw[2],
-      tokenAmount: offerRaw[3],
-      discountBps: offerRaw[4],
-      createdAt: offerRaw[5],
-      unlockTime: offerRaw[6],
-      priceUsdPerToken: offerRaw[7],
-      maxPriceDeviation: offerRaw[8],
-      ethUsdPrice: offerRaw[9],
-      currency: offerRaw[10],
-      approved: offerRaw[11],
-      paid: offerRaw[12],
-      fulfilled: offerRaw[13],
-      cancelled: offerRaw[14],
-      payer: offerRaw[15],
-      amountPaid: offerRaw[16],
-      agentCommissionBps: offerRaw[17],
-    };
-  }
-  return offerRaw as ParsedOffer;
+	if (Array.isArray(offerRaw)) {
+		return {
+			consignmentId: offerRaw[0],
+			tokenId: offerRaw[1],
+			beneficiary: offerRaw[2],
+			tokenAmount: offerRaw[3],
+			discountBps: offerRaw[4],
+			createdAt: offerRaw[5],
+			unlockTime: offerRaw[6],
+			priceUsdPerToken: offerRaw[7],
+			maxPriceDeviation: offerRaw[8],
+			ethUsdPrice: offerRaw[9],
+			currency: offerRaw[10],
+			approved: offerRaw[11],
+			paid: offerRaw[12],
+			fulfilled: offerRaw[13],
+			cancelled: offerRaw[14],
+			payer: offerRaw[15],
+			amountPaid: offerRaw[16],
+			agentCommissionBps: offerRaw[17],
+		};
+	}
+	return offerRaw as ParsedOffer;
 }

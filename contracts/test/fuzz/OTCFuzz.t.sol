@@ -173,8 +173,8 @@ contract OTCFuzzTest is Test {
             // Should succeed
             otc.approveOffer(offerId);
         } else {
-            // Should revert
-            vm.expectRevert("price volatility exceeded");
+            // Should revert (custom error)
+            vm.expectRevert(abi.encodeWithSignature("PriceVolatilityExceeded()"));
             otc.approveOffer(offerId);
         }
         vm.stopPrank();
@@ -267,8 +267,8 @@ contract OTCFuzzTest is Test {
             (,,,,,,,,,,,,,,bool cancelled,,,) = otc.offers(offerId);
             assertTrue(cancelled);
         } else {
-            // Should revert - not yet expired for buyer
-            vm.expectRevert("not expired");
+            // Should revert - not yet expired for buyer (custom error)
+            vm.expectRevert(abi.encodeWithSignature("NotExpired()"));
             otc.cancelOffer(offerId);
         }
         vm.stopPrank();
@@ -311,8 +311,8 @@ contract OTCFuzzTest is Test {
             otc.claim(offerId);
             assertEq(token.balanceOf(buyer), 100e18);
         } else {
-            // Should revert
-            vm.expectRevert("locked");
+            // Should revert (custom error)
+            vm.expectRevert(abi.encodeWithSignature("Locked()"));
             otc.claim(offerId);
         }
         vm.stopPrank();

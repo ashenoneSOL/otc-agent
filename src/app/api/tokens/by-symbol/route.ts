@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getCachedTokenBySymbol, getCachedMarketData } from "@/lib/cache";
-import {
-  validateQueryParams,
-  validationErrorResponse,
-} from "@/lib/validation/helpers";
+import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { getCachedMarketData, getCachedTokenBySymbol } from "@/lib/cache";
 import {
-  GetTokenBySymbolQuerySchema,
-  TokenBySymbolResponseSchema,
+	validateQueryParams,
+	validationErrorResponse,
+} from "@/lib/validation/helpers";
+import {
+	GetTokenBySymbolQuerySchema,
+	TokenBySymbolResponseSchema,
 } from "@/types/validation/api-schemas";
 
 /**
@@ -19,45 +19,45 @@ import {
  * Uses serverless-optimized caching via unstable_cache.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
+	const { searchParams } = new URL(request.url);
 
-  // Validate query params - return 400 on invalid params
-  const parseResult = GetTokenBySymbolQuerySchema.safeParse(
-    Object.fromEntries(searchParams.entries()),
-  );
-  if (!parseResult.success) {
-    return validationErrorResponse(parseResult.error, 400);
-  }
-  const query = parseResult.data;
+	// Validate query params - return 400 on invalid params
+	const parseResult = GetTokenBySymbolQuerySchema.safeParse(
+		Object.fromEntries(searchParams.entries()),
+	);
+	if (!parseResult.success) {
+		return validationErrorResponse(parseResult.error, 400);
+	}
+	const query = parseResult.data;
 
-  const { symbol, chain } = query;
-  // Get token by symbol using serverless cache
-  const token = await getCachedTokenBySymbol(symbol);
+	const { symbol, chain } = query;
+	// Get token by symbol using serverless cache
+	const token = await getCachedTokenBySymbol(symbol);
 
-  if (!token) {
-    return NextResponse.json(
-      { success: false, error: "Token not found" },
-      { status: 404 },
-    );
-  }
+	if (!token) {
+		return NextResponse.json(
+			{ success: false, error: "Token not found" },
+			{ status: 404 },
+		);
+	}
 
-  // Filter by chain if specified
-  if (chain && token.chain !== chain) {
-    return NextResponse.json(
-      { success: false, error: "Token not found on specified chain" },
-      { status: 404 },
-    );
-  }
+	// Filter by chain if specified
+	if (chain && token.chain !== chain) {
+		return NextResponse.json(
+			{ success: false, error: "Token not found on specified chain" },
+			{ status: 404 },
+		);
+	}
 
-  const marketData = await getCachedMarketData(token.id);
+	const marketData = await getCachedMarketData(token.id);
 
-  const response = { success: true, token, marketData };
-  const validatedResponse = TokenBySymbolResponseSchema.parse(response);
+	const response = { success: true, token, marketData };
+	const validatedResponse = TokenBySymbolResponseSchema.parse(response);
 
-  // Cache for 2 minutes - token metadata rarely changes
-  return NextResponse.json(validatedResponse, {
-    headers: {
-      "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
-    },
-  });
+	// Cache for 2 minutes - token metadata rarely changes
+	return NextResponse.json(validatedResponse, {
+		headers: {
+			"Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
+		},
+	});
 }

@@ -278,7 +278,7 @@ contract FullLifecycleTest is Test {
         // withdrawConsignment checks isActive first.
         
         vm.startPrank(consigner);
-        vm.expectRevert("not active");
+        vm.expectRevert(abi.encodeWithSignature("NotActive()"));
         otc.withdrawConsignment(1);
         vm.stopPrank();
     }

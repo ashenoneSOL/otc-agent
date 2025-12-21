@@ -10,7 +10,7 @@ import {IOTC} from "../contracts/interfaces/IOTC.sol";
 /// @notice Deploy updated RegistrationHelper with adaptive TWAP intervals
 contract UpgradeRegistrationHelper is Script {
     // Base Mainnet addresses
-    address constant EXISTING_OTC = 0x23eD9EC8deb2F88Ec44a2dbbe1bbE7Be7EFc02b9;
+    address constant EXISTING_OTC = 0x5a1C9911E104F18267505918894fd7d343739657;
     address constant ETH_USD_FEED = 0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70;
     
     function run() external {

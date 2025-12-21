@@ -1,74 +1,73 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { OTCConsignment } from "@/types";
 import { parseOrThrow } from "@/lib/validation/helpers";
+import type { Chain, OTCConsignment } from "@/types";
 import {
-  ConsignmentsFiltersSchema,
-  ConsignmentsResponseSchema,
-  type ConsignmentsFilters,
-  type ConsignmentsResponse,
+	type ConsignmentsFilters,
+	ConsignmentsFiltersSchema,
+	type ConsignmentsResponse,
+	ConsignmentsResponseSchema,
 } from "@/types/validation/hook-schemas";
-import type { Chain } from "@/types";
 
 async function fetchConsignments(
-  filters: ConsignmentsFilters,
+	filters: ConsignmentsFilters,
 ): Promise<OTCConsignment[]> {
-  const params = new URLSearchParams();
+	const params = new URLSearchParams();
 
-  if (filters.chains && Array.isArray(filters.chains)) {
-    filters.chains.forEach((chain) => params.append("chains", chain));
-  }
-  if (filters.negotiableTypes && Array.isArray(filters.negotiableTypes)) {
-    filters.negotiableTypes.forEach((type) =>
-      params.append("negotiableTypes", type),
-    );
-  }
-  if (filters.tokenId) params.set("tokenId", filters.tokenId);
-  if (filters.consigner) params.set("consigner", filters.consigner);
-  if (filters.requester) params.set("requester", filters.requester);
+	if (filters.chains && Array.isArray(filters.chains)) {
+		filters.chains.forEach((chain) => params.append("chains", chain));
+	}
+	if (filters.negotiableTypes && Array.isArray(filters.negotiableTypes)) {
+		filters.negotiableTypes.forEach((type) =>
+			params.append("negotiableTypes", type),
+		);
+	}
+	if (filters.tokenId) params.set("tokenId", filters.tokenId);
+	if (filters.consigner) params.set("consigner", filters.consigner);
+	if (filters.requester) params.set("requester", filters.requester);
 
-  const response = await fetch(`/api/consignments?${params.toString()}`);
-  if (!response.ok) {
-    throw new Error(
-      `Consignments API failed: ${response.status} ${response.statusText}`,
-    );
-  }
-  const rawData = await response.json();
+	const response = await fetch(`/api/consignments?${params.toString()}`);
+	if (!response.ok) {
+		throw new Error(
+			`Consignments API failed: ${response.status} ${response.statusText}`,
+		);
+	}
+	const rawData = await response.json();
 
-  // Validate response structure
-  const data = parseOrThrow(ConsignmentsResponseSchema, rawData);
+	// Validate response structure
+	const data = parseOrThrow(ConsignmentsResponseSchema, rawData);
 
-  if (!data.success) {
-    if (!data.error) {
-      throw new Error("Failed to fetch consignments: unknown error");
-    }
-    throw new Error(data.error);
-  }
+	if (!data.success) {
+		if (!data.error) {
+			throw new Error("Failed to fetch consignments: unknown error");
+		}
+		throw new Error(data.error);
+	}
 
-  if (!Array.isArray(data.consignments)) {
-    throw new Error("Invalid consignments response: expected array");
-  }
+	if (!Array.isArray(data.consignments)) {
+		throw new Error("Invalid consignments response: expected array");
+	}
 
-  // Type is validated by schema - safe to return
-  return data.consignments;
+	// Type is validated by schema - safe to return
+	return data.consignments;
 }
 
 /**
  * Query key factory for consignments - enables fine-grained cache invalidation
  */
 export const consignmentsKeys = {
-  all: ["consignments"] as const,
-  lists: () => [...consignmentsKeys.all, "list"] as const,
-  list: (filters: ConsignmentsFilters) =>
-    [...consignmentsKeys.lists(), filters] as const,
-  byConsigner: (address: string) =>
-    [...consignmentsKeys.lists(), { consigner: address }] as const,
-  byToken: (tokenId: string) =>
-    [...consignmentsKeys.lists(), { tokenId }] as const,
+	all: ["consignments"] as const,
+	lists: () => [...consignmentsKeys.all, "list"] as const,
+	list: (filters: ConsignmentsFilters) =>
+		[...consignmentsKeys.lists(), filters] as const,
+	byConsigner: (address: string) =>
+		[...consignmentsKeys.lists(), { consigner: address }] as const,
+	byToken: (tokenId: string) =>
+		[...consignmentsKeys.lists(), { tokenId }] as const,
 };
 
 interface UseConsignmentsOptions {
-  filters?: ConsignmentsFilters;
-  enabled?: boolean;
+	filters?: ConsignmentsFilters;
+	enabled?: boolean;
 }
 
 /**
@@ -82,68 +81,68 @@ interface UseConsignmentsOptions {
  * - Shared cache across all components using same filters
  */
 export function useConsignments(options: UseConsignmentsOptions = {}) {
-  const { filters = {}, enabled = true } = options;
+	const { filters = {}, enabled = true } = options;
 
-  const validatedFilters = parseOrThrow(ConsignmentsFiltersSchema, filters);
+	const validatedFilters = parseOrThrow(ConsignmentsFiltersSchema, filters);
 
-  return useQuery({
-    queryKey: consignmentsKeys.list(validatedFilters),
-    queryFn: () => fetchConsignments(validatedFilters),
-    staleTime: 60_000, // 1 minute - consignments change less frequently
-    gcTime: 300_000, // 5 minutes - keep in cache longer
-    enabled,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-  });
+	return useQuery({
+		queryKey: consignmentsKeys.list(validatedFilters),
+		queryFn: () => fetchConsignments(validatedFilters),
+		staleTime: 60_000, // 1 minute - consignments change less frequently
+		gcTime: 300_000, // 5 minutes - keep in cache longer
+		enabled,
+		refetchOnWindowFocus: true,
+		refetchOnMount: true,
+	});
 }
 
 /**
  * Hook to fetch consignments for the trading desk (public listings)
  */
 export function useTradingDeskConsignments(filters: {
-  chains: Chain[];
-  negotiableTypes: ("negotiable" | "fixed")[];
+	chains: Chain[];
+	negotiableTypes: ("negotiable" | "fixed")[];
 }) {
-  return useConsignments({
-    filters: {
-      chains: filters.chains,
-      negotiableTypes: filters.negotiableTypes,
-    },
-  });
+	return useConsignments({
+		filters: {
+			chains: filters.chains,
+			negotiableTypes: filters.negotiableTypes,
+		},
+	});
 }
 
 /**
  * Hook to fetch consignments owned by a specific wallet
  */
 export function useMyConsignments(walletAddress: string | undefined) {
-  return useConsignments({
-    filters: { consigner: walletAddress },
-    enabled: !!walletAddress,
-  });
+	return useConsignments({
+		filters: { consigner: walletAddress },
+		enabled: !!walletAddress,
+	});
 }
 
 /**
  * Hook to prefetch consignments (e.g., on hover or before navigation)
  */
 export function usePrefetchConsignments() {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return (filters: ConsignmentsFilters) => {
-    queryClient.prefetchQuery({
-      queryKey: consignmentsKeys.list(filters),
-      queryFn: () => fetchConsignments(filters),
-      staleTime: 60_000,
-    });
-  };
+	return (filters: ConsignmentsFilters) => {
+		queryClient.prefetchQuery({
+			queryKey: consignmentsKeys.list(filters),
+			queryFn: () => fetchConsignments(filters),
+			staleTime: 60_000,
+		});
+	};
 }
 
 /**
  * Hook to invalidate consignments cache (call after mutations)
  */
 export function useInvalidateConsignments() {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return () => {
-    queryClient.invalidateQueries({ queryKey: consignmentsKeys.all });
-  };
+	return () => {
+		queryClient.invalidateQueries({ queryKey: consignmentsKeys.all });
+	};
 }

@@ -1,52 +1,52 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { agentRuntime } from "@/lib/agent-runtime";
-import QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
+import type QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
 import {
-  validateRouteParams,
-  validationErrorResponse,
+	validateRouteParams,
+	validationErrorResponse,
 } from "@/lib/validation/helpers";
 import {
-  GetQuoteByOfferParamsSchema,
-  QuoteByOfferErrorResponseSchema,
+	GetQuoteByOfferParamsSchema,
+	QuoteByOfferErrorResponseSchema,
 } from "@/types/validation/api-schemas";
-import { z } from "zod";
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ offerId: string }> },
+	request: NextRequest,
+	{ params }: { params: Promise<{ offerId: string }> },
 ) {
-  await agentRuntime.getRuntime();
+	await agentRuntime.getRuntime();
 
-  const routeParams = await params;
-  const validatedParams = validateRouteParams(
-    GetQuoteByOfferParamsSchema,
-    routeParams,
-  );
+	const routeParams = await params;
+	const validatedParams = validateRouteParams(
+		GetQuoteByOfferParamsSchema,
+		routeParams,
+	);
 
-  const { offerId } = validatedParams;
+	const { offerId } = validatedParams;
 
-  const runtime = await agentRuntime.getRuntime();
-  const quoteService = runtime.getService<QuoteService>("QuoteService");
+	const runtime = await agentRuntime.getRuntime();
+	const quoteService = runtime.getService<QuoteService>("QuoteService");
 
-  // FAIL-FAST: QuoteService must be available
-  if (!quoteService) {
-    throw new Error(
-      "QuoteService not available - agent runtime not properly initialized",
-    );
-  }
+	// FAIL-FAST: QuoteService must be available
+	if (!quoteService) {
+		throw new Error(
+			"QuoteService not available - agent runtime not properly initialized",
+		);
+	}
 
-  // Search for quote with matching offerId
-  const matchingQuote = await quoteService.getQuoteByOfferId(String(offerId));
+	// Search for quote with matching offerId
+	const matchingQuote = await quoteService.getQuoteByOfferId(String(offerId));
 
-  if (!matchingQuote) {
-    const notFoundResponse = { error: "Quote not found for this offer" };
-    const validatedNotFound =
-      QuoteByOfferErrorResponseSchema.parse(notFoundResponse);
-    return NextResponse.json(validatedNotFound, { status: 404 });
-  }
+	if (!matchingQuote) {
+		const notFoundResponse = { error: "Quote not found for this offer" };
+		const validatedNotFound =
+			QuoteByOfferErrorResponseSchema.parse(notFoundResponse);
+		return NextResponse.json(validatedNotFound, { status: 404 });
+	}
 
-  // Redirect to the deal page
-  return NextResponse.redirect(
-    new URL(`/deal/${matchingQuote.quoteId}`, request.url),
-  );
+	// Redirect to the deal page
+	return NextResponse.redirect(
+		new URL(`/deal/${matchingQuote.quoteId}`, request.url),
+	);
 }

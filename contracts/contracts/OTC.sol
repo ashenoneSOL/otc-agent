@@ -221,6 +221,7 @@ contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
   event EmergencyRefund(uint256 indexed offerId, address indexed recipient, uint256 amount, PaymentCurrency currency);
   event StorageCleaned(uint256 offersRemoved);
   event RefundAttemptFailed(address indexed payer, uint256 amount);
+  event P2PCommissionUpdated(uint16 oldBps, uint16 newBps);
 
   modifier onlyApproverRole() {
     if (msg.sender != agent && !isApprover[msg.sender]) revert NotApprover();
@@ -284,7 +285,9 @@ contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
   function setEmergencyRefundDeadline(uint256 days_) external onlyOwner { emergencyRefundDeadline = days_ * 1 days; }
   function setP2PCommission(uint16 bps) external onlyOwner { 
     if (bps > 500) revert CommissionOutOfRange(); // Max 5% for P2P
+    uint16 oldBps = p2pCommissionBps;
     p2pCommissionBps = bps;
+    emit P2PCommissionUpdated(oldBps, bps);
   }
 
   function pause() external onlyOwner { _pause(); }
@@ -418,7 +421,7 @@ contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
 
   function withdrawGasDeposits(uint256[] calldata consignmentIds) external onlyApproverRole nonReentrant {
     if (consignmentIds.length > 50) revert BatchTooLarge();
-    uint256 totalWithdrawn;
+    uint256 totalWithdrawn = 0;
     uint256 len = consignmentIds.length;
     for (uint256 i; i < len;) {
       uint256 id = consignmentIds[i];
@@ -756,7 +759,7 @@ contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
     uint256 total = openOfferIds.length;
     // Start from the end for more recent offers
     uint256 startIdx = total > MAX_OPEN_OFFERS_TO_RETURN ? total - MAX_OPEN_OFFERS_TO_RETURN : 0;
-    uint256 count;
+    uint256 count = 0;
     uint256 expiry = quoteExpirySeconds; // Cache state variable
     
     // First pass: count valid offers
@@ -767,7 +770,7 @@ contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
     }
     
     uint256[] memory result = new uint256[](count);
-    uint256 idx;
+    uint256 idx = 0;
     
     // Second pass: collect valid offers
     for (uint256 j = startIdx; j < total && idx < count;) {
@@ -944,8 +947,8 @@ contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
   
   function _cleanupOldOffers() private {
     uint256 currentTime = block.timestamp;
-    uint256 removed;
-    uint256 newLength;
+    uint256 removed = 0;
+    uint256 newLength = 0;
     uint256 len = openOfferIds.length;
     uint256 expiry = quoteExpirySeconds; // Cache state variable
     
@@ -985,7 +988,7 @@ contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
     // Public function to allow anyone to help clean storage
     if (maxToClean == 0 || maxToClean > 100) revert InvalidMax();
     uint256 currentTime = block.timestamp;
-    uint256 cleaned;
+    uint256 cleaned = 0;
     uint256 len = openOfferIds.length;
     uint256 expiry = quoteExpirySeconds; // Cache state variable
     

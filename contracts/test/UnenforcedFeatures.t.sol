@@ -140,7 +140,7 @@ contract PotentialImprovementsTest is Test {
         
         // But next approval from same approver fails
         vm.prank(approver);
-        vm.expectRevert("already approved by you");
+        vm.expectRevert(abi.encodeWithSignature("AlreadyApprovedByYou()"));
         otc.approveOffer(offerId);
         
         // Different approver can push it through

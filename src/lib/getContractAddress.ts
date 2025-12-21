@@ -8,5 +8,5 @@ import { getOtcAddress } from "@/config/contracts";
  * This wrapper exists for backwards compatibility.
  */
 export function getContractAddress(): Address {
-  return getOtcAddress() as Address;
+	return getOtcAddress() as Address;
 }

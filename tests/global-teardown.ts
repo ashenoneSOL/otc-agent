@@ -91,9 +91,7 @@ export default async function globalTeardown(): Promise<void> {
     // No state file - stop everything as fallback
     stopNextJs();
     stopAnvil();
-    if (process.env.E2E_START_SOLANA !== "false") {
-      stopSolana();
-    }
+    stopSolana();
     logTeardown("Stopped all services (no state file found)");
   }
 

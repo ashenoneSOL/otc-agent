@@ -100,19 +100,23 @@ contract PaymentFlowTest is Test {
         uint256 paymentAmount = buyerUsdcBefore - buyerUsdcAfter;
         assertEq(paymentAmount, 100e6, "Buyer should have paid $100 USDC");
         
-        // Verify contract received USDC
+        // Verify contract received USDC (minus commission to agent)
+        // P2P commission is 0.25% (25 bps), so agent gets $0.25, contract gets $99.75
+        uint256 commissionAmount = (100e6 * 25) / 10000; // 0.25%
+        uint256 netAmount = 100e6 - commissionAmount;
         uint256 contractUsdcBalance = usdc.balanceOf(address(otc));
-        assertEq(contractUsdcBalance, 100e6, "Contract should hold $100 USDC");
+        assertEq(contractUsdcBalance, netAmount, "Contract should hold net USDC (after commission)");
+        assertEq(usdc.balanceOf(agent), commissionAmount, "Agent should receive commission");
 
         // 5. Owner withdraws USDC to treasury
         vm.startPrank(owner);
         uint256 treasuryBefore = usdc.balanceOf(treasury);
-        otc.withdrawStable(treasury, 100e6, 0);
+        otc.withdrawStable(treasury, netAmount, 0);
         uint256 treasuryAfter = usdc.balanceOf(treasury);
         vm.stopPrank();
 
-        // Verify treasury received payment
-        assertEq(treasuryAfter - treasuryBefore, 100e6, "Treasury should receive $100 USDC");
+        // Verify treasury received payment (minus commission already paid to agent)
+        assertEq(treasuryAfter - treasuryBefore, netAmount, "Treasury should receive net USDC");
         assertEq(usdc.balanceOf(address(otc)), 0, "Contract should have 0 USDC after withdrawal");
 
         // 6. Buyer claims tokens
@@ -158,21 +162,26 @@ contract PaymentFlowTest is Test {
 
         // 5. Buyer pays with ETH
         uint256 contractEthBefore = address(otc).balance;
+        uint256 agentEthBefore = agent.balance;
         vm.prank(buyer);
         otc.fulfillOffer{value: requiredEth}(offerId);
         
-        // Verify contract received ETH
+        // Verify contract received ETH (minus commission to agent)
+        // P2P commission is 0.25% (25 bps)
+        uint256 commissionAmount = (requiredEth * 25) / 10000;
+        uint256 netAmount = requiredEth - commissionAmount;
         uint256 contractEthAfter = address(otc).balance;
-        assertEq(contractEthAfter - contractEthBefore, requiredEth, "Contract should hold ETH payment");
+        assertEq(contractEthAfter - contractEthBefore, netAmount, "Contract should hold net ETH (after commission)");
+        assertEq(agent.balance - agentEthBefore, commissionAmount, "Agent should receive ETH commission");
 
         // 6. Owner withdraws ETH to treasury
         uint256 treasuryEthBefore = treasury.balance;
         vm.prank(owner);
-        otc.withdrawStable(treasury, 0, requiredEth);
+        otc.withdrawStable(treasury, 0, netAmount);
         uint256 treasuryEthAfter = treasury.balance;
 
-        // Verify treasury received ETH
-        assertEq(treasuryEthAfter - treasuryEthBefore, requiredEth, "Treasury should receive ETH");
+        // Verify treasury received ETH (minus commission already paid to agent)
+        assertEq(treasuryEthAfter - treasuryEthBefore, netAmount, "Treasury should receive net ETH");
 
         // 7. Buyer claims tokens
         vm.prank(buyer);
@@ -208,14 +217,19 @@ contract PaymentFlowTest is Test {
             vm.stopPrank();
         }
 
-        // Verify contract accumulated all payments
+        // Verify contract accumulated all payments (minus commission to agent)
+        // P2P commission is 0.25% (25 bps), so per offer: $100 - $0.25 = $99.75
+        uint256 commissionPerOffer = (100e6 * 25) / 10000;
+        uint256 netPerOffer = 100e6 - commissionPerOffer;
+        uint256 totalNet = netPerOffer * 3;
         uint256 totalPayments = usdc.balanceOf(address(otc));
-        assertEq(totalPayments, 300e6, "Contract should hold $300 USDC from 3 offers");
+        assertEq(totalPayments, totalNet, "Contract should hold net USDC from 3 offers (after commission)");
+        assertEq(usdc.balanceOf(agent), commissionPerOffer * 3, "Agent should receive total commission from 3 offers");
 
         // Owner can withdraw all at once
         vm.prank(owner);
-        otc.withdrawStable(treasury, 300e6, 0);
-        assertEq(usdc.balanceOf(treasury), 300e6, "Treasury should receive $300 USDC");
+        otc.withdrawStable(treasury, totalNet, 0);
+        assertEq(usdc.balanceOf(treasury), totalNet, "Treasury should receive net USDC");
     }
 
     /**
@@ -237,19 +251,23 @@ contract PaymentFlowTest is Test {
         otc.fulfillOffer(offerId);
         vm.stopPrank();
 
+        // Commission is 0.25% for P2P, so contract holds net amount
+        uint256 commissionAmount = (100e6 * 25) / 10000;
+        uint256 netAmount = 100e6 - commissionAmount;
+
         // Non-owner cannot withdraw
         vm.prank(buyer);
         vm.expectRevert();
-        otc.withdrawStable(buyer, 100e6, 0);
+        otc.withdrawStable(buyer, netAmount, 0);
 
         vm.prank(consigner);
         vm.expectRevert();
-        otc.withdrawStable(consigner, 100e6, 0);
+        otc.withdrawStable(consigner, netAmount, 0);
 
         // Owner can withdraw
         vm.prank(owner);
-        otc.withdrawStable(treasury, 100e6, 0);
-        assertEq(usdc.balanceOf(treasury), 100e6);
+        otc.withdrawStable(treasury, netAmount, 0);
+        assertEq(usdc.balanceOf(treasury), netAmount);
     }
 
     /**

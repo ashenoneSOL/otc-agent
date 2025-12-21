@@ -78,7 +78,7 @@ contract CriticalEdgeCasesTest is Test {
         
         // Try to create offer with 100% discount - should fail min USD check
         vm.prank(buyer);
-        vm.expectRevert("min usd not met");
+        vm.expectRevert(abi.encodeWithSignature("MinUsdNotMet()"));
         otc.createOfferFromConsignment(1, 100e18, 10000, OTC.PaymentCurrency.USDC, 0, 100);
     }
 
@@ -89,6 +89,7 @@ contract CriticalEdgeCasesTest is Test {
     /**
      * @notice Verify emergency refund returns ETH correctly
      * Note: Using non-negotiable (P2P) - no approval needed
+     * Note: Commission (0.25% for P2P) is paid to agent on fulfillment and NOT refunded
      */
     function test_EDGE_EmergencyRefundETH() public {
         vm.startPrank(consigner);
@@ -112,17 +113,24 @@ contract CriticalEdgeCasesTest is Test {
         
         assertEq(buyer.balance, buyerBalBefore - required, "Buyer paid ETH");
         
+        // Get the amount that will be refunded (after commission was deducted)
+        // amountPaid is at position 16 in the Offer struct
+        (,,,,,,,,,,,,,,,, uint256 amountPaid,) = otc.offers(offerId);
+        
         // Enable emergency refund and wait
         vm.prank(owner);
         otc.setEmergencyRefund(true);
         vm.warp(block.timestamp + 31 days);
         
+        uint256 buyerBalBeforeRefund = buyer.balance;
+        
         // Refund
         vm.prank(buyer);
         otc.emergencyRefund(offerId);
         
-        // Verify ETH returned
-        assertEq(buyer.balance, buyerBalBefore, "Buyer got ETH refund");
+        // Verify ETH returned (minus commission which was already paid to agent)
+        // Commission = 0.25% for P2P, so refund is amountPaid (net of commission)
+        assertEq(buyer.balance, buyerBalBeforeRefund + amountPaid, "Buyer got ETH refund (minus commission)");
         
         // Verify consignment restored
         (,,, uint256 remaining,,,,,,,,,,,bool active,) = otc.consignments(1);
@@ -269,17 +277,17 @@ contract CriticalEdgeCasesTest is Test {
         
         // Attacker cannot withdraw
         vm.prank(attacker);
-        vm.expectRevert("not consigner");
+        vm.expectRevert(abi.encodeWithSignature("NotConsigner()"));
         otc.withdrawConsignment(1);
         
         // Owner cannot withdraw (unless emergency)
         vm.prank(owner);
-        vm.expectRevert("not consigner");
+        vm.expectRevert(abi.encodeWithSignature("NotConsigner()"));
         otc.withdrawConsignment(1);
         
         // Agent cannot withdraw
         vm.prank(agent);
-        vm.expectRevert("not consigner");
+        vm.expectRevert(abi.encodeWithSignature("NotConsigner()"));
         otc.withdrawConsignment(1);
         
         // Consigner can withdraw
@@ -369,7 +377,7 @@ contract CriticalEdgeCasesTest is Test {
     function test_EDGE_DuplicateTokenBlocked() public {
         // Try to register same tokenId again
         vm.prank(owner);
-        vm.expectRevert("token exists");
+        vm.expectRevert(abi.encodeWithSignature("TokenExists()"));
         otc.registerToken(tokenId, address(token), address(tokenFeed));
     }
 
@@ -391,7 +399,7 @@ contract CriticalEdgeCasesTest is Test {
         
         // Cannot create offer on withdrawn consignment
         vm.prank(buyer);
-        vm.expectRevert("consignment not active");
+        vm.expectRevert(abi.encodeWithSignature("ConsignmentNotActive()"));
         otc.createOfferFromConsignment(1, 100e18, 0, OTC.PaymentCurrency.USDC, 0, 0);
     }
 
@@ -427,12 +435,12 @@ contract CriticalEdgeCasesTest is Test {
         otc.fulfillOffer(offerId);
         
         // Try to claim immediately - should fail
-        vm.expectRevert("locked");
+        vm.expectRevert(abi.encodeWithSignature("Locked()"));
         otc.claim(offerId);
         
         // Warp 29 days - still locked
         vm.warp(block.timestamp + 29 days);
-        vm.expectRevert("locked");
+        vm.expectRevert(abi.encodeWithSignature("Locked()"));
         otc.claim(offerId);
         
         // Warp 1 more day - now unlocked
@@ -501,17 +509,17 @@ contract CriticalEdgeCasesTest is Test {
         
         // Attacker cannot claim
         vm.prank(attacker);
-        vm.expectRevert("not beneficiary");
+        vm.expectRevert(abi.encodeWithSignature("NotBeneficiary()"));
         otc.claim(offerId);
         
         // Owner cannot claim
         vm.prank(owner);
-        vm.expectRevert("not beneficiary");
+        vm.expectRevert(abi.encodeWithSignature("NotBeneficiary()"));
         otc.claim(offerId);
         
         // Agent cannot claim  
         vm.prank(agent);
-        vm.expectRevert("not beneficiary");
+        vm.expectRevert(abi.encodeWithSignature("NotBeneficiary()"));
         otc.claim(offerId);
         
         // Beneficiary can claim
@@ -692,14 +700,14 @@ contract AdminEmergencyWithdrawTest is Test {
         
         // Try admin emergency withdraw immediately - should fail
         vm.prank(owner);
-        vm.expectRevert("must wait 180 days after unlock");
+        vm.expectRevert(abi.encodeWithSignature("MustWait180Days()"));
         otc.adminEmergencyWithdraw(offerId);
         
         // Warp 179 days after unlock (unlock is immediate since no lockup)
         vm.warp(block.timestamp + 179 days);
         
         vm.prank(owner);
-        vm.expectRevert("must wait 180 days after unlock");
+        vm.expectRevert(abi.encodeWithSignature("MustWait180Days()"));
         otc.adminEmergencyWithdraw(offerId);
     }
 

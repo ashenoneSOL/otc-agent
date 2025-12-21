@@ -6,12 +6,12 @@ import { AppProgressBar } from "next-nprogress-bar";
 const BRAND_PRIMARY = "#F75B1E";
 
 export function ProgressBar() {
-  return (
-    <AppProgressBar
-      height="1px"
-      color={BRAND_PRIMARY}
-      options={{ showSpinner: false }}
-      shallowRouting
-    />
-  );
+	return (
+		<AppProgressBar
+			height="1px"
+			color={BRAND_PRIMARY}
+			options={{ showSpinner: false }}
+			shallowRouting
+		/>
+	);
 }

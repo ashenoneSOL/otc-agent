@@ -1,55 +1,67 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getAlchemyApiKey } from "@/config/env";
 import {
-  parseOrThrow,
-  validationErrorResponse,
+	parseOrThrow,
+	validationErrorResponse,
 } from "@/lib/validation/helpers";
 import {
-  RpcRequestSchema,
-  RpcProxyResponseSchema,
-  RpcProxyErrorResponseSchema,
+	RpcProxyErrorResponseSchema,
+	RpcProxyResponseSchema,
+	RpcRequestSchema,
 } from "@/types/validation/api-schemas";
-import { z } from "zod";
 
 // Proxy RPC requests to Alchemy to keep API key server-side
 // This prevents the Alchemy API key from being exposed in the browser
 
 export async function POST(request: NextRequest) {
-  const alchemyKey = getAlchemyApiKey();
-  if (!alchemyKey) {
-    console.error("[RPC Proxy] ALCHEMY_API_KEY not configured");
-    const errorResponse = { error: "RPC not configured" };
-    const validatedError = RpcProxyErrorResponseSchema.parse(errorResponse);
-    return NextResponse.json(validatedError, { status: 500 });
-  }
+	const alchemyKey = getAlchemyApiKey();
+	if (!alchemyKey) {
+		console.error("[RPC Proxy] ALCHEMY_API_KEY not configured");
+		const errorResponse = { error: "RPC not configured" };
+		const validatedError = RpcProxyErrorResponseSchema.parse(errorResponse);
+		return NextResponse.json(validatedError, { status: 500 });
+	}
 
-  const ALCHEMY_BASE_URL = `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+	const ALCHEMY_BASE_URL = `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`;
 
-  const body = await request.json();
-  const data = parseOrThrow(RpcRequestSchema, body);
+	let body;
+	try {
+		body = await request.json();
+	} catch {
+		const errorResponse = { error: "Invalid JSON body" };
+		const validatedError = RpcProxyErrorResponseSchema.parse(errorResponse);
+		return NextResponse.json(validatedError, { status: 400 });
+	}
 
-  const response = await fetch(ALCHEMY_BASE_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  });
+	const parseResult = RpcRequestSchema.safeParse(body);
+	if (!parseResult.success) {
+		return validationErrorResponse(parseResult.error, 400);
+	}
+	const data = parseResult.data;
 
-  if (!response.ok) {
-    console.error(
-      "[RPC Proxy] Alchemy error:",
-      response.status,
-      response.statusText,
-    );
-    const errorResponse = { error: "RPC request failed" };
-    const validatedError = RpcProxyErrorResponseSchema.parse(errorResponse);
-    return NextResponse.json(validatedError, { status: response.status });
-  }
+	const response = await fetch(ALCHEMY_BASE_URL, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify(data),
+	});
 
-  const result = await response.json();
+	if (!response.ok) {
+		console.error(
+			"[RPC Proxy] Alchemy error:",
+			response.status,
+			response.statusText,
+		);
+		const errorResponse = { error: "RPC request failed" };
+		const validatedError = RpcProxyErrorResponseSchema.parse(errorResponse);
+		return NextResponse.json(validatedError, { status: response.status });
+	}
 
-  // Validate RPC response structure (JSON-RPC format)
-  const validatedResult = RpcProxyResponseSchema.parse(result);
-  return NextResponse.json(validatedResult);
+	const result = await response.json();
+
+	// Validate RPC response structure (JSON-RPC format)
+	const validatedResult = RpcProxyResponseSchema.parse(result);
+	return NextResponse.json(validatedResult);
 }

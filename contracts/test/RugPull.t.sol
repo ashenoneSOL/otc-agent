@@ -81,11 +81,16 @@ contract RugPullTest is Test {
         vm.stopPrank();
         
         // 8. Check state
-        (,,,,,,,,,,,,,,bool cancelled,,,) = otc.offers(offerId);
+        // cancelled is at position 14, amountPaid is at position 16 in the Offer struct
+        (,,,,,,,,,,,,,,bool cancelled,, uint256 amountPaid,) = otc.offers(offerId);
         assertTrue(cancelled, "Offer should be cancelled");
         
-        // Buyer got money back?
-        assertEq(usdc.balanceOf(buyer), 10000e6, "Buyer should have full refund");
+        // Buyer got money back (minus commission which was already paid to agent during fulfillment)
+        // P2P commission is 0.25% (25 bps), so commission was sent to agent on fulfillment
+        // Buyer started with 10000e6, paid 100e6, got back amountPaid
+        // Final balance = 10000e6 - 100e6 + amountPaid
+        uint256 expectedBalance = 10000e6 - 100e6 + amountPaid;
+        assertEq(usdc.balanceOf(buyer), expectedBalance, "Buyer should have refund (minus commission)");
         
         // This proves the Consigner was rugged (deal cancelled early)
     }

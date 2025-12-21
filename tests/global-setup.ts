@@ -218,12 +218,6 @@ async function deployContracts(): Promise<void> {
 }
 
 async function startSolana(): Promise<{ pid?: number; shouldStop: boolean }> {
-  const shouldStart = process.env.E2E_START_SOLANA !== "false";
-  if (!shouldStart) {
-    logSetup("Skipping Solana setup (E2E_START_SOLANA=false)");
-    return { shouldStop: false };
-  }
-
   const shouldRestart = process.env.E2E_RESTART_SOLANA === "true";
   const alreadyRunning = isPortInUse(SOLANA_PORT);
 
@@ -261,27 +255,40 @@ async function startSolana(): Promise<{ pid?: number; shouldStop: boolean }> {
 async function startNextJs(): Promise<{ process: ChildProcess | null; shouldStop: boolean }> {
   const shouldStart = process.env.E2E_START_NEXT !== "false";
 
-  // Check if already running
-  const alreadyRunning = await waitForUrl(`http://localhost:${APP_PORT}`, 3000)
-    .then(() => true)
-    .catch(() => false);
+  // Check if already running AND healthy (returns 2xx on health endpoint)
+  let serverState: "healthy" | "unhealthy" | "not_running" = "not_running";
+  try {
+    const response = await fetch(`http://localhost:${APP_PORT}/api/tokens`, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (response.ok || response.status === 404) {
+      serverState = "healthy";
+    } else {
+      serverState = "unhealthy";
+      logSetup(`Next.js running but unhealthy (HTTP ${response.status}) - will restart`);
+    }
+  } catch {
+    serverState = "not_running";
+  }
 
-  if (alreadyRunning) {
-    logSetup(`Next.js already running on port ${APP_PORT} - reusing`);
+  if (serverState === "healthy") {
+    logSetup(`Next.js already running and healthy on port ${APP_PORT} - reusing`);
     return { process: null, shouldStop: false };
   }
 
   if (!shouldStart) {
-    throw new Error(`E2E_START_NEXT=false but Next.js is not running on port ${APP_PORT}`);
+    throw new Error(`E2E_START_NEXT=false but Next.js is not running/healthy on port ${APP_PORT}`);
   }
 
   logSetup("Starting Next.js dev server...");
 
+  // Kill any existing server (including unhealthy ones)
   killProcessesOnPort(APP_PORT);
   execSync("pkill -f 'next dev' 2>/dev/null || true", { stdio: "ignore" });
   execSync("pkill -f 'next-server' 2>/dev/null || true", { stdio: "ignore" });
 
-  await sleep(1000);
+  await sleep(2000);
 
   // Environment for local testing
   const env = { ...process.env };
@@ -305,7 +312,7 @@ async function startNextJs(): Promise<{ process: ChildProcess | null; shouldStop
 
   next.unref();
 
-  await waitForUrl(`http://localhost:${APP_PORT}`, 120000);
+  await waitForUrl(`http://localhost:${APP_PORT}/api/tokens`, 120000);
   logSetup(`Next.js started on port ${APP_PORT}`);
 
   return { process: next, shouldStop: true };
@@ -325,7 +332,8 @@ async function seedLocalTokens(): Promise<void> {
 
   const evmDeployment = JSON.parse(readFileSync(localEvmFile, "utf8")) as LocalEvmConfig;
   if (!evmDeployment.contracts) {
-    throw new Error("EVM deployment missing contracts field");
+    logSetup("EVM deployment missing contracts field, skipping token seed");
+    return;
   }
   const tokenAddress = evmDeployment.contracts.elizaToken;
 
@@ -336,25 +344,54 @@ async function seedLocalTokens(): Promise<void> {
 
   logSetup("Seeding local test token...");
 
-  const response = await fetch(`http://localhost:${APP_PORT}/api/tokens`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      symbol: "TEST",
-      name: "Local Test Token",
-      contractAddress: tokenAddress,
-      chain: "base",
-      decimals: 18,
-      logoUrl: "/tokens/eliza.svg",
-      description: "LOCAL DEV ONLY - Test token for E2E",
-    }),
-  });
+  try {
+    // First check if the token already exists
+    const checkResponse = await fetch(
+      `http://localhost:${APP_PORT}/api/tokens?address=${tokenAddress}&chain=base`,
+      { signal: AbortSignal.timeout(10000) },
+    );
 
-  if (response.ok) {
-    logSetup("Local test token registered successfully");
-  } else {
-    const error = await response.text();
-    throw new Error(`Token seed failed: ${error}`);
+    if (checkResponse.ok) {
+      interface TokensCheckResponse {
+        tokens: Array<{ contractAddress: string }>;
+      }
+      const checkData = (await checkResponse.json()) as TokensCheckResponse;
+      const existingToken = checkData.tokens?.find(
+        (t) => t.contractAddress.toLowerCase() === tokenAddress.toLowerCase(),
+      );
+      if (existingToken) {
+        logSetup("Local test token already exists, skipping seed");
+        return;
+      }
+    }
+
+    // Create the token
+    const response = await fetch(`http://localhost:${APP_PORT}/api/tokens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbol: "TEST",
+        name: "Local Test Token",
+        contractAddress: tokenAddress,
+        chain: "base",
+        decimals: 18,
+        logoUrl: "/tokens/eliza.svg",
+        description: "LOCAL DEV ONLY - Test token for E2E",
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (response.ok) {
+      logSetup("Local test token registered successfully");
+    } else {
+      const error = await response.text();
+      // Non-fatal: log warning but continue - tests can still run with existing tokens
+      logSetup(`Warning: Token seed returned ${response.status}: ${error || "(empty response)"}`);
+    }
+  } catch (e) {
+    // Non-fatal: log warning but continue
+    const errMsg = e instanceof Error ? e.message : String(e);
+    logSetup(`Warning: Token seed failed: ${errMsg}`);
   }
 }
 

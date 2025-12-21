@@ -8,12 +8,6 @@
 import globalSetup from "../global-setup";
 
 export default async function playwrightGlobalSetup(): Promise<void> {
-  // Synpress wallet tests are typically run per-chain in CI.
-  // Default to skipping Solana infra unless explicitly enabled.
-  if (!process.env.E2E_START_SOLANA) {
-    process.env.E2E_START_SOLANA = "false";
-  }
-
   // Force local RPC defaults for on-chain assertions
   process.env.NEXT_PUBLIC_NETWORK = "local";
   process.env.NETWORK = "local";

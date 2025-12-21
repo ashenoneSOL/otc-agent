@@ -1,52 +1,64 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getAlchemyApiKey } from "@/config/env";
 import {
-  parseOrThrow,
-  validationErrorResponse,
+	parseOrThrow,
+	validationErrorResponse,
 } from "@/lib/validation/helpers";
 import {
-  RpcRequestSchema,
-  RpcProxyErrorResponseSchema,
+	RpcProxyErrorResponseSchema,
+	RpcRequestSchema,
 } from "@/types/validation/api-schemas";
-import { z } from "zod";
 
 // Proxy RPC requests to Alchemy to keep API key server-side
 // This prevents the Alchemy API key from being exposed in the browser
 // Supports Ethereum mainnet
 
 export async function POST(request: NextRequest) {
-  const alchemyKey = getAlchemyApiKey();
-  if (!alchemyKey) {
-    console.error("[RPC Proxy] ALCHEMY_API_KEY not configured");
-    const errorResponse = { error: "RPC not configured" };
-    const validatedError = RpcProxyErrorResponseSchema.parse(errorResponse);
-    return NextResponse.json(validatedError, { status: 500 });
-  }
+	const alchemyKey = getAlchemyApiKey();
+	if (!alchemyKey) {
+		console.error("[RPC Proxy] ALCHEMY_API_KEY not configured");
+		const errorResponse = { error: "RPC not configured" };
+		const validatedError = RpcProxyErrorResponseSchema.parse(errorResponse);
+		return NextResponse.json(validatedError, { status: 500 });
+	}
 
-  const ALCHEMY_ETH_URL = `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+	const ALCHEMY_ETH_URL = `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`;
 
-  const body = await request.json();
-  const data = parseOrThrow(RpcRequestSchema, body);
+	let body;
+	try {
+		body = await request.json();
+	} catch {
+		const errorResponse = { error: "Invalid JSON body" };
+		const validatedError = RpcProxyErrorResponseSchema.parse(errorResponse);
+		return NextResponse.json(validatedError, { status: 400 });
+	}
 
-  const response = await fetch(ALCHEMY_ETH_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  });
+	const parseResult = RpcRequestSchema.safeParse(body);
+	if (!parseResult.success) {
+		return validationErrorResponse(parseResult.error, 400);
+	}
+	const data = parseResult.data;
 
-  if (!response.ok) {
-    console.error(
-      "[RPC Proxy] Alchemy error:",
-      response.status,
-      response.statusText,
-    );
-    const errorResponse = { error: "RPC request failed" };
-    const validatedError = RpcProxyErrorResponseSchema.parse(errorResponse);
-    return NextResponse.json(validatedError, { status: response.status });
-  }
+	const response = await fetch(ALCHEMY_ETH_URL, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify(data),
+	});
 
-  const result = await response.json();
-  return NextResponse.json(result);
+	if (!response.ok) {
+		console.error(
+			"[RPC Proxy] Alchemy error:",
+			response.status,
+			response.statusText,
+		);
+		const errorResponse = { error: "RPC request failed" };
+		const validatedError = RpcProxyErrorResponseSchema.parse(errorResponse);
+		return NextResponse.json(validatedError, { status: response.status });
+	}
+
+	const result = await response.json();
+	return NextResponse.json(result);
 }

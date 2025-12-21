@@ -14,7 +14,7 @@ interface IRegistrationHelper {
 /// @notice Set the registration fee to 0 on the RegistrationHelper
 contract SetZeroRegistrationFee is Script {
     // Base Mainnet RegistrationHelper address
-    address constant REGISTRATION_HELPER = 0xYourRegistrationHelperAddress; // TODO: Update this
+    address constant REGISTRATION_HELPER = 0x18c1d9b21c5768eb2AEd96835a90d5F7D940BE94;
     
     function run() external {
         // Get the registration helper address from env or use default

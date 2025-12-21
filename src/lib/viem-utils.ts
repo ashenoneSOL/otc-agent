@@ -6,13 +6,7 @@
  * this causes type errors. This module provides type-safe wrappers.
  */
 
-import {
-  type PublicClient,
-  type Address,
-  type Abi,
-  type AbiEvent,
-  type Log,
-} from "viem";
+import type { Abi, AbiEvent, Address, Log, PublicClient } from "viem";
 
 /**
  * Parameters for reading a contract with a dynamic ABI
@@ -22,28 +16,28 @@ import {
  * - args: `readonly unknown[]` because Solidity supports complex nested types
  */
 export interface ReadContractParams {
-  address: Address;
-  abi: Abi | readonly unknown[];
-  functionName: string;
-  args?: readonly unknown[];
+	address: Address;
+	abi: Abi | readonly unknown[];
+	functionName: string;
+	args?: readonly unknown[];
 }
 
 /**
  * Transaction log with decoded args (matches viem's Log type structure)
  */
 interface TransactionLog {
-  address: Address;
-  blockHash: `0x${string}`;
-  blockNumber: bigint;
-  data: `0x${string}`;
-  logIndex: number;
-  transactionHash: `0x${string}`;
-  transactionIndex: number;
-  removed: boolean;
-  topics: readonly `0x${string}`[];
-  // Decoded args if ABI was provided - uses primitive types common in events
-  args?: Record<string, string | number | bigint | boolean | Address>;
-  eventName?: string;
+	address: Address;
+	blockHash: `0x${string}`;
+	blockNumber: bigint;
+	data: `0x${string}`;
+	logIndex: number;
+	transactionHash: `0x${string}`;
+	transactionIndex: number;
+	removed: boolean;
+	topics: readonly `0x${string}`[];
+	// Decoded args if ABI was provided - uses primitive types common in events
+	args?: Record<string, string | number | bigint | boolean | Address>;
+	eventName?: string;
 }
 
 /**
@@ -54,19 +48,19 @@ interface TransactionLog {
  * to expected types using safeReadContract<T>().
  */
 export interface MinimalPublicClient {
-  readContract: (params: ReadContractParams) => Promise<unknown>;
-  getBlockNumber?: () => Promise<bigint>;
-  getLogs?: (params: {
-    address: Address;
-    event: AbiEvent;
-    fromBlock: bigint;
-    toBlock: bigint | "latest";
-  }) => Promise<Log[]>;
-  getTransactionReceipt?: (params: { hash: `0x${string}` }) => Promise<{
-    status: "success" | "reverted";
-    logs: TransactionLog[];
-    blockNumber: bigint;
-  }>;
+	readContract: (params: ReadContractParams) => Promise<unknown>;
+	getBlockNumber?: () => Promise<bigint>;
+	getLogs?: (params: {
+		address: Address;
+		event: AbiEvent;
+		fromBlock: bigint;
+		toBlock: bigint | "latest";
+	}) => Promise<Log[]>;
+	getTransactionReceipt?: (params: { hash: `0x${string}` }) => Promise<{
+		status: "success" | "reverted";
+		logs: TransactionLog[];
+		blockNumber: bigint;
+	}>;
 }
 
 /**
@@ -86,20 +80,20 @@ export interface MinimalPublicClient {
  * ```
  */
 export async function safeReadContract<T>(
-  client:
-    | PublicClient
-    | MinimalPublicClient
-    | { readContract: (params: ReadContractParams) => Promise<unknown> },
-  params: ReadContractParams,
+	client:
+		| PublicClient
+		| MinimalPublicClient
+		| { readContract: (params: ReadContractParams) => Promise<unknown> },
+	params: ReadContractParams,
 ): Promise<T> {
-  // The cast is necessary because viem's readContract has strict generics
-  // that require compile-time ABI type inference. With dynamic ABIs,
-  // we must bypass this and rely on runtime behavior.
-  // Uses unknown cast to bypass viem's strict authorizationList requirement
-  const result = await (
-    client.readContract as (params: unknown) => Promise<unknown>
-  )(params);
-  return result as T;
+	// The cast is necessary because viem's readContract has strict generics
+	// that require compile-time ABI type inference. With dynamic ABIs,
+	// we must bypass this and rely on runtime behavior.
+	// Uses unknown cast to bypass viem's strict authorizationList requirement
+	const result = await (
+		client.readContract as (params: unknown) => Promise<unknown>
+	)(params);
+	return result as T;
 }
 
 /**
@@ -107,105 +101,105 @@ export async function safeReadContract<T>(
  * Defined as const for full type inference
  */
 export const ERC20_ABI = [
-  {
-    name: "symbol",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "string" }],
-  },
-  {
-    name: "name",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "string" }],
-  },
-  {
-    name: "decimals",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "uint8" }],
-  },
-  {
-    name: "balanceOf",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ type: "uint256" }],
-  },
-  {
-    name: "allowance",
-    type: "function",
-    stateMutability: "view",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "spender", type: "address" },
-    ],
-    outputs: [{ type: "uint256" }],
-  },
-  {
-    name: "approve",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ type: "bool" }],
-  },
-  {
-    name: "transfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ type: "bool" }],
-  },
+	{
+		name: "symbol",
+		type: "function",
+		stateMutability: "view",
+		inputs: [],
+		outputs: [{ type: "string" }],
+	},
+	{
+		name: "name",
+		type: "function",
+		stateMutability: "view",
+		inputs: [],
+		outputs: [{ type: "string" }],
+	},
+	{
+		name: "decimals",
+		type: "function",
+		stateMutability: "view",
+		inputs: [],
+		outputs: [{ type: "uint8" }],
+	},
+	{
+		name: "balanceOf",
+		type: "function",
+		stateMutability: "view",
+		inputs: [{ name: "account", type: "address" }],
+		outputs: [{ type: "uint256" }],
+	},
+	{
+		name: "allowance",
+		type: "function",
+		stateMutability: "view",
+		inputs: [
+			{ name: "owner", type: "address" },
+			{ name: "spender", type: "address" },
+		],
+		outputs: [{ type: "uint256" }],
+	},
+	{
+		name: "approve",
+		type: "function",
+		stateMutability: "nonpayable",
+		inputs: [
+			{ name: "spender", type: "address" },
+			{ name: "amount", type: "uint256" },
+		],
+		outputs: [{ type: "bool" }],
+	},
+	{
+		name: "transfer",
+		type: "function",
+		stateMutability: "nonpayable",
+		inputs: [
+			{ name: "to", type: "address" },
+			{ name: "amount", type: "uint256" },
+		],
+		outputs: [{ type: "bool" }],
+	},
 ] as const;
 
 /**
  * Type-safe ERC-20 token info reader
  */
 export async function readERC20Info(
-  client: PublicClient,
-  tokenAddress: Address,
+	client: PublicClient,
+	tokenAddress: Address,
 ): Promise<{ symbol: string; name: string; decimals: number }> {
-  const [symbol, name, decimals] = await Promise.all([
-    safeReadContract<string>(client, {
-      address: tokenAddress,
-      abi: ERC20_ABI as Abi,
-      functionName: "symbol",
-    }),
-    safeReadContract<string>(client, {
-      address: tokenAddress,
-      abi: ERC20_ABI as Abi,
-      functionName: "name",
-    }),
-    safeReadContract<number>(client, {
-      address: tokenAddress,
-      abi: ERC20_ABI as Abi,
-      functionName: "decimals",
-    }),
-  ]);
-  return { symbol, name, decimals };
+	const [symbol, name, decimals] = await Promise.all([
+		safeReadContract<string>(client, {
+			address: tokenAddress,
+			abi: ERC20_ABI as Abi,
+			functionName: "symbol",
+		}),
+		safeReadContract<string>(client, {
+			address: tokenAddress,
+			abi: ERC20_ABI as Abi,
+			functionName: "name",
+		}),
+		safeReadContract<number>(client, {
+			address: tokenAddress,
+			abi: ERC20_ABI as Abi,
+			functionName: "decimals",
+		}),
+	]);
+	return { symbol, name, decimals };
 }
 
 /**
  * Type-safe ERC-20 balance reader
  */
 export async function readERC20Balance(
-  client: PublicClient,
-  tokenAddress: Address,
-  account: Address,
+	client: PublicClient,
+	tokenAddress: Address,
+	account: Address,
 ): Promise<bigint> {
-  return safeReadContract<bigint>(client, {
-    address: tokenAddress,
-    abi: ERC20_ABI as Abi,
-    functionName: "balanceOf",
-    args: [account],
-  });
+	return safeReadContract<bigint>(client, {
+		address: tokenAddress,
+		abi: ERC20_ABI as Abi,
+		functionName: "balanceOf",
+		args: [account],
+	});
 }

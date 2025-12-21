@@ -1,49 +1,50 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Token, TokenMarketData, TokenWithMarketData } from "@/types";
-import { parseOrThrow } from "@/lib/validation/helpers";
 import { z } from "zod";
+import { parseOrThrow } from "@/lib/validation/helpers";
+import type { Token } from "@/types";
 import { TokenBatchResponseSchema } from "@/types/validation/hook-schemas";
 
 // Token IDs array validation
 const TokenIdsArraySchema = z.array(z.string().min(1));
 
+// API returns flat Token objects (not wrapped in { token, marketData })
 async function fetchTokenBatch(
-  tokenIds: string[],
-): Promise<Record<string, TokenWithMarketData | null>> {
-  if (tokenIds.length === 0) return {};
+	tokenIds: string[],
+): Promise<Record<string, Token | null>> {
+	if (tokenIds.length === 0) return {};
 
-  // Validate token IDs
-  parseOrThrow(TokenIdsArraySchema, tokenIds);
+	// Validate token IDs
+	parseOrThrow(TokenIdsArraySchema, tokenIds);
 
-  const response = await fetch(
-    `/api/tokens/batch?ids=${encodeURIComponent(tokenIds.join(","))}`,
-  );
-  const rawData = await response.json();
+	const response = await fetch(
+		`/api/tokens/batch?ids=${encodeURIComponent(tokenIds.join(","))}`,
+	);
+	const rawData = await response.json();
 
-  // Validate response structure
-  const data = parseOrThrow(TokenBatchResponseSchema, rawData);
+	// Validate response structure
+	const data = parseOrThrow(TokenBatchResponseSchema, rawData);
 
-  if (!data.success) {
-    // Error message is optional in error response - provide fallback
-    const errorMessage =
-      typeof data.error === "string" && data.error.trim() !== ""
-        ? data.error
-        : "Failed to fetch tokens";
-    throw new Error(errorMessage);
-  }
+	if (!data.success) {
+		// Error message is optional in error response - provide fallback
+		const errorMessage =
+			typeof data.error === "string" && data.error.trim() !== ""
+				? data.error
+				: "Failed to fetch tokens";
+		throw new Error(errorMessage);
+	}
 
-  return data.tokens as Record<string, TokenWithMarketData | null>;
+	return data.tokens as Record<string, Token | null>;
 }
 
 /**
  * Query key factory for tokens
  */
 export const tokenKeys = {
-  all: ["tokens"] as const,
-  batches: () => [...tokenKeys.all, "batch"] as const,
-  batch: (ids: string[]) =>
-    [...tokenKeys.batches(), ids.sort().join(",")] as const,
-  single: (id: string) => [...tokenKeys.all, "single", id] as const,
+	all: ["tokens"] as const,
+	batches: () => [...tokenKeys.all, "batch"] as const,
+	batch: (ids: string[]) =>
+		[...tokenKeys.batches(), ids.sort().join(",")] as const,
+	single: (id: string) => [...tokenKeys.all, "single", id] as const,
 };
 
 /**
@@ -58,35 +59,35 @@ export const tokenKeys = {
  * - Automatic deduplication
  */
 export function useTokenBatch(tokenIds: string[]) {
-  // Sort and dedupe for stable query key
-  const uniqueIds = [...new Set(tokenIds)].sort();
+	// Sort and dedupe for stable query key
+	const uniqueIds = [...new Set(tokenIds)].sort();
 
-  return useQuery({
-    queryKey: tokenKeys.batch(uniqueIds),
-    queryFn: () => fetchTokenBatch(uniqueIds),
-    staleTime: 120_000, // 2 minutes - token metadata rarely changes
-    gcTime: 300_000, // 5 minutes
-    enabled: uniqueIds.length > 0,
-    refetchOnWindowFocus: false, // Token metadata doesn't need frequent updates
-  });
+	return useQuery({
+		queryKey: tokenKeys.batch(uniqueIds),
+		queryFn: () => fetchTokenBatch(uniqueIds),
+		staleTime: 120_000, // 2 minutes - token metadata rarely changes
+		gcTime: 300_000, // 5 minutes
+		enabled: uniqueIds.length > 0,
+		refetchOnWindowFocus: false, // Token metadata doesn't need frequent updates
+	});
 }
 
 /**
  * Hook to prefetch a batch of tokens
  */
 export function usePrefetchTokenBatch() {
-  const queryClient = useQueryClient();
+	const queryClient = useQueryClient();
 
-  return (tokenIds: string[]) => {
-    const uniqueIds = [...new Set(tokenIds)].sort();
-    if (uniqueIds.length === 0) return;
+	return (tokenIds: string[]) => {
+		const uniqueIds = [...new Set(tokenIds)].sort();
+		if (uniqueIds.length === 0) return;
 
-    queryClient.prefetchQuery({
-      queryKey: tokenKeys.batch(uniqueIds),
-      queryFn: () => fetchTokenBatch(uniqueIds),
-      staleTime: 120_000,
-    });
-  };
+		queryClient.prefetchQuery({
+			queryKey: tokenKeys.batch(uniqueIds),
+			queryFn: () => fetchTokenBatch(uniqueIds),
+			staleTime: 120_000,
+		});
+	};
 }
 
 /**
@@ -94,9 +95,9 @@ export function usePrefetchTokenBatch() {
  * Use this when you have already fetched a batch and need to access individual tokens.
  */
 export function useTokenFromBatch(
-  tokenId: string,
-  batchData: Record<string, TokenWithMarketData | null> | undefined,
-): TokenWithMarketData | null {
-  if (!batchData || !tokenId) return null;
-  return batchData[tokenId] ?? null;
+	tokenId: string,
+	batchData: Record<string, Token | null> | undefined,
+): Token | null {
+	if (!batchData || !tokenId) return null;
+	return batchData[tokenId] ?? null;
 }
