@@ -18,25 +18,27 @@ import { poolKeys } from "./queryKeys";
  * Fetch pool check data from API
  */
 async function fetchPoolCheck(
-	address: string,
-	chain: Chain,
+  address: string,
+  chain: Chain,
 ): Promise<PoolCheckResult> {
-	const response = await fetch(
-		`/api/token-pool-check?address=${encodeURIComponent(address)}&chain=${chain}`,
-	);
+  const response = await fetch(
+    `/api/token-pool-check?address=${encodeURIComponent(address)}&chain=${chain}`,
+  );
 
-	if (!response.ok) {
-		throw new Error(`Pool check failed: ${response.status} ${response.statusText}`);
-	}
+  if (!response.ok) {
+    throw new Error(
+      `Pool check failed: ${response.status} ${response.statusText}`,
+    );
+  }
 
-	const data = await response.json();
+  const data = await response.json();
 
-	// Validate response structure
-	if (typeof data !== "object" || data === null) {
-		throw new Error("Invalid pool check response: expected object");
-	}
+  // Validate response structure
+  if (typeof data !== "object" || data === null) {
+    throw new Error("Invalid pool check response: expected object");
+  }
 
-	return data as PoolCheckResult;
+  return data as PoolCheckResult;
 }
 
 /**
@@ -53,36 +55,35 @@ async function fetchPoolCheck(
  * @returns { poolCheck, isLoading, error }
  */
 export function usePoolCheck(
-	address: string | null | undefined,
-	chain: Chain | null | undefined,
+  address: string | null | undefined,
+  chain: Chain | null | undefined,
 ) {
-	// Solana doesn't use pool checks
-	const isSolana = chain === "solana";
-	const isEnabled = !!address && !!chain && !isSolana;
+  // Solana doesn't use pool checks
+  const isSolana = chain === "solana";
+  const isEnabled = !!address && !!chain && !isSolana;
 
-	const query = useQuery({
-		queryKey:
-			address && chain ? poolKeys.check(address, chain) : poolKeys.all,
-		queryFn: () => {
-			if (!address || !chain) {
-				throw new Error("Address and chain required for pool check");
-			}
-			return fetchPoolCheck(address, chain);
-		},
-		staleTime: 60_000, // 1 minute
-		gcTime: 300_000, // 5 minutes
-		enabled: isEnabled,
-		retry: 2,
-		retryDelay: 1000,
-	});
+  const query = useQuery({
+    queryKey: address && chain ? poolKeys.check(address, chain) : poolKeys.all,
+    queryFn: () => {
+      if (!address || !chain) {
+        throw new Error("Address and chain required for pool check");
+      }
+      return fetchPoolCheck(address, chain);
+    },
+    staleTime: 60_000, // 1 minute
+    gcTime: 300_000, // 5 minutes
+    enabled: isEnabled,
+    retry: 2,
+    retryDelay: 1000,
+  });
 
-	return {
-		poolCheck: query.data ?? null,
-		isLoading: query.isLoading,
-		isCheckingPool: query.isLoading, // Alias for compatibility with form-step
-		error: query.error,
-		refetch: query.refetch,
-	};
+  return {
+    poolCheck: query.data ?? null,
+    isLoading: query.isLoading,
+    isCheckingPool: query.isLoading, // Alias for compatibility with form-step
+    error: query.error,
+    refetch: query.refetch,
+  };
 }
 
 /**
@@ -90,17 +91,17 @@ export function usePoolCheck(
  * Call after token registration to refresh pool data
  */
 export function useInvalidatePoolCheck() {
-	const queryClient = useQueryClient();
+  const queryClient = useQueryClient();
 
-	return (address?: string, chain?: Chain) => {
-		if (address && chain) {
-			queryClient.invalidateQueries({
-				queryKey: poolKeys.check(address, chain),
-			});
-		} else {
-			queryClient.invalidateQueries({ queryKey: poolKeys.all });
-		}
-	};
+  return (address?: string, chain?: Chain) => {
+    if (address && chain) {
+      queryClient.invalidateQueries({
+        queryKey: poolKeys.check(address, chain),
+      });
+    } else {
+      queryClient.invalidateQueries({ queryKey: poolKeys.all });
+    }
+  };
 }
 
 /**
@@ -108,15 +109,15 @@ export function useInvalidatePoolCheck() {
  * Useful for optimistic loading when user selects a token
  */
 export function usePrefetchPoolCheck() {
-	const queryClient = useQueryClient();
+  const queryClient = useQueryClient();
 
-	return (address: string, chain: Chain) => {
-		if (chain === "solana") return Promise.resolve(); // Skip Solana
+  return (address: string, chain: Chain) => {
+    if (chain === "solana") return Promise.resolve(); // Skip Solana
 
-		return queryClient.prefetchQuery({
-			queryKey: poolKeys.check(address, chain),
-			queryFn: () => fetchPoolCheck(address, chain),
-			staleTime: 60_000,
-		});
-	};
+    return queryClient.prefetchQuery({
+      queryKey: poolKeys.check(address, chain),
+      queryFn: () => fetchPoolCheck(address, chain),
+      staleTime: 60_000,
+    });
+  };
 }

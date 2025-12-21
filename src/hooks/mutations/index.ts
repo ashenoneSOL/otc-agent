@@ -5,15 +5,15 @@
  */
 
 export {
-	useCreateConsignment,
-	useWithdrawConsignment,
-	useSolanaWithdrawConsignment,
-	useUpdateConsignment,
+  useCreateConsignment,
+  useWithdrawConsignment,
+  useSolanaWithdrawConsignment,
+  useUpdateConsignment,
 } from "./useConsignmentMutations";
 
 export {
-	useCompleteDeal,
-	useApproveOffer,
-	useClaimTokens,
-	useUpdateQuote,
+  useCompleteDeal,
+  useApproveOffer,
+  useClaimTokens,
+  useUpdateQuote,
 } from "./useDealMutations";
