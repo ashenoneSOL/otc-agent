@@ -1,13 +1,13 @@
 import type { Provider } from "@elizaos/core";
 
 export const tokenProvider: Provider = {
-	name: "ELIZAOS_INFO",
-	description:
-		"[OPTIONAL] Historical information about the $elizaOS token and migration from $ai16z - use only when user specifically asks about elizaOS or ai16z",
-	position: 99,
-	dynamic: false,
-	get: async () => {
-		const text = `$elizaOS is a new redonimated cross-chain token which holders of $ai16z can redeem. Redemption is free and open forever.
+  name: "ELIZAOS_INFO",
+  description:
+    "[OPTIONAL] Historical information about the $elizaOS token and migration from $ai16z - use only when user specifically asks about elizaOS or ai16z",
+  position: 99,
+  dynamic: false,
+  get: async () => {
+    const text = `$elizaOS is a new redonimated cross-chain token which holders of $ai16z can redeem. Redemption is free and open forever.
 This is a migration of $ai16z, which is a Solana SPL2022 extension token, to the new token which is a cross-chain token supported by Chainlink CCIP. The team had to do this for several reasons:
 - $ai16z uses a closed-source daos.fun contract which enables additional token minting
 - This lack of mint authority control unfortunately means that the token could not be listed on tier 1 exchanges like Binance and Coinbase
@@ -27,8 +27,8 @@ The $elizaOS token will be distributed as follows:
 
 This deal will not effect $degenai in any way. We will continue to support $degenai as a separate token and work to get it listed and bridged to other chains.`;
 
-		return {
-			text,
-		};
-	},
+    return {
+      text,
+    };
+  },
 };

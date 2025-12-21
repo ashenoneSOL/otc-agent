@@ -1,301 +1,153 @@
 /**
- * Consolidated balance fetching utilities
- * Extracted from API routes for reuse and testability
+ * Balance Fetcher Utilities
+ *
+ * Utilities for filtering, sorting, and enriching token balances.
+ * Used by EVM and Solana balance APIs.
  */
 
-import { agentRuntime } from "@/lib/agent-runtime";
-import type {
-	BulkMetadataCache,
-	BulkPriceCache,
-	CachedTokenMetadata,
-	CachedWalletBalances,
-	SolanaTokenBalance,
-	TokenBalance,
-} from "@/types/api";
-import { batchCheckBlobCache, getReliableLogoUrl } from "@/utils/blob-storage";
-import { fetchEvmPrices, fetchJupiterPrices } from "@/utils/price-fetcher";
-
-// Cache TTLs
-export const PRICE_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
-export const WALLET_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
-export const LOGO_RETRY_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+import type { Chain } from "@/config/chains";
+import type { TokenBalance, SolanaTokenBalance } from "@/types/api";
+import { fetchTokenPrices } from "@/utils/price-fetcher";
 
 /**
- * Get cached wallet balances for EVM chains
- */
-export async function getCachedEvmWalletBalances(
-	chain: string,
-	address: string,
-): Promise<TokenBalance[] | null> {
-	const runtime = await agentRuntime.getRuntime();
-	const cached = await runtime.getCache<CachedWalletBalances<TokenBalance>>(
-		`evm-wallet:${chain}:${address.toLowerCase()}`,
-	);
-	if (!cached) return null;
-	if (Date.now() - cached.cachedAt >= WALLET_CACHE_TTL_MS) return null;
-	console.log(
-		`[Balance Fetcher] Using cached EVM wallet data (${cached.tokens.length} tokens)`,
-	);
-	return cached.tokens;
-}
-
-/**
- * Set cached wallet balances for EVM chains
- */
-export async function setCachedEvmWalletBalances(
-	chain: string,
-	address: string,
-	tokens: TokenBalance[],
-): Promise<void> {
-	const runtime = await agentRuntime.getRuntime();
-	await runtime.setCache(`evm-wallet:${chain}:${address.toLowerCase()}`, {
-		tokens,
-		cachedAt: Date.now(),
-	});
-}
-
-/**
- * Get cached wallet balances for Solana
- */
-export async function getCachedSolanaWalletBalances(
-	address: string,
-): Promise<SolanaTokenBalance[] | null> {
-	const runtime = await agentRuntime.getRuntime();
-	const cached = await runtime.getCache<
-		CachedWalletBalances<SolanaTokenBalance>
-	>(`solana-wallet:${address}`);
-	if (!cached) return null;
-	if (Date.now() - cached.cachedAt >= WALLET_CACHE_TTL_MS) return null;
-	console.log(
-		`[Balance Fetcher] Using cached Solana wallet data (${cached.tokens.length} tokens)`,
-	);
-	return cached.tokens;
-}
-
-/**
- * Set cached wallet balances for Solana
- */
-export async function setCachedSolanaWalletBalances(
-	address: string,
-	tokens: SolanaTokenBalance[],
-): Promise<void> {
-	const runtime = await agentRuntime.getRuntime();
-	await runtime.setCache(`solana-wallet:${address}`, {
-		tokens,
-		cachedAt: Date.now(),
-	});
-}
-
-/**
- * Get bulk metadata cache for EVM chains
- */
-export async function getBulkEvmMetadataCache(
-	chain: string,
-): Promise<Record<string, CachedTokenMetadata>> {
-	const runtime = await agentRuntime.getRuntime();
-	const cached = await runtime.getCache<
-		BulkMetadataCache<Record<string, CachedTokenMetadata>>
-	>(`evm-metadata-bulk:${chain}`);
-	if (!cached || !cached.metadata) {
-		return {};
-	}
-	return cached.metadata;
-}
-
-/**
- * Set bulk metadata cache for EVM chains
- */
-export async function setBulkEvmMetadataCache(
-	chain: string,
-	metadata: Record<string, CachedTokenMetadata>,
-): Promise<void> {
-	const runtime = await agentRuntime.getRuntime();
-	await runtime.setCache(`evm-metadata-bulk:${chain}`, { metadata });
-}
-
-/**
- * Get bulk price cache for EVM chains
- */
-export async function getBulkEvmPriceCache(
-	chain: string,
-): Promise<Record<string, number>> {
-	const runtime = await agentRuntime.getRuntime();
-	const cached = await runtime.getCache<BulkPriceCache>(
-		`evm-prices-bulk:${chain}`,
-	);
-	if (!cached) return {};
-	if (Date.now() - cached.cachedAt >= PRICE_CACHE_TTL_MS) return {};
-	console.log(
-		`[Balance Fetcher] Using cached EVM prices (${Object.keys(cached.prices).length} tokens)`,
-	);
-	return cached.prices;
-}
-
-/**
- * Set bulk price cache for EVM chains
- */
-export async function setBulkEvmPriceCache(
-	chain: string,
-	prices: Record<string, number>,
-): Promise<void> {
-	const runtime = await agentRuntime.getRuntime();
-	await runtime.setCache(`evm-prices-bulk:${chain}`, {
-		prices,
-		cachedAt: Date.now(),
-	});
-}
-
-/**
- * Enrich EVM tokens with prices from cache or API
- */
-export async function enrichEvmTokensWithPrices(
-	chain: string,
-	tokens: TokenBalance[],
-): Promise<TokenBalance[]> {
-	const cachedPrices = await getBulkEvmPriceCache(chain);
-	const tokensNeedingPrices = tokens.filter((t) => !t.priceUsd);
-	const uncachedAddresses: string[] = [];
-
-	// Apply cached prices first
-	for (const token of tokensNeedingPrices) {
-		const cachedPrice = cachedPrices[token.contractAddress.toLowerCase()];
-		if (cachedPrice !== undefined) {
-			token.priceUsd = cachedPrice;
-		} else {
-			uncachedAddresses.push(token.contractAddress);
-		}
-	}
-
-	// Fetch uncached prices
-	if (uncachedAddresses.length > 0) {
-		const newPrices = await fetchEvmPrices(chain, uncachedAddresses);
-		for (const token of tokensNeedingPrices) {
-			if (!token.priceUsd) {
-				const price = newPrices[token.contractAddress.toLowerCase()] || 0;
-				token.priceUsd = price;
-			}
-		}
-
-		// Merge and cache new prices
-		const allPrices = { ...cachedPrices };
-		for (const [addr, price] of Object.entries(newPrices)) {
-			if (price > 0) {
-				allPrices[addr.toLowerCase()] = price;
-			}
-		}
-		await setBulkEvmPriceCache(chain, allPrices);
-	}
-
-	// Calculate USD values
-	for (const token of tokens) {
-		if (!token.balanceUsd && token.priceUsd) {
-			const humanBalance = Number(BigInt(token.balance)) / 10 ** token.decimals;
-			token.balanceUsd = humanBalance * token.priceUsd;
-		}
-	}
-
-	return tokens;
-}
-
-/**
- * Enrich Solana tokens with prices from cache or API
- */
-export async function enrichSolanaTokensWithPrices(
-	tokens: SolanaTokenBalance[],
-): Promise<SolanaTokenBalance[]> {
-	const mints = tokens.map((t) => t.mint);
-	const prices = await fetchJupiterPrices(mints);
-
-	// Apply prices and calculate USD values
-	for (const token of tokens) {
-		const price = prices[token.mint] || 0;
-		token.priceUsd = price;
-		const humanBalance = token.amount / 10 ** token.decimals;
-		token.balanceUsd = humanBalance * price;
-	}
-
-	return tokens;
-}
-
-/**
- * Upgrade logo URLs to blob-cached URLs for EVM tokens
- */
-export async function upgradeEvmTokenLogos(
-	tokens: TokenBalance[],
-): Promise<TokenBalance[]> {
-	const logoUrls = tokens
-		.map((t) => t.logoUrl)
-		.filter((u): u is string => !!u && !u.includes("blob.vercel-storage.com"));
-
-	if (logoUrls.length === 0) return tokens;
-
-	const cachedBlobUrls = await batchCheckBlobCache(logoUrls);
-
-	return tokens.map((token) => {
-		if (!token.logoUrl) return token;
-		const blobUrl = cachedBlobUrls[token.logoUrl];
-		if (blobUrl) {
-			return { ...token, logoUrl: blobUrl };
-		}
-		return token;
-	});
-}
-
-/**
- * Get reliable logo URL for Solana tokens
- */
-export function getReliableSolanaLogoUrl(
-	rawLogoUrl: string | null,
-	cachedBlobUrls: Record<string, string>,
-): string | null {
-	return getReliableLogoUrl(rawLogoUrl, cachedBlobUrls);
-}
-
-/**
- * Filter tokens by minimum thresholds
+ * Filter out dust tokens below minimum thresholds
+ *
+ * Filtering logic:
+ * - Always check token balance >= minBalance
+ * - If price is available (non-zero), also check balanceUsd >= minUsdValue
+ *
+ * @param tokens - Array of token balances
+ * @param minBalance - Minimum token balance (in human-readable units)
+ * @param minUsdValue - Minimum USD value to keep (only applied when price > 0)
  */
 export function filterDustTokens(
-	tokens: TokenBalance[],
-	minTokenBalance = 1,
-	minValueUsd = 0.001,
+  tokens: TokenBalance[],
+  minBalance: number,
+  minUsdValue: number,
 ): TokenBalance[] {
-	return tokens.filter((t) => {
-		const humanBalance = Number(BigInt(t.balance)) / 10 ** t.decimals;
-		// balanceUsd can legitimately be 0 - use explicit check
-		const balanceUsd = typeof t.balanceUsd === "number" ? t.balanceUsd : 0;
-		const hasPrice = typeof t.priceUsd === "number" && t.priceUsd > 0;
+  return tokens.filter((token) => {
+    const balance = parseFloat(token.balance) / 10 ** token.decimals;
 
-		// If we have a price, use minimal USD filter
-		if (hasPrice && balanceUsd < minValueUsd) {
-			return false;
-		}
-		// Always require at least minimum token balance
-		return humanBalance >= minTokenBalance;
-	});
+    // Must meet minimum balance threshold
+    if (balance < minBalance) return false;
+
+    // If price is available (non-zero), also check USD value threshold
+    // priceUsd === 0 or undefined means "no price available"
+    if (
+      token.priceUsd &&
+      token.priceUsd > 0 &&
+      token.balanceUsd !== undefined
+    ) {
+      return token.balanceUsd >= minUsdValue;
+    }
+
+    // No price available - balance check already passed
+    return true;
+  });
 }
 
 /**
- * Sort tokens: priced tokens first (by USD value), then unpriced tokens (by balance)
+ * Sort tokens by USD value (highest first), then by balance for unpriced tokens
  */
 export function sortTokensByValue(tokens: TokenBalance[]): TokenBalance[] {
-	return [...tokens].sort((a, b) => {
-		const aHasPrice = a.priceUsd && a.priceUsd > 0;
-		const bHasPrice = b.priceUsd && b.priceUsd > 0;
+  return [...tokens].sort((a, b) => {
+    // Priced tokens come first
+    const aHasPrice = a.balanceUsd !== undefined;
+    const bHasPrice = b.balanceUsd !== undefined;
 
-		// Priced tokens come first
-		if (aHasPrice && !bHasPrice) return -1;
-		if (!aHasPrice && bHasPrice) return 1;
+    if (aHasPrice && !bHasPrice) return -1;
+    if (!aHasPrice && bHasPrice) return 1;
 
-		// Both priced: sort by USD value
-		if (aHasPrice && bHasPrice) {
-			const aBalanceUsd = typeof a.balanceUsd === "number" ? a.balanceUsd : 0;
-			const bBalanceUsd = typeof b.balanceUsd === "number" ? b.balanceUsd : 0;
-			return bBalanceUsd - aBalanceUsd;
-		}
+    // Both have prices - sort by USD value
+    if (aHasPrice && bHasPrice) {
+      return (b.balanceUsd ?? 0) - (a.balanceUsd ?? 0);
+    }
 
-		// Both unpriced: sort by token balance
-		const aBalance = Number(BigInt(a.balance)) / 10 ** a.decimals;
-		const bBalance = Number(BigInt(b.balance)) / 10 ** b.decimals;
-		return bBalance - aBalance;
-	});
+    // Neither has price - sort by raw balance (normalized)
+    const aBalance = parseFloat(a.balance) / 10 ** a.decimals;
+    const bBalance = parseFloat(b.balance) / 10 ** b.decimals;
+    return bBalance - aBalance;
+  });
+}
+
+/**
+ * Enrich EVM tokens with current prices
+ *
+ * @param chain - Chain identifier (ethereum, base, bsc)
+ * @param tokens - Array of token balances to enrich
+ */
+export async function enrichEvmTokensWithPrices(
+  chain: Chain,
+  tokens: TokenBalance[],
+): Promise<TokenBalance[]> {
+  if (tokens.length === 0) return tokens;
+
+  // Collect addresses that need pricing
+  const addressesToPrice = tokens
+    .filter((t) => t.priceUsd === undefined)
+    .map((t) => t.contractAddress);
+
+  if (addressesToPrice.length > 0) {
+    const prices = await fetchTokenPrices(chain, addressesToPrice);
+
+    // Update tokens with fetched prices
+    for (const token of tokens) {
+      if (token.priceUsd === undefined) {
+        const price = prices[token.contractAddress.toLowerCase()];
+        if (price) {
+          token.priceUsd = price;
+        }
+      }
+    }
+  }
+
+  // Calculate USD values for all tokens with prices
+  for (const token of tokens) {
+    if (token.priceUsd !== undefined) {
+      const balance = parseFloat(token.balance) / 10 ** token.decimals;
+      token.balanceUsd = balance * token.priceUsd;
+    }
+  }
+
+  return tokens;
+}
+
+/**
+ * Enrich Solana tokens with current prices from Jupiter
+ *
+ * @param tokens - Array of Solana token balances to enrich
+ */
+export async function enrichSolanaTokensWithPrices(
+  tokens: SolanaTokenBalance[],
+): Promise<SolanaTokenBalance[]> {
+  if (tokens.length === 0) return tokens;
+
+  // Collect mints that need pricing
+  const mintsToPrice = tokens
+    .filter((t) => t.priceUsd === undefined || t.priceUsd === 0)
+    .map((t) => t.mint);
+
+  if (mintsToPrice.length > 0) {
+    const prices = await fetchTokenPrices("solana", mintsToPrice);
+
+    // Update tokens with fetched prices
+    for (const token of tokens) {
+      if (token.priceUsd === undefined || token.priceUsd === 0) {
+        const price = prices[token.mint];
+        if (price) {
+          token.priceUsd = price;
+        }
+      }
+    }
+  }
+
+  // Calculate USD values for all tokens with prices
+  for (const token of tokens) {
+    if (token.priceUsd !== undefined && token.priceUsd > 0) {
+      const balance = token.amount / 10 ** token.decimals;
+      token.balanceUsd = balance * token.priceUsd;
+    }
+  }
+
+  return tokens;
 }

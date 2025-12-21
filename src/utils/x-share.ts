@@ -8,170 +8,170 @@ const OAUTH_REDIRECT_ORIGIN_KEY = "OAUTH_REDIRECT_ORIGIN";
 const PENDING_DEAL_SHARE_KEY = "pending-deal-share";
 
 function getApiUrl(): string {
-	if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) {
-		return process.env.NEXT_PUBLIC_API_URL as string;
-	}
-	if (typeof window !== "undefined") {
-		return window.location.origin;
-	}
-	return "";
+  if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL as string;
+  }
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return "";
 }
 
 export function getXCreds(): XCredentials | null {
-	if (typeof window === "undefined") return null;
-	const stored = localStorage.getItem(STORAGE_KEY);
-	if (!stored) return null;
-	return JSON.parse(stored) as XCredentials;
+  if (typeof window === "undefined") return null;
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (!stored) return null;
+  return JSON.parse(stored) as XCredentials;
 }
 
 export function setPendingShare(pending: PendingShare) {
-	if (typeof window === "undefined") return;
-	localStorage.setItem(PENDING_DEAL_SHARE_KEY, JSON.stringify(pending));
+  if (typeof window === "undefined") return;
+  localStorage.setItem(PENDING_DEAL_SHARE_KEY, JSON.stringify(pending));
 }
 
 export function clearPendingShare() {
-	if (typeof window === "undefined") return;
-	localStorage.removeItem(PENDING_DEAL_SHARE_KEY);
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(PENDING_DEAL_SHARE_KEY);
 }
 
 // Returns true if already authenticated (has oauth1 creds); false if redirected
 export function ensureXAuth(pending?: PendingShare): boolean {
-	const creds = getXCreds();
-	if (creds && creds.oauth1Token && creds.oauth1TokenSecret) return true;
-	if (typeof window === "undefined") return false;
+  const creds = getXCreds();
+  if (creds && creds.oauth1Token && creds.oauth1TokenSecret) return true;
+  if (typeof window === "undefined") return false;
 
-	const apiUrl = getApiUrl();
-	const origin =
-		window.location.pathname + window.location.search + window.location.hash;
-	localStorage.setItem(OAUTH_REDIRECT_ORIGIN_KEY, origin);
-	if (pending) setPendingShare(pending);
-	if (!apiUrl) return false;
-	window.location.href = `${apiUrl}/api/share/oauth/request_token?oauth_version=1.0a`;
-	return false;
+  const apiUrl = getApiUrl();
+  const origin =
+    window.location.pathname + window.location.search + window.location.hash;
+  localStorage.setItem(OAUTH_REDIRECT_ORIGIN_KEY, origin);
+  if (pending) setPendingShare(pending);
+  if (!apiUrl) return false;
+  window.location.href = `${apiUrl}/api/share/oauth/request_token?oauth_version=1.0a`;
+  return false;
 }
 
 export async function shareOnX(
-	text: string,
-	dataUrl: string,
-	creds?: XCredentials | null,
+  text: string,
+  dataUrl: string,
+  creds?: XCredentials | null,
 ): Promise<{ success: boolean; tweetId?: string; tweetUrl?: string }> {
-	const apiUrl = getApiUrl();
-	const c = creds ?? getXCreds();
-	if (!c) {
-		throw new Error("Missing X OAuth credentials (no credentials provided)");
-	}
-	if (!c.oauth1Token) {
-		throw new Error("Missing X OAuth token");
-	}
-	if (!c.oauth1TokenSecret) {
-		throw new Error("Missing X OAuth token secret");
-	}
+  const apiUrl = getApiUrl();
+  const c = creds ?? getXCreds();
+  if (!c) {
+    throw new Error("Missing X OAuth credentials (no credentials provided)");
+  }
+  if (!c.oauth1Token) {
+    throw new Error("Missing X OAuth token");
+  }
+  if (!c.oauth1TokenSecret) {
+    throw new Error("Missing X OAuth token secret");
+  }
 
-	// 1) Upload media
-	const uploadResp = await fetch(`${apiUrl}/api/share/upload-media`, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"X-Twitter-OAuth-Token": c.oauth1Token,
-			"X-Twitter-OAuth-Token-Secret": c.oauth1TokenSecret,
-		},
-		body: JSON.stringify({ image: dataUrl }),
-	});
-	if (!uploadResp.ok) {
-		const err = await safeText(uploadResp);
-		throw new Error(err || "Failed to upload media to X");
-	}
-	interface XUploadResponse {
-		media_id_string?: string;
-	}
+  // 1) Upload media
+  const uploadResp = await fetch(`${apiUrl}/api/share/upload-media`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Twitter-OAuth-Token": c.oauth1Token,
+      "X-Twitter-OAuth-Token-Secret": c.oauth1TokenSecret,
+    },
+    body: JSON.stringify({ image: dataUrl }),
+  });
+  if (!uploadResp.ok) {
+    const err = await safeText(uploadResp);
+    throw new Error(err || "Failed to upload media to X");
+  }
+  interface XUploadResponse {
+    media_id_string?: string;
+  }
 
-	const uploadJson = (await uploadResp.json()) as XUploadResponse;
-	const mediaId = uploadJson.media_id_string;
-	if (!mediaId) throw new Error("No media_id returned from upload");
+  const uploadJson = (await uploadResp.json()) as XUploadResponse;
+  const mediaId = uploadJson.media_id_string;
+  if (!mediaId) throw new Error("No media_id returned from upload");
 
-	// 2) Tweet
-	const tweetResp = await fetch(`${apiUrl}/api/share/tweet`, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"X-Twitter-OAuth-Token": c.oauth1Token,
-			"X-Twitter-OAuth-Token-Secret": c.oauth1TokenSecret,
-		},
-		body: JSON.stringify({ text, media_ids: [mediaId] }),
-	});
-	if (!tweetResp.ok) {
-		const err = await safeText(tweetResp);
-		throw new Error(err || "Failed to create tweet");
-	}
-	interface XTweetResponse {
-		tweet?: {
-			data?: {
-				id?: string;
-			};
-		};
-	}
+  // 2) Tweet
+  const tweetResp = await fetch(`${apiUrl}/api/share/tweet`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Twitter-OAuth-Token": c.oauth1Token,
+      "X-Twitter-OAuth-Token-Secret": c.oauth1TokenSecret,
+    },
+    body: JSON.stringify({ text, media_ids: [mediaId] }),
+  });
+  if (!tweetResp.ok) {
+    const err = await safeText(tweetResp);
+    throw new Error(err || "Failed to create tweet");
+  }
+  interface XTweetResponse {
+    tweet?: {
+      data?: {
+        id?: string;
+      };
+    };
+  }
 
-	const posted = (await tweetResp.json()) as XTweetResponse;
-	if (!posted.tweet) {
-		throw new Error("X API response missing tweet field");
-	}
-	if (!posted.tweet.data) {
-		throw new Error("X API response missing tweet.data field");
-	}
-	const id = posted.tweet.data.id;
-	const username = c.screen_name || c.username;
-	const tweetUrl =
-		id && username ? `https://twitter.com/${username}/status/${id}` : undefined;
-	return { success: true, tweetId: id, tweetUrl };
+  const posted = (await tweetResp.json()) as XTweetResponse;
+  if (!posted.tweet) {
+    throw new Error("X API response missing tweet field");
+  }
+  if (!posted.tweet.data) {
+    throw new Error("X API response missing tweet.data field");
+  }
+  const id = posted.tweet.data.id;
+  const username = c.screen_name || c.username;
+  const tweetUrl =
+    id && username ? `https://twitter.com/${username}/status/${id}` : undefined;
+  return { success: true, tweetId: id, tweetUrl };
 }
 
 export async function resumeFreshAuth(): Promise<
-	| { resumed: false }
-	| { resumed: true; success: boolean; error?: string; tweetUrl?: string }
+  | { resumed: false }
+  | { resumed: true; success: boolean; error?: string; tweetUrl?: string }
 > {
-	if (typeof window === "undefined") return { resumed: false };
-	const url = new URL(window.location.href);
-	const isFresh = url.searchParams.get("fresh_auth") === "true";
-	const pendingRaw = localStorage.getItem(PENDING_DEAL_SHARE_KEY);
-	if (!isFresh || !pendingRaw) return { resumed: false };
+  if (typeof window === "undefined") return { resumed: false };
+  const url = new URL(window.location.href);
+  const isFresh = url.searchParams.get("fresh_auth") === "true";
+  const pendingRaw = localStorage.getItem(PENDING_DEAL_SHARE_KEY);
+  if (!isFresh || !pendingRaw) return { resumed: false };
 
-	const pending = JSON.parse(pendingRaw) as PendingShare;
-	const creds = getXCreds();
-	if (!creds) {
-		return {
-			resumed: true,
-			success: false,
-			error: "Missing credentials after auth (no credentials found)",
-		};
-	}
-	if (!creds.oauth1Token) {
-		return {
-			resumed: true,
-			success: false,
-			error: "Missing credentials after auth (no oauth1Token)",
-		};
-	}
-	if (!creds.oauth1TokenSecret) {
-		return {
-			resumed: true,
-			success: false,
-			error: "Missing credentials after auth (no oauth1TokenSecret)",
-		};
-	}
-	const result = await shareOnX(pending.text, pending.dataUrl, creds);
-	clearPendingShare();
-	// Clean URL param
-	url.searchParams.delete("fresh_auth");
-	window.history.replaceState({}, "", url.toString());
-	return { resumed: true, success: true, tweetUrl: result.tweetUrl };
+  const pending = JSON.parse(pendingRaw) as PendingShare;
+  const creds = getXCreds();
+  if (!creds) {
+    return {
+      resumed: true,
+      success: false,
+      error: "Missing credentials after auth (no credentials found)",
+    };
+  }
+  if (!creds.oauth1Token) {
+    return {
+      resumed: true,
+      success: false,
+      error: "Missing credentials after auth (no oauth1Token)",
+    };
+  }
+  if (!creds.oauth1TokenSecret) {
+    return {
+      resumed: true,
+      success: false,
+      error: "Missing credentials after auth (no oauth1TokenSecret)",
+    };
+  }
+  const result = await shareOnX(pending.text, pending.dataUrl, creds);
+  clearPendingShare();
+  // Clean URL param
+  url.searchParams.delete("fresh_auth");
+  window.history.replaceState({}, "", url.toString());
+  return { resumed: true, success: true, tweetUrl: result.tweetUrl };
 }
 
 async function safeText(r: Response) {
-	return await r.text();
+  return await r.text();
 }
 
 export const XShareStorageKeys = {
-	STORAGE_KEY,
-	OAUTH_REDIRECT_ORIGIN_KEY,
-	PENDING_DEAL_SHARE_KEY,
+  STORAGE_KEY,
+  OAUTH_REDIRECT_ORIGIN_KEY,
+  PENDING_DEAL_SHARE_KEY,
 };

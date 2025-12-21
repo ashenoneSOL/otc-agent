@@ -5,11 +5,15 @@
 
 // In-memory cache with TTL
 interface CacheEntry<T> {
-	value: T;
-	expiresAt: number;
+  value: T;
+  expiresAt: number;
 }
 
 const cache = new Map<string, CacheEntry<unknown>>();
+
+// Safety limit: prevent unbounded memory growth
+// In serverless (Vercel), processes restart frequently so this is rarely hit
+const MAX_CACHE_SIZE = 1000;
 
 const DEFAULT_CACHE_TTL_MS = 30_000; // 30 seconds
 const MAX_RETRIES = 3;
@@ -22,60 +26,70 @@ const MAX_DELAY_MS = 10_000; // 10 seconds
  * Returns the cached value (which may be null) if found
  */
 export function getCached<T>(key: string): T | undefined {
-	const entry = cache.get(key) as CacheEntry<T> | undefined;
-	if (!entry) return undefined;
+  const entry = cache.get(key) as CacheEntry<T> | undefined;
+  if (!entry) return undefined;
 
-	if (Date.now() > entry.expiresAt) {
-		cache.delete(key);
-		return undefined;
-	}
+  if (Date.now() > entry.expiresAt) {
+    cache.delete(key);
+    return undefined;
+  }
 
-	return entry.value;
+  return entry.value;
 }
 
 /**
  * Set a value in the cache with TTL
  */
 export function setCache<T>(
-	key: string,
-	value: T,
-	ttlMs: number = DEFAULT_CACHE_TTL_MS,
+  key: string,
+  value: T,
+  ttlMs: number = DEFAULT_CACHE_TTL_MS,
 ): void {
-	cache.set(key, {
-		value,
-		expiresAt: Date.now() + ttlMs,
-	});
+  // Evict oldest entries if cache is full
+  if (cache.size >= MAX_CACHE_SIZE) {
+    // Simple eviction: delete first 10% of entries (oldest by insertion order)
+    const toDelete = Math.ceil(MAX_CACHE_SIZE * 0.1);
+    const keys = Array.from(cache.keys()).slice(0, toDelete);
+    for (const k of keys) {
+      cache.delete(k);
+    }
+  }
+
+  cache.set(key, {
+    value,
+    expiresAt: Date.now() + ttlMs,
+  });
 }
 
 /**
  * Calculate delay with exponential backoff and jitter
  */
 function calculateDelay(attempt: number): number {
-	// Exponential backoff: 1s, 2s, 4s, ...
-	const exponentialDelay = BASE_DELAY_MS * 2 ** attempt;
-	// Add jitter (±25%)
-	const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
-	const delay = Math.min(exponentialDelay + jitter, MAX_DELAY_MS);
-	return Math.max(delay, BASE_DELAY_MS);
+  // Exponential backoff: 1s, 2s, 4s, ...
+  const exponentialDelay = BASE_DELAY_MS * 2 ** attempt;
+  // Add jitter (±25%)
+  const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
+  const delay = Math.min(exponentialDelay + jitter, MAX_DELAY_MS);
+  return Math.max(delay, BASE_DELAY_MS);
 }
 
 /**
  * Check if an error is retryable (rate limit, network error, etc.)
  */
 function isRetryableError(error: unknown): boolean {
-	if (error instanceof Error) {
-		const message = error.message.toLowerCase();
-		// Rate limit errors
-		if (message.includes("429") || message.includes("rate limit")) return true;
-		// Network errors
-		if (message.includes("network") || message.includes("timeout")) return true;
-		if (message.includes("econnreset") || message.includes("enotfound"))
-			return true;
-		// RPC specific errors
-		if (message.includes("too many requests")) return true;
-		if (message.includes("secondary index")) return true; // Solana specific
-	}
-	return false;
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    // Rate limit errors
+    if (message.includes("429") || message.includes("rate limit")) return true;
+    // Network errors
+    if (message.includes("network") || message.includes("timeout")) return true;
+    if (message.includes("econnreset") || message.includes("enotfound"))
+      return true;
+    // RPC specific errors
+    if (message.includes("too many requests")) return true;
+    if (message.includes("secondary index")) return true; // Solana specific
+  }
+  return false;
 }
 
 /**
@@ -85,63 +99,63 @@ function isRetryableError(error: unknown): boolean {
  * @param options Configuration options
  */
 export async function withRetryAndCache<T>(
-	cacheKey: string,
-	fn: () => Promise<T>,
-	options: {
-		maxRetries?: number;
-		cacheTtlMs?: number;
-		skipCache?: boolean;
-	} = {},
+  cacheKey: string,
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number;
+    cacheTtlMs?: number;
+    skipCache?: boolean;
+  } = {},
 ): Promise<T> {
-	const {
-		maxRetries = MAX_RETRIES,
-		cacheTtlMs = DEFAULT_CACHE_TTL_MS,
-		skipCache = false,
-	} = options;
+  const {
+    maxRetries = MAX_RETRIES,
+    cacheTtlMs = DEFAULT_CACHE_TTL_MS,
+    skipCache = false,
+  } = options;
 
-	// Check cache first (unless skipped)
-	if (!skipCache) {
-		const cached = getCached<T>(cacheKey);
-		if (cached !== undefined) {
-			return cached;
-		}
-	}
+  // Check cache first (unless skipped)
+  if (!skipCache) {
+    const cached = getCached<T>(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+  }
 
-	let lastError: Error | null = null;
+  let lastError: Error | null = null;
 
-	for (let attempt = 0; attempt <= maxRetries; attempt++) {
-		try {
-			const result = await fn();
-			// Cache the successful result
-			if (!skipCache) {
-				setCache(cacheKey, result, cacheTtlMs);
-			}
-			return result;
-		} catch (error) {
-			lastError = error instanceof Error ? error : new Error(String(error));
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await fn();
+      // Cache the successful result
+      if (!skipCache) {
+        setCache(cacheKey, result, cacheTtlMs);
+      }
+      return result;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
 
-			// FAIL-FAST: Don't retry on non-retryable errors - throw immediately
-			if (!isRetryableError(error)) {
-				throw lastError;
-			}
+      // FAIL-FAST: Don't retry on non-retryable errors - throw immediately
+      if (!isRetryableError(error)) {
+        throw lastError;
+      }
 
-			// Don't delay after the last attempt
-			if (attempt < maxRetries) {
-				const delay = calculateDelay(attempt);
-				console.warn(
-					`[Retry] Attempt ${attempt + 1}/${maxRetries + 1} failed, retrying in ${Math.round(delay)}ms...`,
-					lastError.message,
-				);
-				await new Promise((resolve) => setTimeout(resolve, delay));
-			}
-		}
-	}
+      // Don't delay after the last attempt
+      if (attempt < maxRetries) {
+        const delay = calculateDelay(attempt);
+        console.warn(
+          `[Retry] Attempt ${attempt + 1}/${maxRetries + 1} failed, retrying in ${Math.round(delay)}ms...`,
+          lastError.message,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
 
-	// FAIL-FAST: All retries exhausted - throw the last error
-	if (!lastError) {
-		throw new Error("All retry attempts failed - no error captured");
-	}
-	throw lastError;
+  // FAIL-FAST: All retries exhausted - throw the last error
+  if (!lastError) {
+    throw new Error("All retry attempts failed - no error captured");
+  }
+  throw lastError;
 }
 
 /**
@@ -149,35 +163,35 @@ export async function withRetryAndCache<T>(
  * Automatically handles 429 and network errors
  */
 export async function fetchWithRetry(
-	url: string,
-	options?: RequestInit,
-	retryOptions?: {
-		maxRetries?: number;
-		cacheTtlMs?: number;
-		cacheKey?: string;
-	},
+  url: string,
+  options?: RequestInit,
+  retryOptions?: {
+    maxRetries?: number;
+    cacheTtlMs?: number;
+    cacheKey?: string;
+  },
 ): Promise<Response> {
-	const cacheKey = retryOptions?.cacheKey ?? `fetch:${url}`;
+  const cacheKey = retryOptions?.cacheKey ?? `fetch:${url}`;
 
-	return withRetryAndCache(
-		cacheKey,
-		async () => {
-			const response = await fetch(url, options);
+  return withRetryAndCache(
+    cacheKey,
+    async () => {
+      const response = await fetch(url, options);
 
-			// Treat 429 as an error for retry logic
-			if (response.status === 429) {
-				throw new Error(`429 Too Many Requests: ${url}`);
-			}
+      // Treat 429 as an error for retry logic
+      if (response.status === 429) {
+        throw new Error(`429 Too Many Requests: ${url}`);
+      }
 
-			return response;
-		},
-		{
-			maxRetries: retryOptions?.maxRetries,
-			cacheTtlMs: retryOptions?.cacheTtlMs,
-			// Don't cache the Response object itself, just use retry
-			skipCache: true,
-		},
-	);
+      return response;
+    },
+    {
+      maxRetries: retryOptions?.maxRetries,
+      cacheTtlMs: retryOptions?.cacheTtlMs,
+      // Don't cache the Response object itself, just use retry
+      skipCache: true,
+    },
+  );
 }
 
 /**
@@ -185,37 +199,37 @@ export async function fetchWithRetry(
  * Caches the parsed JSON response
  */
 export async function fetchJsonWithRetryAndCache<T>(
-	url: string,
-	options?: RequestInit,
-	retryOptions?: {
-		maxRetries?: number;
-		cacheTtlMs?: number;
-		cacheKey?: string;
-	},
+  url: string,
+  options?: RequestInit,
+  retryOptions?: {
+    maxRetries?: number;
+    cacheTtlMs?: number;
+    cacheKey?: string;
+  },
 ): Promise<T> {
-	const cacheKey = retryOptions?.cacheKey ?? `json:${url}`;
+  const cacheKey = retryOptions?.cacheKey ?? `json:${url}`;
 
-	// Check cache first
-	const cached = getCached<T>(cacheKey);
-	if (cached !== undefined) {
-		return cached;
-	}
+  // Check cache first
+  const cached = getCached<T>(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
 
-	const response = await fetchWithRetry(url, options, {
-		maxRetries: retryOptions?.maxRetries,
-		cacheTtlMs: retryOptions?.cacheTtlMs,
-		cacheKey: `fetch:${url}`, // Separate cache key for fetch
-	});
+  const response = await fetchWithRetry(url, options, {
+    maxRetries: retryOptions?.maxRetries,
+    cacheTtlMs: retryOptions?.cacheTtlMs,
+    cacheKey: `fetch:${url}`, // Separate cache key for fetch
+  });
 
-	if (!response.ok) {
-		throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-	}
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
 
-	const data = await response.json();
+  const data = await response.json();
 
-	// Cache the parsed JSON
-	const cacheTtl = retryOptions?.cacheTtlMs;
-	setCache(cacheKey, data, cacheTtl);
+  // Cache the parsed JSON
+  const cacheTtl = retryOptions?.cacheTtlMs;
+  setCache(cacheKey, data, cacheTtl);
 
-	return data as T;
+  return data as T;
 }
