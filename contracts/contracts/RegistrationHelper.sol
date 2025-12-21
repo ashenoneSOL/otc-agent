@@ -158,6 +158,8 @@ contract RegistrationHelper is Ownable2Step {
     /// @param tokenAddress The ERC20 token to register
     /// @param poolAddress The Uniswap V3 pool for price oracle
     /// @return oracle The deployed oracle address
+    /// @dev Slither flags ETH transfer to feeRecipient as "arbitrary user" but this is admin-controlled
+    // slither-disable-next-line arbitrary-send-eth
     function registerTokenWithPayment(
         address tokenAddress,
         address poolAddress
@@ -235,6 +237,8 @@ contract RegistrationHelper is Ownable2Step {
     /// @notice Withdraw accumulated fees (owner only)
     function withdrawFees() external onlyOwner {
         uint256 balance = address(this).balance;
+        // Strict equality is intentional - no point withdrawing 0
+        // slither-disable-next-line incorrect-equality
         if (balance == 0) revert NoFees();
         (bool success, ) = payable(owner()).call{value: balance}("");
         if (!success) revert WithdrawalFailed();

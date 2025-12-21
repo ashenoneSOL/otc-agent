@@ -336,6 +336,8 @@ contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
     IERC20(tkn.tokenAddress).safeTransferFrom(msg.sender, address(this), amount);
     uint256 balanceAfter = IERC20(tkn.tokenAddress).balanceOf(address(this));
     uint256 actualAmount = balanceAfter - balanceBefore;
+    // Strict equality is intentional - we must receive tokens (handles fee-on-transfer edge case)
+    // slither-disable-next-line incorrect-equality
     if (actualAmount == 0) revert ZeroAmountReceived();
     
     // Update tracked deposit with actual amount received
@@ -791,8 +793,10 @@ contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
     return _readTokenUsdPriceFromOracle(tkn.priceOracle);
   }
 
+  // slither-disable-next-line unused-return
   function _readTokenUsdPriceFromOracle(address oracle) internal view returns (uint256) {
     AggregatorV3Interface feed = AggregatorV3Interface(oracle);
+    // startedAt is intentionally ignored - not needed for price validation
     (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) = feed.latestRoundData();
     if (answer <= 0) revert BadPrice();
     if (answeredInRound < roundId) revert StaleRound();
@@ -800,7 +804,9 @@ contract OTC is IOTC, Ownable2Step, Pausable, ReentrancyGuard {
     return uint256(answer);
   }
   
+  // slither-disable-next-line unused-return
   function _readEthUsdPrice() internal view returns (uint256) {
+    // startedAt is intentionally ignored - not needed for price validation
     (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) = ethUsdFeed.latestRoundData();
     if (answer <= 0) revert BadPrice();
     if (answeredInRound < roundId) revert StaleRound();

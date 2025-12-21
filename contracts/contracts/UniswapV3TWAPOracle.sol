@@ -150,6 +150,8 @@ contract UniswapV3TWAPOracle is IAggregatorV3, Ownable2Step {
     
     /// @notice Get TWAP price of target token in USD (8 decimals)
     /// @return price Price in USD with 8 decimals
+    /// @dev secondsPerLiquidityCumulativeX128s from observe() is intentionally ignored
+    // slither-disable-next-line unused-return
     function getTWAPPrice() public view returns (uint256 price) {
         // Try configured interval first, then fall back to shorter intervals
         // This handles new pools with limited observation history
@@ -265,6 +267,9 @@ contract UniswapV3TWAPOracle is IAggregatorV3, Ownable2Step {
     /// @notice Get sqrt ratio at tick (Uniswap V3 tick math)
     /// @param tick The tick value
     /// @return sqrtPriceX96 The sqrt price as a Q64.96
+    /// @dev This is the official Uniswap V3 tick math implementation.
+    ///      Slither reports "divide before multiply" but this is intentional fixed-point arithmetic.
+    // slither-disable-next-line divide-before-multiply
     function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160 sqrtPriceX96) {
         uint256 absTick = tick < 0 ? uint256(-int256(tick)) : uint256(int256(tick));
         require(absTick <= 887272, "T");
