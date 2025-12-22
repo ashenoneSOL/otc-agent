@@ -81,6 +81,13 @@ export const walletTokenKeys = {
   byChain: (chain: Chain) => [...walletTokenKeys.all, chain] as const,
   byWallet: (address: string, chain: Chain) =>
     [...walletTokenKeys.byChain(chain), address] as const,
+  // Solana-specific balance keys
+  solBalance: (publicKey: string) =>
+    [...walletTokenKeys.all, "solana", "sol", publicKey] as const,
+  solUsdcBalance: (publicKey: string) =>
+    [...walletTokenKeys.all, "solana", "usdc", publicKey] as const,
+  splBalance: (publicKey: string, mint: string) =>
+    [...walletTokenKeys.all, "solana", "spl", publicKey, mint] as const,
 };
 
 /**

@@ -1,3 +1,7 @@
+/**
+ * @deprecated Use useSendNotification or useWelcomeNotification hooks instead
+ * for React components. This function is kept for non-React contexts.
+ */
 export async function sendWelcomeNotification(fid: number): Promise<boolean> {
   const response = await fetch("/api/notifications/send", {
     method: "POST",
@@ -16,3 +20,9 @@ export async function sendWelcomeNotification(fid: number): Promise<boolean> {
   const result = await response.json();
   return result.state === "success";
 }
+
+// Re-export hooks for convenience
+export {
+  useSendNotification,
+  useWelcomeNotification,
+} from "@/hooks/useNotification";

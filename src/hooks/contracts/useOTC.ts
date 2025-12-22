@@ -815,9 +815,8 @@ export function useOTC(): {
 
       // Validate parameters with Zod
       const { parseOrThrow } = await import("@/lib/validation/helpers");
-      const { ConsignmentParamsSchema } = await import(
-        "@/types/validation/service-schemas"
-      );
+      const { ConsignmentParamsSchema } =
+        await import("@/types/validation/service-schemas");
       const { ChainSchema } = await import("@/types/validation/schemas");
       const { z } = await import("zod");
 

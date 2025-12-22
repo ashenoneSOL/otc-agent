@@ -19,7 +19,6 @@ const USER_NAME = "User";
 
 interface ChatMessageProps {
   message: ChatMessageType;
-  i: number;
   citations?: Citation[];
   followUpPrompts?: string[];
   onFollowUpClick?: (prompt: string) => void;
@@ -29,7 +28,6 @@ interface ChatMessageProps {
 
 export const ChatMessage = memo(function ChatMessage({
   message,
-  i: _i,
   citations,
   followUpPrompts,
   onFollowUpClick,

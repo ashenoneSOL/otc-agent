@@ -1,18 +1,4 @@
-/**
- * Rigorous Pool Oracle Security Tests
- * 
- * Comprehensive tests for:
- * - EMA (Exponential Moving Average) price smoothing accuracy
- * - Minimum liquidity enforcement
- * - Rate limiting
- * - Program ID verification
- * - Attack scenario prevention
- * 
- * NOTE: Field names contain "twap" for ABI compatibility but the implementation
- * uses an Exponential Moving Average (EMA):
- *   new_ema = (old_ema * weight + spot_price) / (weight + 1)
- *   where weight = min(time_elapsed, 3600 seconds)
- */
+// Rigorous Pool Oracle Security Tests - EMA accuracy, liquidity, rate limiting
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Otc } from "../target/types/otc";

@@ -77,6 +77,26 @@ export {
   usePrefetchPoolCheck,
 } from "./usePoolCheck";
 
+// Chat/Room
+export {
+  useCreateRoom,
+  useRoomMessages,
+  useSendMessage,
+  useInvalidateChat,
+} from "./useChat";
+export type { ChatMessage } from "./useChat";
+
+// Solana balances
+export {
+  useSolBalance,
+  useSolanaUsdcBalance,
+  useSplTokenBalance,
+  useSolanaPaymentBalance,
+} from "./useSolanaBalance";
+
+// Notifications
+export { useSendNotification, useWelcomeNotification } from "./useNotification";
+
 // ============================================================================
 // Mutation Hooks - Data mutations with React Query
 // ============================================================================

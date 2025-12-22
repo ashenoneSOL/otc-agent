@@ -16,4 +16,5 @@ export {
   useApproveOffer,
   useClaimTokens,
   useUpdateQuote,
+  useShareDeal,
 } from "./useDealMutations";

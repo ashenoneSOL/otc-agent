@@ -45,15 +45,6 @@ export async function createDealShareImage(args: {
   ctx.fillStyle = COLORS.BACKGROUND;
   ctx.fillRect(0, 0, width, height);
 
-  // Accent gradient
-  // const grad = ctx.createLinearGradient(0, 0, width, height);
-  // grad.addColorStop(0, "#00ff87");
-  // grad.addColorStop(1, "#00a3ff");
-  // ctx.fillStyle = grad;
-  // ctx.globalAlpha = 0.12;
-  // ctx.fillRect(0, 0, width, height);
-  // ctx.globalAlpha = 1;
-
   // Load and draw business image at full height, offset 20% off right edge
   const businessImg = await loadBusinessImage();
   const imgHeight = height;

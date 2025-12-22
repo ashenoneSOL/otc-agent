@@ -204,12 +204,24 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // Filter out consignments with invalid chain values (data cleanup)
+  const validChains = new Set(["ethereum", "base", "bsc", "solana"]);
+  const validConsignments = consignments.filter((c) => {
+    if (!validChains.has(c.chain)) {
+      console.warn(
+        `[Consignments] Invalid chain "${c.chain}" for consignment ${c.id} - filtering out`,
+      );
+      return false;
+    }
+    return true;
+  });
+
   // Sanitize response: hide sensitive negotiation terms from non-owners
   // Only the consigner (owner) can see their own full listing details
   const isOwnerRequest = !!consignerAddress;
   const responseConsignments = isOwnerRequest
-    ? consignments // Owner sees full data
-    : consignments.map(sanitizeConsignmentForBuyer); // Buyers see sanitized data
+    ? validConsignments // Owner sees full data
+    : validConsignments.map(sanitizeConsignmentForBuyer); // Buyers see sanitized data
 
   // Cache for 60 seconds, serve stale for 5 minutes while revalidating
   // Private cache if filtering by consigner (user-specific data)

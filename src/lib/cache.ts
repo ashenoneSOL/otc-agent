@@ -180,30 +180,30 @@ async function enrichTokenWithLogo(token: Token): Promise<Token> {
  * Invalidate token-related caches (call after token registration/update)
  */
 export function invalidateTokenCache() {
-  revalidateTag("tokens");
+  revalidateTag("tokens", "max");
 }
 
 /**
  * Invalidate market data caches (call after price refresh)
  */
 export function invalidateMarketDataCache() {
-  revalidateTag("market-data");
+  revalidateTag("market-data", "max");
 }
 
 /**
  * Invalidate consignment caches (call after consignment create/update/withdraw)
  */
 export function invalidateConsignmentCache() {
-  revalidateTag("consignments");
+  revalidateTag("consignments", "max");
 }
 
 /**
  * Invalidate all caches (use sparingly)
  */
 export function invalidateAllCaches() {
-  revalidateTag("tokens");
-  revalidateTag("market-data");
-  revalidateTag("consignments");
+  revalidateTag("tokens", "max");
+  revalidateTag("market-data", "max");
+  revalidateTag("consignments", "max");
 }
 
 /**

@@ -26,8 +26,13 @@ export async function GET(
   try {
     quote = await QuoteDB.getQuoteByQuoteId(quoteId);
   } catch (err) {
-    // QuoteDB throws for not found - return 404
-    if (err instanceof Error && err.message.includes("not found")) {
+    const message = err instanceof Error ? err.message : String(err);
+    // QuoteDB throws for not found or service not registered - return 404
+    if (
+      message.includes("not found") ||
+      message.includes("not registered") ||
+      message.includes("does not exist")
+    ) {
       return NextResponse.json(
         { error: `Quote ${quoteId} not found` },
         { status: 404 },

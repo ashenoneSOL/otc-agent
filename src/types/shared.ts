@@ -203,8 +203,7 @@ export interface AnchorConsignmentAccountAccessor {
  * Used to type `program.account` with all account types
  */
 export interface AnchorProgramAccountAccessor
-  extends AnchorDeskAccountAccessor,
-    AnchorConsignmentAccountAccessor {}
+  extends AnchorDeskAccountAccessor, AnchorConsignmentAccountAccessor {}
 
 /**
  * Price update response from API
@@ -606,6 +605,7 @@ export interface SolanaDeploymentSnapshot {
   readonly desk: string;
   readonly deskOwner: string;
   readonly usdcMint: string;
+  readonly tokenMint?: string; // Test token for E2E tests (local only)
   readonly rpc: string;
 }
 

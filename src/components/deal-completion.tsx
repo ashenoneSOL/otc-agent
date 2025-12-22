@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
+import { useCompleteDeal, useShareDeal } from "@/hooks/mutations";
 import { formatTokenAmountFull, getExplorerTxUrl } from "@/utils/format";
 import { createDealShareImage } from "@/utils/share-card";
 
@@ -45,6 +46,10 @@ export function DealCompletion({ quote }: DealCompletionProps) {
   const [shareImageUrl, setShareImageUrl] = useState<string | null>(null);
   const hasPostedRef = useRef(false);
 
+  // Mutations
+  const completeDeal = useCompleteDeal();
+  const shareDeal = useShareDeal();
+
   // Memoized derived values
   const { discountPercent, roi, maturityDate } = useMemo(() => {
     const dp = quote.discountBps / 100;
@@ -87,26 +92,15 @@ export function DealCompletion({ quote }: DealCompletionProps) {
             return;
           }
 
-          const completionResponse = await fetch("/api/deal-completion", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "complete",
-              quoteId: quote.quoteId,
-              tokenAmount: quote.tokenAmount,
-              paymentCurrency: quote.paymentCurrency,
-              transactionHash: quote.transactionHash,
-              blockNumber: undefined,
-              // Optional fields - pass as-is (undefined is acceptable)
-              offerId: quote.offerId,
-              chain: quote.chain,
-            }),
+          await completeDeal.mutateAsync({
+            action: "complete",
+            quoteId: quote.quoteId,
+            tokenAmount: quote.tokenAmount,
+            paymentCurrency: quote.paymentCurrency,
+            transactionHash: quote.transactionHash,
+            offerId: quote.offerId ?? "",
+            chain: quote.chain ?? "evm",
           });
-          if (!completionResponse.ok) {
-            console.error(
-              `[DealCompletion] Failed to record deal completion: HTTP ${completionResponse.status}`,
-            );
-          }
         }
       }
 
@@ -124,7 +118,8 @@ export function DealCompletion({ quote }: DealCompletionProps) {
       // Log but don't show to user - deal is already complete, this is just for share image
       console.error("[DealCompletion] Init error:", err);
     });
-  }, [quote]);
+    // completeDeal.mutateAsync is stable (from useMutation), safe to include
+  }, [quote, completeDeal]);
 
   const shareToTwitter = async () => {
     // Generate fresh share image
@@ -160,20 +155,11 @@ export function DealCompletion({ quote }: DealCompletionProps) {
       window.open(tweetUrl, "_blank");
     }
 
-    // Track share
-    const response = await fetch("/api/deal-completion", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "share",
-        quoteId: quote.quoteId,
-        platform: "twitter",
-      }),
+    // Track share via mutation
+    await shareDeal.mutateAsync({
+      quoteId: quote.quoteId,
+      platform: "twitter",
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to track share");
-    }
   };
 
   const downloadImage = async () => {

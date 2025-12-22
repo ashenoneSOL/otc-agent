@@ -41,10 +41,10 @@ async function waitForServer(maxWaitMs: number = 15000): Promise<boolean> {
   const startTime = Date.now();
   while (Date.now() - startTime < maxWaitMs) {
     const res = await fetch(`${BASE_URL}/api/tokens`, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(1000), // Short timeout per request
     }).catch(() => null);
     if (res && res.ok) return true;
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 200)); // Quick retry
   }
   return false;
 }

@@ -207,7 +207,33 @@ export async function connectPhantomWallet(
   });
   await sleep(1000);
 
-  // Dismiss "Got it" button if visible
+  // Dismiss any promotional popups in Phantom extension windows
+  // (e.g., "Monad Mainnet is live", "Earn 8% APY", etc.)
+  const allPages = context.pages();
+  for (const p of allPages) {
+    // Try "Got it" button first
+    const gotItBtn = p.locator('button:has-text("Got it")').first();
+    if (await gotItBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await gotItBtn.click();
+      await sleep(500);
+    }
+    
+    // Try "Not now" button (common dismissal)
+    const notNowBtn = p.locator('button:has-text("Not now"), button:has-text("No thanks"), button:has-text("Skip")').first();
+    if (await notNowBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+      await notNowBtn.click();
+      await sleep(500);
+    }
+    
+    // Try back button/arrow for promo screens
+    const backBtn = p.locator('[aria-label*="back" i], button:has-text("<"), svg[data-testid*="back"]').first();
+    if (await backBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+      await backBtn.click();
+      await sleep(500);
+    }
+  }
+
+  // Dismiss "Got it" button if visible on main page
   const gotItButton = page.locator('button:has-text("Got it")').first();
   if (await gotItButton.isVisible({ timeout: 2000 }).catch(() => false)) {
     await gotItButton.click();

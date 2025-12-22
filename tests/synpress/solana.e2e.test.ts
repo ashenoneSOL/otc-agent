@@ -23,7 +23,7 @@ import {
   loadSolanaDeployment,
   solanaConnection,
 } from "./utils/onchain";
-import { phantomTrader, tokenAddresses } from "./utils/wallets";
+import { phantomTrader } from "./utils/wallets";
 import { BASE_URL, assertServerHealthy, log, sleep } from "../test-utils";
 
 const test = testWithSynpress(phantomFixtures(phantomSetup));
@@ -89,7 +89,11 @@ test.describe("Solana Additional Scenarios", () => {
     const solBalance = await getSolBalance(phantomTrader.address);
     log("Solana-Verify", `Wallet SOL balance: ${solBalance}`);
 
-    const tokenBalance = await getSolanaTokenBalance(phantomTrader.address, tokenAddresses.solanaEliza);
+    // Use dynamic test token from deployment (created during Solana setup)
+    const tokenMint = deployment.tokenMint;
+    const tokenBalance = tokenMint
+      ? await getSolanaTokenBalance(phantomTrader.address, tokenMint)
+      : 0;
     log("Solana-Verify", `Wallet token balance: ${tokenBalance}`);
 
     log("Solana-Verify", "Deployment verification passed");
@@ -131,7 +135,11 @@ test.describe("Solana Additional Scenarios", () => {
 
     log("Solana-Withdraw", `Found ${count} withdraw buttons`);
 
-    const initialBalance = await getSolanaTokenBalance(phantomTrader.address, tokenAddresses.solanaEliza);
+    // Use dynamic test token from deployment (created during Solana setup)
+    const tokenMint = deployment.tokenMint;
+    const initialBalance = tokenMint
+      ? await getSolanaTokenBalance(phantomTrader.address, tokenMint)
+      : 0;
     log("Solana-Withdraw", `Initial token balance: ${initialBalance}`);
 
     // Click first withdraw button
@@ -144,7 +152,9 @@ test.describe("Solana Additional Scenarios", () => {
     // Wait for transaction to complete
     await sleep(10000);
 
-    const finalBalance = await getSolanaTokenBalance(phantomTrader.address, tokenAddresses.solanaEliza);
+    const finalBalance = tokenMint
+      ? await getSolanaTokenBalance(phantomTrader.address, tokenMint)
+      : 0;
     log("Solana-Withdraw", `Final token balance: ${finalBalance}`);
 
     // Balance should not decrease (tokens returned)

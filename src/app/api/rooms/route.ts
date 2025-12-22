@@ -70,7 +70,6 @@ export async function POST(request: NextRequest) {
     source: "web",
     type: ChannelType.DM,
     channelId: roomIdStr,
-    serverId: "otc-desk-server",
     worldId: worldId,
     agentId: runtime.agentId,
   });
@@ -95,7 +94,6 @@ export async function POST(request: NextRequest) {
     name: validatedEntityId,
     source: "web",
     channelId: roomIdStr,
-    serverId: "otc-desk-server",
     type: ChannelType.DM,
     worldId: worldId,
   });

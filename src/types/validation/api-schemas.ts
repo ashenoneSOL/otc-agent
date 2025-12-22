@@ -244,8 +244,8 @@ export const ApproveOfferRequestSchema = z.object({
 
 // POST /api/solana/claim request body
 export const SolanaClaimRequestSchema = z.object({
-  offerAddress: AddressSchema,
-  beneficiary: AddressSchema,
+  offerAddress: SolanaAddressSchema,
+  beneficiary: SolanaAddressSchema,
 });
 
 //==============================================================================
@@ -522,11 +522,27 @@ export const RpcRequestSchema = z.object({
 // NOTIFICATIONS API
 //==============================================================================
 
-// POST /api/notifications/send request body
+// POST /api/notifications/send request body (Farcaster via Neynar)
 export const SendNotificationRequestSchema = z.object({
-  recipient: AddressSchema,
-  message: NonEmptyStringSchema,
-  type: z.enum(["quote", "deal", "system"]).optional(),
+  fid: z.union([z.number().int().positive(), z.string().min(1)]),
+  title: NonEmptyStringSchema,
+  body: NonEmptyStringSchema,
+});
+
+//==============================================================================
+// TOKENS API
+//==============================================================================
+
+// PATCH /api/tokens request body
+export const UpdateTokenRequestSchema = z.object({
+  tokenId: NonEmptyStringSchema,
+  updates: z.object({
+    name: z.string().optional(),
+    symbol: z.string().optional(),
+    logoUrl: UrlSchema.or(z.literal("")).optional(),
+    description: z.string().optional(),
+    isActive: z.boolean().optional(),
+  }),
 });
 
 //==============================================================================

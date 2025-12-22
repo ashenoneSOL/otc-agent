@@ -277,3 +277,58 @@ export function useUpdateQuote() {
     },
   });
 }
+
+/**
+ * Input for tracking a deal share
+ */
+interface ShareDealInput {
+  quoteId: string;
+  platform?: "twitter" | "farcaster" | "general";
+}
+
+/**
+ * Response from share tracking
+ */
+interface ShareDealResponse {
+  success: boolean;
+  quoteId: string;
+  shareData?: {
+    imageUrl?: string;
+    text?: string;
+  };
+  error?: string;
+}
+
+/**
+ * Track deal share via API
+ */
+async function shareDeal(input: ShareDealInput): Promise<ShareDealResponse> {
+  const response = await fetch("/api/deal-completion", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "share",
+      quoteId: input.quoteId,
+      platform: input.platform ?? "general",
+    }),
+  });
+
+  if (!response.ok) {
+    await throwApiError(response, `Failed to track share: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Hook to track deal shares
+ *
+ * Features:
+ * - Tracks shares to social platforms
+ * - Non-blocking (share happens even if tracking fails)
+ */
+export function useShareDeal() {
+  return useMutation({
+    mutationFn: shareDeal,
+  });
+}

@@ -1,6 +1,10 @@
 import { Configuration, NeynarAPIClient } from "@neynar/nodejs-sdk";
 import { type NextRequest, NextResponse } from "next/server";
-import { NotificationResponseSchema } from "@/types/validation/api-schemas";
+import { parseOrThrow } from "@/lib/validation/helpers";
+import {
+  NotificationResponseSchema,
+  SendNotificationRequestSchema,
+} from "@/types/validation/api-schemas";
 
 let neynarClient: NeynarAPIClient | null = null;
 
@@ -16,14 +20,11 @@ async function getNeynarClient(): Promise<NeynarAPIClient> {
 }
 
 export async function POST(request: NextRequest) {
-  const { fid, title, body } = await request.json();
-
-  if (!fid || !title || !body) {
-    return NextResponse.json(
-      { error: "Missing required parameters: fid, title, body" },
-      { status: 400 },
-    );
-  }
+  const rawBody = await request.json();
+  const { fid, title, body } = parseOrThrow(
+    SendNotificationRequestSchema,
+    rawBody,
+  );
 
   // Dev mode simulation when API key is not configured
   if (!process.env.NEYNAR_API_KEY) {

@@ -46,10 +46,10 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   
-  // Longer timeouts for wallet interactions
-  timeout: 180000,
+  // Longer timeouts for wallet interactions (15 minutes per test)
+  timeout: 900000,
   expect: {
-    timeout: 30000,
+    timeout: 60000,
   },
   
   forbidOnly: !!process.env.CI,

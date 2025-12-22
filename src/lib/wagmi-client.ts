@@ -6,7 +6,7 @@ import {
   baseSepolia,
   bsc,
   bscTestnet,
-  localhost,
+  foundry,
   mainnet,
   sepolia,
 } from "wagmi/chains";

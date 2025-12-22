@@ -263,6 +263,7 @@ export function ReviewStep({
             }
             color="brand"
             className="flex-1 py-3"
+            data-testid="consign-create-button"
           >
             {isCheckingPool ? "Checking pool..." : "Create Listing"}
           </Button>

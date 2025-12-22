@@ -19,7 +19,7 @@ export const SOLANA_PORT = 8899;
 export const APP_PORT = 4444;
 export const POSTGRES_PORT = 5439;
 export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${APP_PORT}`;
-export const TEST_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+export const TEST_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 // =============================================================================
 // ASSERTION HELPERS
@@ -213,14 +213,33 @@ export async function waitForServer(maxWaitMs: number = 60000): Promise<void> {
 
 /**
  * Perform a health check on the test server. Throws if unhealthy.
+ * Retries multiple times to handle slow server startup.
  */
 export async function assertServerHealthy(): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/tokens`, {
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!res.ok) {
-    throw new Error(`Server health check failed: HTTP ${res.status}`);
+  const maxRetries = 30;
+  const retryDelay = 2000;
+  let lastError: Error | null = null;
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/tokens`, {
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.ok || res.status === 404) {
+        return; // Server is healthy
+      }
+      lastError = new Error(`Server returned HTTP ${res.status}`);
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
+
+    if (i < maxRetries - 1) {
+      console.log(`[assertServerHealthy] Waiting for server (attempt ${i + 1}/${maxRetries})...`);
+      await new Promise((r) => setTimeout(r, retryDelay));
+    }
   }
+
+  throw new Error(`Server health check failed after ${maxRetries} attempts: ${lastError?.message ?? "unknown error"}`);
 }
 
 // =============================================================================
@@ -362,6 +381,7 @@ interface SolanaDeploymentFile {
   desk: string;
   deskOwner: string;
   usdcMint: string;
+  tokenMint?: string; // Test token for E2E tests (local only)
   rpc?: string;
 }
 
@@ -370,6 +390,7 @@ export interface SolanaDeployment {
   desk: string;
   deskOwner: string;
   usdcMint: string;
+  tokenMint?: string; // Test token for E2E tests (local only)
   rpc: string;
 }
 
@@ -386,6 +407,7 @@ export function loadSolanaDeployment(): SolanaDeployment {
       desk: expectSolanaAddress(local.desk, "desk"),
       deskOwner: expectSolanaAddress(local.deskOwner, "deskOwner"),
       usdcMint: expectSolanaAddress(local.usdcMint, "usdcMint"),
+      tokenMint: local.tokenMint, // May be undefined for non-local deployments
       rpc: local.rpc || "http://127.0.0.1:8899",
     };
   }

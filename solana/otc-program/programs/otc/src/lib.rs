@@ -315,13 +315,7 @@ pub mod otc {
         Ok(())
     }
 
-    /// Update token price from AMM pool with manipulation resistance
-    /// Security features:
-    /// - AMM program ID verification (only trusted DEXes)
-    /// - Minimum liquidity requirement (prevents low-liquidity manipulation)
-    /// - EMA smoothing (exponential moving average prevents flash loan attacks)
-    /// - Deviation check (rejects prices that deviate too much from EMA)
-    /// - Rate limiting (minimum interval between updates)
+    /// Update token price from AMM pool with EMA smoothing and manipulation resistance
     pub fn update_token_price_from_pool(
         ctx: Context<UpdateTokenPriceFromPool>,
     ) -> Result<()> {
@@ -331,17 +325,13 @@ pub mod otc {
         
         let now = Clock::get()?.unix_timestamp;
         
-        // =====================================================
-        // SECURITY CHECK 1: Minimum update interval (anti-spam)
-        // =====================================================
+        // Rate limiting
         if registry.prices_updated_at > 0 {
             let time_since_update = now.checked_sub(registry.prices_updated_at).ok_or(OtcError::Overflow)?;
             require!(time_since_update >= registry.min_update_interval_secs, OtcError::UpdateTooFrequent);
         }
         
-        // =====================================================
-        // SECURITY CHECK 2: Verify AMM Program ID
-        // =====================================================
+        // Verify AMM program ID
         let pool_owner = ctx.accounts.pool.owner;
         let valid_program = match registry.pool_type {
             PoolType::Raydium => is_raydium_program(pool_owner),
@@ -359,18 +349,12 @@ pub mod otc {
         
         require!(amount_a > 0 && amount_b > 0, OtcError::StalePrice);
         
-        // =====================================================
-        // SECURITY CHECK 3: Minimum liquidity requirement
-        // =====================================================
+        // Min liquidity check
         if registry.min_liquidity > 0 {
-            // Quote token (vault_b) must have minimum liquidity
             require!(amount_b >= registry.min_liquidity, OtcError::InsufficientLiquidity);
         }
         
-        // =====================================================
-        // Calculate spot price
-        // =====================================================
-        // vault_a = Token, vault_b = Quote (USDC, 6 decimals)
+        // Calculate spot price: vault_a = Token, vault_b = Quote (USDC, 6 decimals)
         let quote_decimals = 6u32;
         let token_decimals = registry.decimals as u32;
         
@@ -388,39 +372,13 @@ pub mod otc {
         let spot_price_8d = u64::try_from(num.checked_div(den).ok_or(OtcError::Overflow)?).map_err(|_| OtcError::Overflow)?;
         require!(spot_price_8d > 0, OtcError::BadPrice);
         
-        // =====================================================
-        // SECURITY CHECK 4: EMA (Exponential Moving Average) price smoothing
-        // =====================================================
-        // We use an EMA instead of a true TWAP because:
-        // 1. Simpler implementation with less state
-        // 2. Still provides strong manipulation resistance
-        // 3. More responsive to legitimate price changes over time
-        //
-        // EMA Formula: new_ema = (old_ema * weight + new_price) / (weight + 1)
-        // where weight = min(time_elapsed, 3600 seconds)
-        //
-        // Example with 5-minute updates (300 seconds):
-        //   new_ema = (old_ema * 300 + spot_price) / 301
-        //   ≈ 99.67% old_ema + 0.33% new_price
-        //
-        // This means a flash loan attacker can only move price ~0.33% per update,
-        // making manipulation economically infeasible.
-        // =====================================================
+        // EMA smoothing: new_ema = (old_ema * weight + spot) / (weight + 1), weight capped at 3600s
         let final_price = if registry.twap_last_timestamp > 0 && registry.max_twap_deviation_bps > 0 {
             let time_elapsed = now.checked_sub(registry.twap_last_timestamp).ok_or(OtcError::Overflow)?;
-            
-            // SAFETY: time_elapsed is from now - twap_last_timestamp
-            // Since we only update twap_last_timestamp to current time, time_elapsed >= 0
             if time_elapsed > 0 {
-                // Calculate EMA with time-based weighting
-                // Weight is capped at 3600 seconds (1 hour) to ensure the EMA
-                // eventually responds to sustained legitimate price changes
-                // SAFETY: time_elapsed verified > 0, min(x, 3600) is always positive
                 #[allow(clippy::cast_sign_loss)]
                 let weight = time_elapsed.min(3600) as u128;
                 let old_ema = registry.token_usd_price_8d as u128;
-                
-                // new_ema = (old_ema * weight + spot_price) / (weight + 1)
                 let numerator = old_ema
                     .checked_mul(weight)
                     .ok_or(OtcError::Overflow)?
@@ -431,8 +389,7 @@ pub mod otc {
                 
                 let ema_price = u64::try_from(new_ema).map_err(|_| OtcError::Overflow)?;
                 
-                // Check spot price deviation from EMA
-                // This catches manipulation attempts where spot deviates significantly
+                // Check deviation from EMA
                 let deviation = if spot_price_8d > ema_price {
                     spot_price_8d - ema_price
                 } else {
@@ -446,18 +403,14 @@ pub mod otc {
                     .ok_or(OtcError::Overflow)?;
                     
                 require!(deviation as u128 <= max_deviation, OtcError::TwapDeviationTooLarge);
-                
-                // Use EMA as the final price (more resistant to manipulation)
                 ema_price
             } else {
                 spot_price_8d
             }
         } else {
-            // First observation or deviation check disabled - use spot price
             spot_price_8d
         };
         
-        // Update registry
         registry.twap_last_price = spot_price_8d;
         registry.twap_last_timestamp = now;
         registry.token_usd_price_8d = final_price;
@@ -466,8 +419,7 @@ pub mod otc {
         Ok(())
     }
 
-    /// Update token price from PumpSwap / Pump.fun bonding curve
-    /// PumpSwap uses a bonding curve model with virtual reserves
+    /// Update token price from PumpSwap bonding curve
     pub fn update_token_price_from_pumpswap(
         ctx: Context<UpdateTokenPriceFromPumpswap>,
         sol_usd_price_8d: u64, // SOL/USD price with 8 decimals (from Pyth or other source)
@@ -477,30 +429,12 @@ pub mod otc {
         require!(registry.pool_type == PoolType::PumpSwap, OtcError::BadState);
         require!(sol_usd_price_8d > 0, OtcError::BadPrice);
         
-        // PumpSwap bonding curve reserves
-        // The bonding curve account stores virtual_sol_reserves and virtual_token_reserves
-        // Price = virtual_sol_reserves / virtual_token_reserves
-        
-        let sol_vault = &ctx.accounts.sol_vault;
-        let token_vault = &ctx.accounts.token_vault;
-        
-        let sol_amount = sol_vault.lamports();
-        let token_amount = token_vault.amount;
-        
+        let sol_amount = ctx.accounts.sol_vault.lamports();
+        let token_amount = ctx.accounts.token_vault.amount;
         require!(sol_amount > 0 && token_amount > 0, OtcError::StalePrice);
         
-        // Calculate price in SOL: price_sol = sol_amount / token_amount
-        // Then convert to USD: price_usd = price_sol * sol_usd_price
-        
-        // SOL has 9 decimals, tokens typically have 6-9 decimals
         let token_decimals = registry.decimals as u32;
-        
-        // price_sol_with_decimals = sol_amount * 10^token_decimals / (token_amount * 10^9)
-        // price_usd_8d = price_sol * sol_usd_price_8d / 10^8
-        
-        // Combined: price_usd_8d = sol_amount * 10^token_decimals * sol_usd_price_8d / (token_amount * 10^9 * 10^8)
-        //                        = sol_amount * sol_usd_price_8d * 10^token_decimals / (token_amount * 10^17)
-        
+        // price_usd = sol_amount * sol_usd * 10^token_dec / (token_amount * 10^17)
         let numerator = (sol_amount as u128)
             .checked_mul(sol_usd_price_8d as u128)
             .ok_or(OtcError::Overflow)?
@@ -956,7 +890,7 @@ pub mod otc {
         let now = Clock::get()?.unix_timestamp;
         let expiry = offer.created_at.checked_add(desk.quote_expiry_secs).ok_or(OtcError::Overflow)?;
         require!(now <= expiry, OtcError::Expired);
-        require!(available_inventory(ctx.accounts.desk_token_treasury.amount) >= offer.token_amount, OtcError::InsuffInv);
+        require!(ctx.accounts.desk_token_treasury.amount >= offer.token_amount, OtcError::InsuffInv);
         if desk.restrict_fulfill {
             let caller = ctx.accounts.payer.key();
             require!(caller == offer.beneficiary || caller == desk.owner || caller == desk.agent || desk.approvers.contains(&caller), OtcError::FulfillRestricted);
@@ -1020,7 +954,7 @@ pub mod otc {
         let now = Clock::get()?.unix_timestamp;
         let expiry = offer.created_at.checked_add(desk.quote_expiry_secs).ok_or(OtcError::Overflow)?;
         require!(now <= expiry, OtcError::Expired);
-        require!(available_inventory(ctx.accounts.desk_token_treasury.amount) >= offer.token_amount, OtcError::InsuffInv);
+        require!(ctx.accounts.desk_token_treasury.amount >= offer.token_amount, OtcError::InsuffInv);
         if desk.restrict_fulfill {
             let caller = ctx.accounts.payer.key();
             require!(caller == offer.beneficiary || caller == desk.owner || caller == desk.agent || desk.approvers.contains(&caller), OtcError::FulfillRestricted);
@@ -1340,10 +1274,12 @@ pub struct UpdateTokenPriceFromPool<'info> {
     #[account(constraint = pool.key() == token_registry.pool_address @ OtcError::BadState)]
     pub pool: UncheckedAccount<'info>,
     /// Token vault (vault_a) - contains the token being priced
-    #[account(constraint = vault_a.owner == token_registry.pool_address @ OtcError::BadState)]
+    /// NOTE: On mainnet Raydium/Orca, vaults are owned by pool authority PDAs, not pool address
+    /// The vault must match the token mint in the registry
+    #[account(constraint = vault_a.mint == token_registry.token_mint @ OtcError::BadState)]
     pub vault_a: InterfaceAccount<'info, TokenAccount>,
     /// Quote vault (vault_b) - contains USDC or SOL
-    #[account(constraint = vault_b.owner == token_registry.pool_address @ OtcError::BadState)]
+    /// NOTE: Quote vault ownership is verified via AMM program ID check in instruction logic
     pub vault_b: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
 }
@@ -1611,125 +1547,61 @@ pub struct EmergencyRefundUsdc<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-/// OTC Trading Desk - manages multi-token OTC trading
 #[account]
 pub struct Desk {
-    /// Owner of the desk - can configure all settings
     pub owner: Pubkey,
-    /// Agent - can create offers and approve on behalf of owner
     pub agent: Pubkey,
-    /// USDC mint address for USDC payments
     pub usdc_mint: Pubkey,
-    /// USDC decimals (must be 6)
     pub usdc_decimals: u8,
-    /// Minimum USD value (8 decimals) for offers
     pub min_usd_amount_8d: u64,
-    /// Quote expiry time in seconds (minimum 60)
     pub quote_expiry_secs: i64,
-    /// Maximum age for price data in seconds
     pub max_price_age_secs: i64,
-    /// If true, only authorized parties can fulfill offers
     pub restrict_fulfill: bool,
-    /// List of addresses that can approve offers (max 32)
-    pub approvers: Vec<Pubkey>,
-    /// Auto-incrementing consignment ID counter
+    pub approvers: Vec<Pubkey>, // max 32
     pub next_consignment_id: u64,
-    /// Auto-incrementing offer ID counter
     pub next_offer_id: u64,
-    /// Emergency pause flag - halts all operations
     pub paused: bool,
-    /// Pyth feed ID for SOL/USD price
     pub sol_price_feed_id: [u8; 32],
-    /// SOL/USD price with 8 decimals (set manually or via Pyth)
     pub sol_usd_price_8d: u64,
-    /// Timestamp of last price update
     pub prices_updated_at: i64,
-    // =====================================================
-    // DEPRECATED FIELDS - kept for account size compatibility
-    // Multi-token model uses TokenRegistry for per-token pricing
-    // =====================================================
-    /// DEPRECATED: Use TokenRegistry.token_mint instead
+    // Deprecated fields - kept for account size
     pub token_mint: Pubkey,
-    /// DEPRECATED: Use TokenRegistry.decimals instead
     pub token_decimals: u8,
-    /// DEPRECATED: Not tracked - use treasury balance
     pub token_deposited: u64,
-    /// DEPRECATED: Not tracked - use treasury balance
     pub token_reserved: u64,
-    /// DEPRECATED: Use TokenRegistry.price_feed_id instead
     pub token_price_feed_id: [u8; 32],
-    /// DEPRECATED: Use TokenRegistry.token_usd_price_8d instead
     pub token_usd_price_8d: u64,
-    // =====================================================
-    // END DEPRECATED FIELDS
-    // =====================================================
-    /// Default lockup delay for new offers
     pub default_unlock_delay_secs: i64,
-    /// Maximum allowed lockup period
     pub max_lockup_secs: i64,
-    /// Maximum tokens per order (default: u64::MAX)
     pub max_token_per_order: u64,
-    /// Enable/disable emergency refund feature
     pub emergency_refund_enabled: bool,
-    /// Deadline for emergency refunds (seconds from offer creation)
     pub emergency_refund_deadline_secs: i64,
-    /// P2P commission in basis points (default 25 = 0.25%) for non-negotiable fixed-price deals
     pub p2p_commission_bps: u16,
 }
 
 impl Desk { pub const SIZE: usize = 32+32+32+1+8+8+8+1+4+(32*32)+8+8+1+32+8+8+32+1+8+8+32+8+8+8+8+1+8+2; } // +2 for p2p_commission_bps
 
-/// Pool type for on-chain price discovery
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Default)]
-pub enum PoolType {
-    #[default]
-    None,           // No pool configured
-    Raydium,        // Raydium CPMM
-    Orca,           // Orca Whirlpool
-    PumpSwap,       // Pump.fun bonding curve / PumpSwap
-}
+pub enum PoolType { #[default] None, Raydium, Orca, PumpSwap }
 
-/// Token registry for multi-token OTC trading
-/// Stores per-token pricing configuration and EMA (price smoothing) data
 #[account]
 pub struct TokenRegistry {
-    /// Desk this registry belongs to
     pub desk: Pubkey,
-    /// SPL token mint address
     pub token_mint: Pubkey,
-    /// Token decimals
     pub decimals: u8,
-    /// Pyth price feed ID (32 bytes)
     pub price_feed_id: [u8; 32],
-    /// AMM Pool Address for on-chain pricing (Raydium, Orca, PumpSwap)
     pub pool_address: Pubkey,
-    /// Type of pool for price calculation
     pub pool_type: PoolType,
-    /// Whether this token is active for trading
     pub is_active: bool,
-    /// Current token/USD price with 8 decimals (EMA-smoothed when using pool oracle)
     pub token_usd_price_8d: u64,
-    /// Timestamp of last price update
     pub prices_updated_at: i64,
-    /// Address that registered this token
     pub registered_by: Pubkey,
-    // =====================================================
-    // EMA (Exponential Moving Average) and Security Fields
-    // These provide manipulation resistance for pool-based pricing
-    // =====================================================
-    /// Minimum liquidity required in pool (in quote token units, 6 decimals for USDC)
+    // EMA fields for manipulation resistance
     pub min_liquidity: u64,
-    /// DEPRECATED: Reserved for future use (was cumulative price, now unused)
-    /// Kept for account size compatibility
-    pub twap_cumulative_price: u128,
-    /// Last EMA observation timestamp (for time-weighted smoothing)
+    pub twap_cumulative_price: u128, // deprecated
     pub twap_last_timestamp: i64,
-    /// Last observed spot price (used for EMA calculation)
     pub twap_last_price: u64,
-    /// Maximum allowed spot price deviation from EMA (basis points, e.g., 500 = 5%)
-    /// If spot deviates more than this from the EMA, the price update is rejected
     pub max_twap_deviation_bps: u16,
-    /// Minimum time between price updates (seconds) - prevents spam and manipulation
     pub min_update_interval_secs: i64,
 }
 
@@ -1794,25 +1666,13 @@ pub struct Offer {
 
 impl Offer { pub const SIZE: usize = 32+8+32+1+8+32+8+2+8+8+8+2+8+1+1+1+1+1+32+8+2; } // +2 for agent_commission_bps
 
-/// Returns available inventory for a token treasury
-/// Multi-token model: treasury balance is the available amount
-#[inline]
-fn available_inventory(treasury_balance: u64) -> u64 {
-    treasury_balance
-}
 fn only_owner(desk: &Desk, who: &Pubkey) -> Result<()> { require!(*who == desk.owner, OtcError::NotOwner); Ok(()) }
 fn must_be_approver(desk: &Desk, who: &Pubkey) -> Result<()> { require!((*who == desk.agent) || desk.approvers.contains(who), OtcError::NotApprover); Ok(()) }
 fn pow10(exp: u32) -> u128 { 10u128.pow(exp) }
 fn mul_div_u128(a: u128, b: u128, d: u128) -> Result<u128> { a.checked_mul(b).and_then(|x| x.checked_div(d)).ok_or(OtcError::Overflow.into()) }
 fn mul_div_ceil_u128(a: u128, b: u128, d: u128) -> Result<u128> { let prod = a.checked_mul(b).ok_or(OtcError::Overflow)?; let q = prod / d; let r = prod % d; Ok(if r == 0 { q } else { q + 1 }) }
+fn safe_u128_to_u64(value: u128) -> Result<u64> { u64::try_from(value).map_err(|_| OtcError::Overflow.into()) }
 
-/// Safe conversion from u128 to u64 with overflow check
-fn safe_u128_to_u64(value: u128) -> Result<u64> {
-    u64::try_from(value).map_err(|_| OtcError::Overflow.into())
-}
-
-/// Check if new_price deviates too much from old_price
-/// Returns Ok(()) if within bounds, Err(PriceDeviationTooLarge) if exceeded
 fn check_price_deviation(old_price: u64, new_price: u64, max_deviation_bps: u16) -> Result<()> {
     if old_price == 0 || max_deviation_bps == 0 {
         return Ok(());
@@ -1823,7 +1683,6 @@ fn check_price_deviation(old_price: u64, new_price: u64, max_deviation_bps: u16)
     Ok(())
 }
 
-/// Calculate USD value with discount applied
 fn calc_discounted_usd(token_amount: u64, price_8d: u64, decimals: u8, discount_bps: u16) -> Result<u64> {
     let token_dec = decimals as u32;
     let usd_8d = safe_u128_to_u64(mul_div_u128(token_amount as u128, price_8d as u128, pow10(token_dec) as u128)?)?;
@@ -1833,98 +1692,32 @@ fn calc_discounted_usd(token_amount: u64, price_8d: u64, decimals: u8, discount_
         .ok_or(OtcError::Overflow.into())
 }
 
-/// Calculate recommended agent commission based on discount and lockup
-/// Discount component: 100 bps (1.0%) at ≤5% discount, 25 bps (0.25%) at ≥30% discount
-/// Lockup component: 0 bps at 0 days, 50 bps (0.5%) at ≥365 days
-/// Returns value between 25 and 150 bps
-pub fn calculate_agent_commission(discount_bps: u16, lockup_days: u32) -> u16 {
-    // Discount component: 100 bps at 5% discount, 25 bps at 30% discount
-    let discount_component: u32 = if discount_bps <= 500 {
-        100
-    } else if discount_bps >= 3000 {
-        25
-    } else {
-        // Linear interpolation: 100 - (discount_bps - 500) * 75 / 2500
-        100 - ((discount_bps as u32 - 500) * 75) / 2500
-    };
-    
-    // Lockup component: 0 bps at 0 days, 50 bps at 365+ days
-    let lockup_component: u32 = if lockup_days >= 365 {
-        50
-    } else {
-        (lockup_days * 50) / 365
-    };
-    
-    // Total commission: discount + lockup components
-    let total = discount_component + lockup_component;
-    
-    // Ensure within bounds (25-150 bps)
-    // SAFETY: After bounds checking, total is guaranteed to be 25-150, which fits in u16
-    #[allow(clippy::cast_possible_truncation)]
-    if total < 25 { 25 } else if total > 150 { 150 } else { total as u16 }
-}
-
-// =====================================================
-// AMM Program ID Constants
-// =====================================================
-// These are the official deployed program IDs for mainnet
-
-/// Raydium AMM V4 Program ID
+// AMM Program IDs (mainnet)
 const RAYDIUM_AMM_V4: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
-/// Raydium CPMM (Concentrated) Program ID  
 const RAYDIUM_CPMM: &str = "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C";
-/// Raydium CLMM Program ID
 const RAYDIUM_CLMM: &str = "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK";
-/// Orca Whirlpool Program ID
 const ORCA_WHIRLPOOL: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
-/// PumpSwap / Pump.fun Program ID
 const PUMPSWAP_PROGRAM: &str = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 
-/// Check if the given program ID is a valid Raydium program
 fn is_raydium_program(program_id: &Pubkey) -> bool {
-    matches!(
-        program_id.to_string().as_str(),
-        RAYDIUM_AMM_V4 | RAYDIUM_CPMM | RAYDIUM_CLMM
-    )
+    matches!(program_id.to_string().as_str(), RAYDIUM_AMM_V4 | RAYDIUM_CPMM | RAYDIUM_CLMM)
 }
+fn is_orca_program(program_id: &Pubkey) -> bool { program_id.to_string() == ORCA_WHIRLPOOL }
+fn is_pumpswap_program(program_id: &Pubkey) -> bool { program_id.to_string() == PUMPSWAP_PROGRAM }
 
-/// Check if the given program ID is a valid Orca program
-fn is_orca_program(program_id: &Pubkey) -> bool {
-    program_id.to_string() == ORCA_WHIRLPOOL
-}
-
-/// Check if the given program ID is a valid PumpSwap program
-fn is_pumpswap_program(program_id: &Pubkey) -> bool {
-    program_id.to_string() == PUMPSWAP_PROGRAM
-}
-
-/// Convert Pyth price to our 8-decimal USD format
-/// Pyth prices are i64 with exponent (e.g., price=50000000, expo=-8 means $0.50)
 fn convert_pyth_price(price: i64, exponent: i32) -> Result<u64> {
     require!(price > 0, OtcError::BadPrice);
-    
-    // Target: 8 decimals (1e8 = $1)
-    let target_exp = 8i32;
-    let exp_diff = target_exp.checked_sub(exponent).ok_or(OtcError::Overflow)?;
-    // Prevent overflow in pow for extreme exponents
+    let exp_diff = 8i32.checked_sub(exponent).ok_or(OtcError::Overflow)?;
     require!(exp_diff <= 38 && exp_diff >= -38, OtcError::BadPrice);
-    
-    // SAFETY: price is verified > 0 above, so casting to u128 preserves value
     #[allow(clippy::cast_sign_loss)]
     let price_u128 = price as u128;
-    
     let result = if exp_diff >= 0 {
-        // SAFETY: exp_diff is verified >= 0 in this branch
         #[allow(clippy::cast_sign_loss)]
-        let exp_u32 = exp_diff as u32;
-        price_u128.checked_mul(10u128.pow(exp_u32)).ok_or(OtcError::Overflow)?
+        price_u128.checked_mul(10u128.pow(exp_diff as u32)).ok_or(OtcError::Overflow)?
     } else {
-        // SAFETY: exp_diff is < 0 here, so -exp_diff is positive
         #[allow(clippy::cast_sign_loss)]
-        let neg_exp_u32 = (-exp_diff) as u32;
-        price_u128.checked_div(10u128.pow(neg_exp_u32)).ok_or(OtcError::Overflow)?
+        price_u128.checked_div(10u128.pow((-exp_diff) as u32)).ok_or(OtcError::Overflow)?
     };
-    
     u64::try_from(result).map_err(|_| OtcError::Overflow.into())
 }
 

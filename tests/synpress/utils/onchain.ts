@@ -253,6 +253,7 @@ export function loadSolanaDeployment(): SolanaDeploymentSnapshot {
     desk: deployment.desk,
     deskOwner: deployment.deskOwner,
     usdcMint: deployment.usdcMint,
+    tokenMint: deployment.tokenMint, // Test token for E2E tests (local only)
     rpc: deployment.rpc,
   };
 }

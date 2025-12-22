@@ -6,7 +6,6 @@ import type { Character } from "@elizaos/core";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { getDatabaseUrl, getGroqModels } from "@/config/env";
 import { groqPlugin } from "./plugin-groq";
-// import { openaiPlugin } from "@elizaos/plugin-openai";
 import { otcDeskPlugin } from "./plugin-otc-desk";
 
 /**
@@ -908,7 +907,6 @@ const agent = {
     groqPlugin,
     // SQL plugin connects to Docker PostgreSQL (port 5439) in localnet mode
     sqlPlugin,
-    /* openaiPlugin, */
     otcDeskPlugin,
   ],
   // Filter out undefined providers/actions to ensure clean arrays

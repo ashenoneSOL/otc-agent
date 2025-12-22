@@ -79,7 +79,6 @@ export function ChatMessages({
           >
             <ChatMessage
               message={message}
-              i={i}
               citations={
                 message.name !== USER_NAME ? citationsMap[i] : undefined
               }

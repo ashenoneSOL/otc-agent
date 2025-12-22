@@ -77,7 +77,7 @@ We use the following third-party service providers to operate our Services:
 - PostHog (Product analytics)
 - Braintrust (Analytics)
 - Slack (Internal analytics and monitoring)
-- Sentry (Error tracking and performance monitoring)
+- Vercel (Hosting and serverless logging)
 
 Each of these service providers has been selected for their robust security practices and compliance with relevant data protection regulations. These providers process your data according to their respective privacy policies and our data processing agreements with them.
 

@@ -1,11 +1,4 @@
-/**
- * Pool Oracle Security Tests
- * 
- * Tests for EMA price smoothing, program ID verification, and minimum liquidity
- * 
- * NOTE: Field names contain "twap" for ABI compatibility but the implementation
- * uses an Exponential Moving Average (EMA) which is more suitable for this use case.
- */
+// Pool Oracle Security Tests - EMA smoothing, program ID verification, min liquidity
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Otc } from "../target/types/otc";

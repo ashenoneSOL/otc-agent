@@ -161,14 +161,18 @@ export async function GET(request: NextRequest) {
     isActive &&
     registeredAddress !== "0x0000000000000000000000000000000000000000";
 
-  // Find all pools
+  // Find all pools (skip for local development - no real DEX pools)
   let allPoolsRaw: PoolInfo[] = [];
   let pool: PoolInfo | null = null;
   let poolError: string | undefined;
 
-  allPoolsRaw = await findAllPools(tokenAddress, chainId);
-  // Best pool is the first one (highest TVL)
-  pool = allPoolsRaw.length > 0 ? allPoolsRaw[0] : null;
+  // Local development (chainId 31337) doesn't have real DEX pools
+  // Just check token registration instead
+  if (chainId !== 31337) {
+    allPoolsRaw = await findAllPools(tokenAddress, chainId);
+    // Best pool is the first one (highest TVL)
+    pool = allPoolsRaw.length > 0 ? allPoolsRaw[0] : null;
+  }
 
   // Get registration fee if helper is configured and token is not registered
   let registrationFee: string | undefined;
@@ -187,7 +191,12 @@ export async function GET(request: NextRequest) {
   // Build warning message
   let warning: string | undefined;
 
-  if (!pool) {
+  // Local development mode: no pools needed if token is registered
+  if (chainId === 31337) {
+    if (!isRegistered) {
+      warning = "Token not registered in local OTC contract.";
+    }
+  } else if (!pool) {
     warning =
       "No liquidity pool found. Requires Uniswap V3/V4, Aerodrome, or Pancakeswap pool.";
   } else if (pool.tvlUsd < 1000) {
@@ -196,12 +205,16 @@ export async function GET(request: NextRequest) {
     warning = `Moderate liquidity ($${pool.tvlUsd.toFixed(0)}). Consider waiting for more liquidity for better price accuracy.`;
   }
 
+  // For local development, consider registered tokens as "having a pool"
+  // This allows the consignment flow to work without real DEX pools
+  const hasPoolOrLocal = chainId === 31337 ? isRegistered : !!pool;
+
   const result: PoolCheckResult = {
     success: true,
     tokenAddress,
     chain,
     isRegistered,
-    hasPool: !!pool,
+    hasPool: hasPoolOrLocal,
     warning,
     error: poolError,
   };

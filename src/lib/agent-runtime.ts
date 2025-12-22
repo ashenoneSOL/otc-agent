@@ -281,7 +281,6 @@ class AgentRuntimeManager {
       source: "web",
       type: ChannelType.DM,
       channelId: roomId,
-      serverId: "otc-desk-server",
       userName: entityId,
     });
 

@@ -487,9 +487,8 @@ export async function POST(request: NextRequest) {
     // Use update_token_price_from_pumpswap (permissionless)
     // pumpSwapPool already validated above - it has all required fields
     // Get current SOL price for the calculation
-    const { getSolPriceUsd } = await import(
-      "@/lib/plugin-otc-desk/services/priceFeed"
-    );
+    const { getSolPriceUsd } =
+      await import("@/lib/plugin-otc-desk/services/priceFeed");
     const solPrice = await getSolPriceUsd();
     const solPrice8d = Math.floor(solPrice * 1e8);
 

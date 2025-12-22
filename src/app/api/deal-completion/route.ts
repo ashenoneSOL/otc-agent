@@ -41,13 +41,11 @@ export async function POST(request: NextRequest) {
 
   if (action === "complete") {
     if (consignmentId && tokenId) {
-      const { PriceProtectionService } = await import(
-        "@/services/priceProtection"
-      );
+      const { PriceProtectionService } =
+        await import("@/services/priceProtection");
       const { TokenDB } = await import("@/services/database");
-      const { ConsignmentService } = await import(
-        "@/services/consignmentService"
-      );
+      const { ConsignmentService } =
+        await import("@/services/consignmentService");
 
       const priceProtection = new PriceProtectionService();
       const consignmentService = new ConsignmentService();
@@ -274,9 +272,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Get SOL price from price feed API
-      const { getSolPriceUsd } = await import(
-        "@/lib/plugin-otc-desk/services/priceFeed"
-      );
+      const { getSolPriceUsd } =
+        await import("@/lib/plugin-otc-desk/services/priceFeed");
       solPrice = await getSolPriceUsd();
       console.log("[DealCompletion] Using SOL price from API:", solPrice);
 

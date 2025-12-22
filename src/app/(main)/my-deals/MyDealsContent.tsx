@@ -14,6 +14,8 @@ import { useOTC } from "@/hooks/contracts/useOTC";
 import { useMyConsignments } from "@/hooks/useConsignments";
 import { useDeals } from "@/hooks/useDeals";
 import { usePrefetchQuote } from "@/hooks/useQuote";
+import { quoteKeys } from "@/hooks/queryKeys";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   mergeDealsWithOffers,
   type OfferWithMetadata,
@@ -65,6 +67,7 @@ export function MyDealsContent() {
 
   // Prefetch quote data on hover for faster deal page loading
   const prefetchQuote = usePrefetchQuote();
+  const queryClient = useQueryClient();
 
   const [refunding, setRefunding] = useState<bigint | null>(null);
   const [refundStatus, setRefundStatus] = useState<{
@@ -585,14 +588,20 @@ export function MyDealsContent() {
                               window.location.href = `/deal/${o.quoteId}`;
                               return;
                             }
-                            const response = await fetch(
-                              `/api/quote/by-offer/${o.id}`,
-                            );
-                            if (response.ok) {
-                              const data = await response.json();
-                              if (data.quoteId) {
-                                window.location.href = `/deal/${data.quoteId}`;
-                              }
+                            // Use React Query to fetch and cache the quote lookup
+                            const data = await queryClient.fetchQuery({
+                              queryKey: quoteKeys.byOffer(o.id.toString()),
+                              queryFn: async () => {
+                                const response = await fetch(
+                                  `/api/quote/by-offer/${o.id}`,
+                                );
+                                if (!response.ok) return null;
+                                return response.json();
+                              },
+                              staleTime: 300_000, // 5 minutes
+                            });
+                            if (data?.quoteId) {
+                              window.location.href = `/deal/${data.quoteId}`;
                             }
                           }}
                           className="!px-3 !py-1.5 !text-sm"

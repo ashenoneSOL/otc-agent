@@ -160,8 +160,25 @@ export const metaMaskFixtures = (
     },
 
     page: async ({ page }, use) => {
-      await page.goto("/");
-      await use(page);
+      // Wait for server to be ready before navigating
+      const maxRetries = 30;
+      const retryDelay = 2000;
+      let lastError: Error | null = null;
+
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          await page.goto("/", { timeout: 30000, waitUntil: "domcontentloaded" });
+          await use(page);
+          return;
+        } catch (e) {
+          lastError = e instanceof Error ? e : new Error(String(e));
+          if (i < maxRetries - 1) {
+            console.log(`[MetaMask Fixtures] Waiting for server (attempt ${i + 1}/${maxRetries})...`);
+            await new Promise((r) => setTimeout(r, retryDelay));
+          }
+        }
+      }
+      throw lastError ?? new Error("Failed to connect to server after multiple retries");
     },
   });
 };

@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -11,7 +15,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "plugins": [
       {
@@ -19,26 +23,33 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     },
     "baseUrl": "."
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
   "exclude": [
-    "node_modules", 
-    "elizaos/**/*",
-    "eliza/**/*",
-    "privy-frames-v2-demo/**/*",
+    "node_modules",
     "src/agent.ts",
-    "src/lib/plugin-otc-desk/**/*",
-    "src/plugin-groq.ts",
+    "src/lib/plugin-otc-desk",
+    "src/lib/plugin-groq.ts",
     "src/services/quoteApprovalWorker.ts",
-    "dist/**/*",
-    "solana/**/*",
-    "contracts/**/*",
-    "tests/**/*",
-    "scripts/**/*",
-    "a2a-js/src/samples/**/*",
-    "a2a-js/test/**/*"
+    "dist",
+    "solana",
+    "contracts",
+    "tests",
+    "scripts",
+    "elizaos",
+    "eliza",
+    "privy-frames-v2-demo",
+    "a2a-js"
   ]
 }

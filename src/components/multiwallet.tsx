@@ -354,8 +354,8 @@ export function MultiWalletProvider({
       const phantomWindow = window as PhantomWindow;
       const hasPhantom = Boolean(
         phantomWindow.phantom &&
-          phantomWindow.phantom.solana &&
-          phantomWindow.phantom.solana.isPhantom === true,
+        phantomWindow.phantom.solana &&
+        phantomWindow.phantom.solana.isPhantom === true,
       );
       setIsPhantomInstalled((prev) =>
         prev !== hasPhantom ? hasPhantom : prev,

@@ -218,11 +218,13 @@ async function deployContracts(): Promise<void> {
 }
 
 async function startSolana(): Promise<{ pid?: number; shouldStop: boolean }> {
-  const shouldRestart = process.env.E2E_RESTART_SOLANA === "true";
+  // Default to restart for E2E tests - ensures clean state with properly initialized desk
+  // Set E2E_RESTART_SOLANA=false to reuse existing validator (not recommended for tests)
+  const shouldRestart = process.env.E2E_RESTART_SOLANA !== "false";
   const alreadyRunning = isPortInUse(SOLANA_PORT);
 
   if (alreadyRunning && !shouldRestart) {
-    logSetup("Solana validator already running - reusing");
+    logSetup("Solana validator already running - reusing (E2E_RESTART_SOLANA=false)");
     const pidStr = execSync("lsof -nP -iTCP:8899 -sTCP:LISTEN -t | head -n1").toString().trim();
     const pid = pidStr ? Number(pidStr) : undefined;
     return { pid, shouldStop: false };
@@ -315,7 +317,7 @@ async function startNextJs(): Promise<{ process: ChildProcess | null; shouldStop
 
   next.unref();
 
-  await waitForUrl(`http://localhost:${APP_PORT}/api/tokens`, 120000);
+  await waitForUrl(`http://localhost:${APP_PORT}/api/tokens`, 300000); // 5 minutes
   logSetup(`Next.js started on port ${APP_PORT}`);
 
   return { process: next, shouldStop: true };

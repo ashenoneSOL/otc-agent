@@ -16,6 +16,7 @@ import {
   DeleteTokenResponseSchema,
   GetTokensQuerySchema,
   TokensResponseSchema,
+  UpdateTokenRequestSchema,
   UpdateTokenResponseSchema,
 } from "@/types/validation/api-schemas";
 import { isContractAddress } from "@/utils/address-utils";
@@ -161,14 +162,7 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { tokenId, updates } = body;
-
-  if (!tokenId || !updates) {
-    return NextResponse.json(
-      { error: "tokenId and updates are required" },
-      { status: 400 },
-    );
-  }
+  const { tokenId, updates } = parseOrThrow(UpdateTokenRequestSchema, body);
 
   const updated = await TokenDB.updateToken(tokenId, updates);
   // Invalidate cache after update

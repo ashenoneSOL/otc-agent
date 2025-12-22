@@ -13,7 +13,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import type { Abi, Address } from "viem";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, erc20Abi, formatUnits, http } from "viem";
 import {
   base,
   baseSepolia,
@@ -22,7 +22,7 @@ import {
   mainnet,
   sepolia,
 } from "viem/chains";
-import { useAccount, useBalance } from "wagmi";
+import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { Button } from "@/components/button";
 import { Dialog } from "@/components/dialog";
 import { useChain, useWalletActions, useWalletConnection } from "@/contexts";
@@ -37,6 +37,7 @@ import {
 import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
 import { useOTC } from "@/hooks/contracts/useOTC";
 import { useNativePrices } from "@/hooks/useNativePrices";
+import { useSolanaPaymentBalance } from "@/hooks/useSolanaBalance";
 import { useTransactionErrorHandler } from "@/hooks/useTransactionErrorHandler";
 import { safeReadContract } from "@/lib/viem-utils";
 import { getExplorerTxUrl } from "@/utils/format";
@@ -503,6 +504,14 @@ export function AcceptQuoteModal({
   const { handleTransactionError } = useTransactionErrorHandler();
   const { login, ready: privyReady } = usePrivy();
 
+  // Fetch Solana payment balance when on Solana chain
+  // Maps currency to the format expected by useSolanaPaymentBalance
+  const solanaCurrency = currency === "SOL" ? "SOL" : "USDC";
+  const { data: solanaBalance } = useSolanaPaymentBalance(
+    isSolanaToken ? solanaPublicKey : null,
+    solanaCurrency,
+  );
+
   // Fetch token price from API if quote doesn't have pricePerToken
   useEffect(() => {
     if (!isOpen) return;
@@ -589,15 +598,67 @@ export function AcceptQuoteModal({
   const confirmTransactionPolling = waitForSolanaTx;
 
   // Wallet balances for display and MAX calculation
-  const ethBalance = useBalance({ address });
+  const ethBalanceQuery = useBalance({ address });
+  // Format native balance (wagmi v3 no longer has `formatted`)
+  const ethBalance = useMemo(() => {
+    if (!ethBalanceQuery.data) return null;
+    return {
+      ...ethBalanceQuery.data,
+      formatted: formatUnits(
+        ethBalanceQuery.data.value,
+        ethBalanceQuery.data.decimals,
+      ),
+    };
+  }, [ethBalanceQuery.data]);
+
   // Use evmUsdcAddress if available, otherwise fall back to usdcAddress
   const effectiveUsdcAddress = (evmUsdcAddress ?? usdcAddress) as
     | `0x${string}`
     | undefined;
-  const usdcBalance = useBalance({
-    address,
-    token: effectiveUsdcAddress as `0x${string}` | undefined,
+
+  // ERC20 USDC balance (wagmi v3 uses useReadContracts for token balances)
+  const usdcBalanceQuery = useReadContracts({
+    contracts:
+      effectiveUsdcAddress && address
+        ? [
+            {
+              address: effectiveUsdcAddress,
+              abi: erc20Abi,
+              functionName: "balanceOf",
+              args: [address],
+            },
+            {
+              address: effectiveUsdcAddress,
+              abi: erc20Abi,
+              functionName: "decimals",
+            },
+          ]
+        : [],
   });
+
+  const usdcBalance = useMemo(() => {
+    const results = usdcBalanceQuery.data;
+    if (!results || results.length < 2) return { data: null };
+    const balanceResult = results[0];
+    const decimalsResult = results[1];
+    if (!balanceResult || !decimalsResult) return { data: null };
+    if (
+      balanceResult.status !== "success" ||
+      decimalsResult.status !== "success"
+    ) {
+      return { data: null };
+    }
+    const value = balanceResult.result as bigint;
+    const decimals = decimalsResult.result as number;
+    return {
+      data: {
+        value,
+        decimals,
+        symbol: "USDC",
+        formatted: formatUnits(value, decimals),
+      },
+    };
+  }, [usdcBalanceQuery.data]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -2140,11 +2201,12 @@ export function AcceptQuoteModal({
   ]);
 
   const balanceDisplay = useMemo(() => {
-    // For Solana tokens, wagmi (EVM-only) cannot fetch balances.
-    // User proceeds with available max - transaction will fail on-chain if insufficient funds.
-    // TODO: Add useSolanaBalance hook for proper balance display
+    // For Solana tokens, use the Solana balance hook
     if (isSolanaToken) {
-      return "—";
+      if (!solanaBalance?.formatted) {
+        return "—";
+      }
+      return solanaBalance.formatted;
     }
     if (!isConnected) return "—";
     if (currency === "USDC") {
@@ -2155,17 +2217,18 @@ export function AcceptQuoteModal({
       return `${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
     }
     // Native balance (ETH/BNB)
-    if (!ethBalance.data?.formatted) {
+    if (!ethBalance?.formatted) {
       return "0";
     }
-    const eth = Number(ethBalance.data.formatted);
+    const eth = Number(ethBalance.formatted);
     return `${eth.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
   }, [
     isConnected,
     isSolanaToken,
     currency,
     usdcBalance.data?.formatted,
-    ethBalance.data?.formatted,
+    ethBalance?.formatted,
+    solanaBalance?.formatted,
   ]);
 
   const handleMaxClick = () => {
@@ -2185,10 +2248,10 @@ export function AcceptQuoteModal({
         maxByFunds = Math.min(maxByFunds, Math.floor(usdc / estPerTokenUsd));
       }
     } else if (currency === "ETH" || currency === "BNB") {
-      if (!ethBalance.data?.formatted) {
+      if (!ethBalance?.formatted) {
         return; // No balance data available
       }
-      const eth = Number(ethBalance.data.formatted);
+      const eth = Number(ethBalance.formatted);
       const nativeUsd = nativeUsdPrice;
       if (nativeUsd > 0 && estPerTokenUsd > 0 && eth > 0) {
         const usd = eth * nativeUsd;
@@ -2224,10 +2287,10 @@ export function AcceptQuoteModal({
       const usdc = Number(usdcBalance.data.formatted);
       if (usdc > 0) maxByFunds = Math.floor(usdc / estPerTokenUsd);
     } else if (currency === "ETH" || currency === "BNB") {
-      if (!ethBalance.data?.formatted) {
+      if (!ethBalance?.formatted) {
         return effectiveMaxTokens; // No balance data available
       }
-      const eth = Number(ethBalance.data.formatted);
+      const eth = Number(ethBalance.formatted);
       if (nativeUsdPrice > 0 && eth > 0)
         maxByFunds = Math.floor((eth * nativeUsdPrice) / estPerTokenUsd);
     }
@@ -2240,7 +2303,7 @@ export function AcceptQuoteModal({
     currency,
     nativeUsdPrice,
     usdcBalance.data?.formatted,
-    ethBalance.data?.formatted,
+    ethBalance?.formatted,
   ]);
 
   const validationError = useMemo(() => {

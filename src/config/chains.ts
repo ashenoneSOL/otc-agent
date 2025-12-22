@@ -3,7 +3,7 @@ import {
   baseSepolia,
   bsc,
   bscTestnet,
-  localhost,
+  foundry,
   mainnet,
   sepolia,
   type Chain as ViemChain,
@@ -46,8 +46,8 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
     const isMainnet = env === "mainnet";
     const isLocal = env === "local";
 
-    // Local dev uses localhost/Anvil, testnet uses Sepolia, mainnet uses Ethereum mainnet
-    const chain = isLocal ? localhost : isMainnet ? mainnet : sepolia;
+    // Local dev uses foundry/Anvil (chainId 31337), testnet uses Sepolia, mainnet uses Ethereum mainnet
+    const chain = isLocal ? foundry : isMainnet ? mainnet : sepolia;
 
     // Get addresses from deployment config (validated)
     // FAIL-FAST: If networks exists, ethereum should exist (or we should know why it doesn't)
@@ -106,7 +106,7 @@ export const SUPPORTED_CHAINS: Record<Chain, ChainConfig> = {
   base: (() => {
     const isMainnet = env === "mainnet";
     const isLocal = env === "local";
-    const chain = isLocal ? localhost : isMainnet ? base : baseSepolia;
+    const chain = isLocal ? foundry : isMainnet ? base : baseSepolia;
 
     // Get addresses from deployment config (validated)
     // networks is optional - if it exists, validate the specific network config

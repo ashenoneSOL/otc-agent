@@ -254,6 +254,97 @@ function getExtensionFromUrl(url: string): string | null {
 // CodexBalanceItem imported from @/types/api
 
 /**
+ * Fetch balances from local Solana RPC (for local testing)
+ * Uses getTokenAccountsByOwner and getParsedAccountInfo for metadata
+ */
+async function fetchFromLocalRpc(
+  walletAddress: string,
+): Promise<CachedWalletResponse["tokens"]> {
+  const localRpc = process.env.SOLANA_RPC_URL || "http://127.0.0.1:8899";
+  console.log(`[Solana Balances] Fetching from local RPC: ${localRpc}`);
+
+  // Get all token accounts for the wallet
+  const accountsResponse = await fetch(localRpc, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "getTokenAccountsByOwner",
+      params: [
+        walletAddress,
+        { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
+        { encoding: "jsonParsed" },
+      ],
+    }),
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!accountsResponse.ok) {
+    throw new Error(`Local RPC failed: ${accountsResponse.status}`);
+  }
+
+  interface LocalTokenAccount {
+    pubkey: string;
+    account: {
+      data: {
+        parsed: {
+          info: {
+            mint: string;
+            tokenAmount: {
+              amount: string;
+              decimals: number;
+              uiAmount: number;
+            };
+          };
+        };
+      };
+    };
+  }
+
+  interface LocalRpcResponse {
+    result?: { value?: LocalTokenAccount[] };
+    error?: { message: string };
+  }
+
+  const accountsData = (await accountsResponse.json()) as LocalRpcResponse;
+  if (accountsData.error) {
+    throw new Error(`Local RPC error: ${accountsData.error.message}`);
+  }
+  if (!accountsData.result?.value) {
+    console.log("[Solana Balances] No token accounts found (empty wallet)");
+    return [];
+  }
+
+  const accounts = accountsData.result.value;
+  console.log(`[Solana Balances] Found ${accounts.length} token accounts`);
+
+  // Convert to our format - for local tokens we don't have metadata
+  const tokens = accounts
+    .map((acc) => {
+      const info = acc.account.data.parsed.info;
+      const rawAmount = parseInt(info.tokenAmount.amount);
+      if (rawAmount === 0) return null;
+
+      return {
+        mint: info.mint,
+        amount: rawAmount,
+        decimals: info.tokenAmount.decimals,
+        // For local tokens, use short mint address as symbol/name
+        symbol: `${info.mint.slice(0, 4)}...${info.mint.slice(-4)}`,
+        name: `Local Token ${info.mint.slice(0, 8)}`,
+        logoURI: null,
+        priceUsd: 0, // Local tokens don't have prices
+        balanceUsd: 0,
+      };
+    })
+    .filter((t): t is NonNullable<typeof t> => t !== null);
+
+  console.log(`[Solana Balances] Returning ${tokens.length} tokens with balance`);
+  return tokens;
+}
+
+/**
  * Fetch balances from Codex API (faster, enriched data)
  */
 async function fetchFromCodex(
@@ -412,6 +503,19 @@ export async function GET(request: NextRequest) {
   const codexKey = process.env.CODEX_API_KEY;
   const { address: walletAddress } = query;
   const forceRefresh = searchParams.get("refresh") === "true";
+
+  // Local mode: use local RPC directly (mainnet APIs won't see local tokens)
+  const isLocalMode =
+    process.env.NEXT_PUBLIC_NETWORK === "local" ||
+    process.env.NETWORK === "local";
+
+  if (isLocalMode) {
+    console.log("[Solana Balances] Local mode - using direct RPC");
+    const localTokens = await fetchFromLocalRpc(walletAddress);
+    const response = { tokens: localTokens, source: "local" as const };
+    const validatedResponse = SolanaBalancesResponseSchema.parse(response);
+    return NextResponse.json(validatedResponse);
+  }
 
   // Check wallet cache first (15 minute TTL) unless force refresh
   if (!forceRefresh) {

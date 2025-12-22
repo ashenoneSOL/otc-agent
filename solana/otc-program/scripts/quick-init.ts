@@ -211,6 +211,35 @@ async function main() {
   );
   console.log("✅ Minted 1,000,000 tokens to owner");
 
+  // Fund the E2E test wallet with tokens
+  // This address is derived from the default test seed "test test ... junk" used by Synpress/Phantom
+  const testWalletAddress = process.env.E2E_TEST_WALLET || "oeYf6KAJkLYhBuR8CiGc6L4D4Xtfepr85fuDgA9kq96";
+  console.log("\n💎 Funding E2E test wallet...");
+  const testWallet = new PublicKey(testWalletAddress);
+  
+  // Airdrop SOL to test wallet
+  const testAirdropSig = await provider.connection.requestAirdrop(testWallet, 5e9);
+  await provider.connection.confirmTransaction(testAirdropSig, "confirmed");
+  console.log(`✅ Airdropped 5 SOL to test wallet: ${testWalletAddress}`);
+  
+  // Create token account for test wallet and mint tokens
+  const testWalletTokenAta = await getOrCreateAssociatedTokenAccount(
+    provider.connection,
+    owner,
+    tokenMint,
+    testWallet
+  );
+  
+  await mintTo(
+    provider.connection,
+    owner,
+    tokenMint,
+    testWalletTokenAta.address,
+    owner,
+    100_000_000_000_000 // 100,000 tokens for testing
+  );
+  console.log("✅ Minted 100,000 tokens to E2E test wallet");
+
   // Deposit to desk (requires all accounts including token_program)
   console.log("\n📥 Depositing tokens to desk...");
   await program.methods
@@ -260,6 +289,7 @@ async function main() {
     desk: desk.publicKey.toString(),
     deskOwner: owner.publicKey.toString(),
     usdcMint: usdcMint.toString(),
+    tokenMint: tokenMint.toString(), // Test token for E2E tests
   };
   
   fs.writeFileSync(

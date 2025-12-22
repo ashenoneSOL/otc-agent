@@ -14,6 +14,7 @@ import { TokenHeader } from "@/components/token-header";
 import { CHAT_SOURCE, USER_NAME } from "@/constants";
 import { useChain, useWalletActions, useWalletConnection } from "@/contexts";
 import { useConsignments } from "@/hooks/useConsignments";
+import { useCreateRoom, useSendMessage } from "@/hooks/useChat";
 import type { Token, TokenMarketData } from "@/types";
 import type {
   ChatMessage,
@@ -399,22 +400,15 @@ export const Chat = ({
     }
   }, [isConnected, walletEntityId, initialRoomId]); // Removed 'roomId' - was causing loop
 
-  // Function to create a new room
+  // React Query mutation for creating rooms
+  const createRoomMutation = useCreateRoom();
+
+  // Function to create a new room using React Query mutation
   const createNewRoom = useCallback(async () => {
     if (!entityId) return null;
 
-    const response = await fetch("/api/rooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entityId }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to create room");
-    }
-
-    const data = await response.json();
-    const newRoomId = data.roomId;
+    const result = await createRoomMutation.mutateAsync(entityId);
+    const newRoomId = result.roomId;
 
     // Persist room per-wallet
     if (entityId) {
@@ -423,7 +417,7 @@ export const Chat = ({
     dispatch({ type: "RESET_CHAT", payload: { roomId: newRoomId } });
 
     return newRoomId;
-  }, [entityId]);
+  }, [entityId, createRoomMutation]);
 
   // Load room data - only when roomId or entityId changes, NOT on messages change
   useEffect(() => {
@@ -588,6 +582,9 @@ export const Chat = ({
     };
   }, [isAgentThinking, roomId]); // Removed 'messages' - using ref instead
 
+  // React Query mutation for sending messages
+  const sendMessageMutation = useSendMessage();
+
   // Send message function - accepts optional targetRoomId to handle newly created rooms
   const sendMessage = useCallback(
     async (messageText: string, targetRoomId?: string) => {
@@ -620,47 +617,18 @@ export const Chat = ({
       dispatch({ type: "SET_AGENT_THINKING", payload: true });
       dispatch({ type: "SET_INPUT_DISABLED", payload: true });
 
-      const doPost = async () =>
-        fetch(`/api/rooms/${effectiveRoomId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            entityId,
-            text: messageText,
-            clientMessageId,
-          }),
-          cache: "no-store",
-          keepalive: true,
-        });
+      // Use React Query mutation for sending messages
+      await sendMessageMutation.mutateAsync({
+        roomId: effectiveRoomId,
+        entityId,
+        text: messageText,
+        clientMessageId,
+      });
 
-      let response = await doPost();
-      if (!response.ok) {
-        // Retry once on transient server errors
-        await new Promise((r) => setTimeout(r, 800));
-        response = await doPost();
-      }
-      if (!response.ok) throw new Error("Failed to send message");
-
-      // Prefer server timestamp to avoid client/server clock skew missing agent replies
-      const result = (await response.json()) as {
-        message?: { createdAt?: string | number };
-      };
-      const serverCreatedAt =
-        result.message && result.message.createdAt
-          ? new Date(result.message.createdAt).getTime()
-          : undefined;
-      if (
-        typeof serverCreatedAt === "number" &&
-        !Number.isNaN(serverCreatedAt)
-      ) {
-        // Set to just before our message so we catch both our message and agent's response
-        lastMessageTimestampRef.current = serverCreatedAt - 100;
-      } else {
-        // Fallback: use current time minus a buffer
-        lastMessageTimestampRef.current = Date.now() - 1000;
-      }
+      // Set timestamp for polling to catch agent's response
+      lastMessageTimestampRef.current = Date.now() - 1000;
     },
-    [entityId, roomId, inputDisabled, isConnected],
+    [entityId, roomId, inputDisabled, isConnected, sendMessageMutation],
   );
 
   // Handle form submit
