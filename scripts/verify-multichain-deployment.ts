@@ -2,7 +2,7 @@
 
 /**
  * Verify Multi-Chain OTC Deployment
- * 
+ *
  * This script verifies that:
  * - Base OTC contract is deployed and configured correctly
  * - RegistrationHelper is deployed and can be used
@@ -55,21 +55,25 @@ async function verifyBaseDeployment() {
   console.log("\n=== Verifying Base Deployment ===\n");
 
   if (!OTC_ADDRESS) {
-    throw new Error("OTC address missing from deployment config (src/config/deployments/mainnet-evm.json)");
+    throw new Error(
+      "OTC address missing from deployment config (src/config/deployments/mainnet-evm.json)",
+    );
   }
 
   if (!REGISTRATION_HELPER_ADDRESS) {
-    throw new Error("RegistrationHelper address missing from deployment config (src/config/deployments/mainnet-evm.json)");
+    throw new Error(
+      "RegistrationHelper address missing from deployment config (src/config/deployments/mainnet-evm.json)",
+    );
   }
 
   const client = createPublicClient({
     chain: base,
     transport: http(BASE_RPC),
   });
-  
+
   // Check OTC contract - verify it has code
   console.log("Checking OTC contract at:", OTC_ADDRESS);
-  
+
   const code = await client.getCode({ address: OTC_ADDRESS as `0x${string}` });
   if (!code || code === "0x") {
     throw new Error(`OTC contract not deployed at ${OTC_ADDRESS}`);
@@ -84,38 +88,40 @@ async function verifyBaseDeployment() {
     "function owner() view returns (address)",
   ]);
 
-  const nextOfferId = await client.readContract({
+  const nextOfferId = (await client.readContract({
     address: OTC_ADDRESS as `0x${string}`,
     abi: otcAbi as Abi,
     functionName: "nextOfferId",
-  }) as bigint;
+  })) as bigint;
   console.log("  Next Offer ID:", nextOfferId.toString());
 
-  const agent = await client.readContract({
+  const agent = (await client.readContract({
     address: OTC_ADDRESS as `0x${string}`,
     abi: otcAbi as Abi,
     functionName: "agent",
-  }) as string;
+  })) as string;
   console.log("  Agent:", agent);
 
-  const usdc = await client.readContract({
+  const usdc = (await client.readContract({
     address: OTC_ADDRESS as `0x${string}`,
     abi: otcAbi as Abi,
     functionName: "usdc",
-  }) as string;
+  })) as string;
   console.log("  USDC:", usdc);
 
-  const owner = await client.readContract({
+  const owner = (await client.readContract({
     address: OTC_ADDRESS as `0x${string}`,
     abi: otcAbi as Abi,
     functionName: "owner",
-  }) as string;
+  })) as string;
   console.log("  Owner:", owner);
 
   // Check RegistrationHelper
   console.log("\nChecking RegistrationHelper at:", REGISTRATION_HELPER_ADDRESS);
-  
-  const helperCode = await client.getCode({ address: REGISTRATION_HELPER_ADDRESS as `0x${string}` });
+
+  const helperCode = await client.getCode({
+    address: REGISTRATION_HELPER_ADDRESS as `0x${string}`,
+  });
   if (!helperCode || helperCode === "0x") {
     throw new Error(`RegistrationHelper not deployed at ${REGISTRATION_HELPER_ADDRESS}`);
   }
@@ -128,30 +134,32 @@ async function verifyBaseDeployment() {
     "function feeRecipient() view returns (address)",
   ]);
 
-  const helperOtc = await client.readContract({
+  const helperOtc = (await client.readContract({
     address: REGISTRATION_HELPER_ADDRESS as `0x${string}`,
     abi: helperAbi as Abi,
     functionName: "otc",
-  }) as string;
+  })) as string;
   console.log("  OTC Address:", helperOtc);
-  
+
   // Verify RegistrationHelper points to correct OTC
   if (helperOtc.toLowerCase() !== OTC_ADDRESS.toLowerCase()) {
-    throw new Error(`RegistrationHelper points to different OTC: ${helperOtc}, expected: ${OTC_ADDRESS}`);
+    throw new Error(
+      `RegistrationHelper points to different OTC: ${helperOtc}, expected: ${OTC_ADDRESS}`,
+    );
   }
 
-  const regFee = await client.readContract({
+  const regFee = (await client.readContract({
     address: REGISTRATION_HELPER_ADDRESS as `0x${string}`,
     abi: helperAbi as Abi,
     functionName: "registrationFee",
-  }) as bigint;
+  })) as bigint;
   console.log("  Registration Fee:", (Number(regFee) / 1e18).toFixed(4), "ETH");
 
-  const feeRecipient = await client.readContract({
+  const feeRecipient = (await client.readContract({
     address: REGISTRATION_HELPER_ADDRESS as `0x${string}`,
     abi: helperAbi as Abi,
     functionName: "feeRecipient",
-  }) as string;
+  })) as string;
   console.log("  Fee Recipient:", feeRecipient);
 
   console.log("\n✅ Base deployment verified successfully");
@@ -173,7 +181,7 @@ async function _verifySolanaDeployment() {
   // Check program exists
   console.log("Checking Solana program at:", SOLANA_PROGRAM_ID);
   const programInfo = await connection.getAccountInfo(new PublicKey(SOLANA_PROGRAM_ID));
-  
+
   if (!programInfo) {
     throw new Error(`Solana program not found at ${SOLANA_PROGRAM_ID}`);
   }
@@ -185,7 +193,7 @@ async function _verifySolanaDeployment() {
   // Check desk account
   console.log("\nChecking desk account at:", SOLANA_DESK);
   const deskInfo = await connection.getAccountInfo(new PublicKey(SOLANA_DESK));
-  
+
   if (!deskInfo) {
     throw new Error(`Desk account not found at ${SOLANA_DESK}`);
   }
@@ -196,13 +204,14 @@ async function _verifySolanaDeployment() {
 
   console.log("\n✅ Solana deployment verified successfully");
   return true;
+}
 
 async function testWalletScanning() {
   console.log("\n=== Testing Wallet Scanning ===\n");
 
   // Note: Actual wallet scanning requires user authentication
   // This just checks if the required APIs are configured
-  
+
   const alchemyKey = process.env.ALCHEMY_API_KEY;
   const heliusKey = process.env.HELIUS_API_KEY;
 
@@ -250,4 +259,3 @@ main().catch((error) => {
   console.error("Verification script failed:", error);
   process.exit(1);
 });
-

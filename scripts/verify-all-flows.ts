@@ -95,7 +95,7 @@ const NETWORKS: NetworkConfig[] = [
     name: "Base",
     chainId: 8453,
     rpc: "https://base-rpc.publicnode.com",
-    otc: "0x23eD9EC8deb2F88Ec44a2dbbe1bbE7Be7EFc02b9",
+    otc: "0x5a1C9911E104F18267505918894fd7d343739657",
     usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
   },
   {
@@ -117,7 +117,7 @@ const NETWORKS: NetworkConfig[] = [
 const SOLANA_CONFIG = {
   rpc: "https://api.mainnet-beta.solana.com",
   programId: "3uTdWzoAcBFKTVYRd2z2jDKAcuyW64rQLxa9wMreDJKo",
-  desk: "6CBcxFR6dSMJJ7Y4dQZTshJT2KxuwnSXioXEABxNVZPW",
+  desk: "EDzQZXDT3iZcXxkp56vb7LLJ1tgaTn1gbf1CgWQuKXtY",
 };
 
 async function verifyEvmNetwork(config: NetworkConfig): Promise<boolean> {

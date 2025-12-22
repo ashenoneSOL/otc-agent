@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * OTC Flow Validation Script
- * 
+ *
  * Validates ALL OTC flows end-to-end with real on-chain verification:
  * 1. Consignment creation (listing tokens)
  * 2. Negotiable vs Fixed terms
@@ -10,7 +10,7 @@
  * 5. Backend approval
  * 6. Payment/fulfillment
  * 7. Withdrawal
- * 
+ *
  * Run: bun scripts/validate-otc-flows.ts
  * With real transactions: EXECUTE_TX=true bun scripts/validate-otc-flows.ts
  */
@@ -120,16 +120,17 @@ function log(
   message: string,
   data?: Record<string, string | number | boolean | null | undefined>,
 ) {
-  const prefix = {
-    INFO: "ℹ️",
-    SUCCESS: "✅",
-    WARNING: "⚠️",
-    ERROR: "❌",
-    STEP: "➡️",
-    CHECK: "🔍",
-    TX: "📝",
-  }[category] || "•";
-  
+  const prefix =
+    {
+      INFO: "ℹ️",
+      SUCCESS: "✅",
+      WARNING: "⚠️",
+      ERROR: "❌",
+      STEP: "➡️",
+      CHECK: "🔍",
+      TX: "📝",
+    }[category] || "•";
+
   console.log(`${prefix} ${message}`);
   if (data) {
     Object.entries(data).forEach(([key, value]) => {
@@ -162,79 +163,105 @@ async function validateEVM() {
   if (!code || code === "0x") {
     throw new Error(`OTC contract not deployed at ${OTC_ADDRESS}`);
   }
-  log("SUCCESS", "OTC contract deployed", { 
+  log("SUCCESS", "OTC contract deployed", {
     address: OTC_ADDRESS,
-    bytecodeSize: `${code.length} chars`
+    bytecodeSize: `${code.length} chars`,
   });
 
   // 2. Read contract configuration (sequential to avoid rate limits)
   log("CHECK", "Reading contract configuration...");
-  
-  const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-  
+
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
   // Read critical values one at a time with delays
-  const nextConsignmentId = (await publicClient.readContract({ 
-    address: OTC_ADDRESS, abi: OTC_ABI, functionName: "nextConsignmentId" 
+  const nextConsignmentId = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi: OTC_ABI,
+    functionName: "nextConsignmentId",
   })) as bigint;
   await delay(500);
-  
-  const nextOfferId = (await publicClient.readContract({ 
-    address: OTC_ADDRESS, abi: OTC_ABI, functionName: "nextOfferId" 
+
+  const nextOfferId = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi: OTC_ABI,
+    functionName: "nextOfferId",
   })) as bigint;
   await delay(500);
-  
-  const minUsdAmount = (await publicClient.readContract({ 
-    address: OTC_ADDRESS, abi: OTC_ABI, functionName: "minUsdAmount" 
+
+  const minUsdAmount = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi: OTC_ABI,
+    functionName: "minUsdAmount",
   })) as bigint;
   await delay(500);
-  
-  const agent = (await publicClient.readContract({ 
-    address: OTC_ADDRESS, abi: OTC_ABI, functionName: "agent" 
+
+  const agent = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi: OTC_ABI,
+    functionName: "agent",
   })) as string;
   await delay(500);
-  
-  const requiredApprovals = (await publicClient.readContract({ 
-    address: OTC_ADDRESS, abi: OTC_ABI, functionName: "requiredApprovals" 
+
+  const requiredApprovals = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi: OTC_ABI,
+    functionName: "requiredApprovals",
   })) as bigint;
   await delay(500);
-  
-  const requireApproverToFulfill = (await publicClient.readContract({ 
-    address: OTC_ADDRESS, abi: OTC_ABI, functionName: "requireApproverToFulfill" 
+
+  const requireApproverToFulfill = (await publicClient.readContract({
+    address: OTC_ADDRESS,
+    abi: OTC_ABI,
+    functionName: "requireApproverToFulfill",
   })) as boolean;
 
   log("INFO", "Contract State:", {
     "Total Consignments": Number(nextConsignmentId) - 1,
     "Total Offers": Number(nextOfferId) - 1,
     "Min USD Amount": `$${Number(minUsdAmount) / 1e8}`,
-    "Agent": agent,
+    Agent: agent,
     "Required Approvals": Number(requiredApprovals),
     "Approver Fulfill Only": requireApproverToFulfill,
   });
 
   // 3. Check existing consignments
   log("CHECK", "Checking existing consignments...");
-  
+
   const numConsignments = Number(nextConsignmentId) - 1;
   if (numConsignments > 0) {
     log("INFO", `Found ${numConsignments} consignments`);
-    
+
     await delay(500);
     // Sample first consignment
-    const consignment = await publicClient.readContract({
+    const consignment = (await publicClient.readContract({
       address: OTC_ADDRESS,
       abi: OTC_ABI,
       functionName: "consignments",
       args: [1n],
-    }) as [
-      `0x${string}`, Address, bigint, bigint, boolean, number, number, 
-      number, number, number, number, bigint, bigint, number, boolean, bigint
+    })) as [
+      `0x${string}`,
+      Address,
+      bigint,
+      bigint,
+      boolean,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      bigint,
+      bigint,
+      number,
+      boolean,
+      bigint,
     ];
-    
+
     log("INFO", "Sample Consignment #1:", {
       "Token ID": consignment[0].slice(0, 18) + "...",
-      "Consigner": consignment[1],
+      Consigner: consignment[1],
       "Total Amount": formatEther(consignment[2]),
-      "Remaining": formatEther(consignment[3]),
+      Remaining: formatEther(consignment[3]),
       "Is Negotiable": consignment[4],
       "Fixed Discount": `${consignment[5] / 100}%`,
       "Fixed Lockup": `${consignment[6]} days`,
@@ -246,34 +273,49 @@ async function validateEVM() {
 
   // 4. Check existing offers
   log("CHECK", "Checking existing offers...");
-  
+
   const numOffers = Number(nextOfferId) - 1;
   if (numOffers > 0) {
     log("INFO", `Found ${numOffers} offers`);
-    
+
     await delay(500);
     // Check most recent offer
-    const latestOffer = await publicClient.readContract({
+    const latestOffer = (await publicClient.readContract({
       address: OTC_ADDRESS,
       abi: OTC_ABI,
       functionName: "offers",
       args: [BigInt(numOffers)],
-    }) as [
-      bigint, `0x${string}`, Address, bigint, bigint, bigint, bigint, bigint,
-      bigint, bigint, number, boolean, boolean, boolean, boolean, Address, bigint
+    })) as [
+      bigint,
+      `0x${string}`,
+      Address,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      number,
+      boolean,
+      boolean,
+      boolean,
+      boolean,
+      Address,
+      bigint,
     ];
-    
+
     log("INFO", `Latest Offer #${numOffers}:`, {
       "Consignment ID": Number(latestOffer[0]),
-      "Beneficiary": latestOffer[2],
+      Beneficiary: latestOffer[2],
       "Token Amount": formatEther(latestOffer[3]),
-      "Discount": `${Number(latestOffer[4]) / 100}%`,
+      Discount: `${Number(latestOffer[4]) / 100}%`,
       "Price (8 decimals)": `$${Number(latestOffer[7]) / 1e8}`,
-      "Currency": latestOffer[10] === 0 ? "ETH" : "USDC",
-      "Approved": latestOffer[11],
-      "Paid": latestOffer[12],
-      "Fulfilled": latestOffer[13],
-      "Cancelled": latestOffer[14],
+      Currency: latestOffer[10] === 0 ? "ETH" : "USDC",
+      Approved: latestOffer[11],
+      Paid: latestOffer[12],
+      Fulfilled: latestOffer[13],
+      Cancelled: latestOffer[14],
     });
   } else {
     log("INFO", "No offers found yet");
@@ -281,7 +323,7 @@ async function validateEVM() {
 
   // 5. Validate deployer wallet
   log("CHECK", "Checking deployer wallet...");
-  
+
   const privateKey = process.env.MAINNET_PRIVATE_KEY;
   if (privateKey) {
     const account = privateKeyToAccount(privateKey as `0x${string}`);
@@ -296,7 +338,7 @@ async function validateEVM() {
     });
 
     log("INFO", "Deployer Wallet:", {
-      "Address": account.address,
+      Address: account.address,
       "ETH Balance": formatEther(balance),
       "Is Approver": isAgentResult,
     });
@@ -314,15 +356,15 @@ async function validateEVM() {
 
   // 6. Test price feed
   log("CHECK", "Testing price feeds via backend...");
-  
+
   const priceResponse = await fetch(`${BACKEND_URL}/api/tokens`);
   if (!priceResponse.ok) {
     throw new Error(`Backend not responding: ${priceResponse.status} ${priceResponse.statusText}`);
   }
   const tokens = await priceResponse.json();
   const tokenCount = Array.isArray(tokens) ? tokens.length : 0;
-  log("SUCCESS", "Backend is responding", { 
-    "Token count": tokenCount
+  log("SUCCESS", "Backend is responding", {
+    "Token count": tokenCount,
   });
 
   log("SUCCESS", "EVM validation complete");
@@ -352,7 +394,7 @@ async function validateSolana() {
   }
   log("SUCCESS", "OTC program deployed", {
     "Program ID": SOLANA_PROGRAM_ID,
-    "Executable": programInfo.executable,
+    Executable: programInfo.executable,
     "Data size": `${programInfo.data.length} bytes`,
   });
 
@@ -363,94 +405,97 @@ async function validateSolana() {
     throw new Error(`Desk account not found at ${SOLANA_DESK}`);
   }
   log("SUCCESS", "Desk account exists", {
-    "Desk": SOLANA_DESK,
+    Desk: SOLANA_DESK,
     "Data size": `${deskInfo.data.length} bytes`,
-    "Lamports": deskInfo.lamports / LAMPORTS_PER_SOL,
+    Lamports: deskInfo.lamports / LAMPORTS_PER_SOL,
   });
 
   // 3. Load program to read desk state
   log("CHECK", "Reading desk state...");
-  
+
   const idlPath = path.join(process.cwd(), "solana/otc-program/target/idl/otc.json");
   if (!fs.existsSync(idlPath)) {
     throw new Error(`IDL not found at ${idlPath} - cannot decode desk state`);
   }
-  
+
   const idl = JSON.parse(fs.readFileSync(idlPath, "utf8"));
-  
+
   // Create a dummy wallet for read-only operations
   const dummyKeypair = Keypair.generate();
   const wallet = new anchor.Wallet(dummyKeypair);
   const provider = new anchor.AnchorProvider(connection, wallet, { commitment: "confirmed" });
-  
-  const program = new anchor.Program(idl, new PublicKey(SOLANA_PROGRAM_ID), provider) as anchor.Program;
 
-      type DeskAccount = {
-        owner: PublicKey;
-        agent: PublicKey;
-        usdcMint: PublicKey;
-        nextConsignmentId: anchor.BN;
-        nextOfferId: anchor.BN;
-        minUsdAmount8d: anchor.BN;
-        quoteExpirySecs: anchor.BN;
-        paused: boolean;
-        restrictFulfill: boolean;
-      };
+  const program = new anchor.Program(
+    idl,
+    new PublicKey(SOLANA_PROGRAM_ID),
+    provider,
+  ) as anchor.Program;
 
-      interface DeskAccountProgram {
-        desk: {
-          fetch: (addr: PublicKey) => Promise<DeskAccount>;
-        };
-      }
-      
-      const deskAccount = await (program.account as DeskAccountProgram).desk.fetch(new PublicKey(SOLANA_DESK));
+  type DeskAccount = {
+    owner: PublicKey;
+    agent: PublicKey;
+    usdcMint: PublicKey;
+    nextConsignmentId: anchor.BN;
+    nextOfferId: anchor.BN;
+    minUsdAmount8d: anchor.BN;
+    quoteExpirySecs: anchor.BN;
+    paused: boolean;
+    restrictFulfill: boolean;
+  };
 
-      log("INFO", "Desk State:", {
-        "Owner": deskAccount.owner.toBase58(),
-        "Agent": deskAccount.agent.toBase58(),
-        "USDC Mint": deskAccount.usdcMint.toBase58(),
-        "Next Consignment ID": deskAccount.nextConsignmentId.toString(),
-        "Next Offer ID": deskAccount.nextOfferId.toString(),
-        "Min USD (8d)": `$${deskAccount.minUsdAmount8d.toNumber() / 1e8}`,
-        "Quote Expiry": `${deskAccount.quoteExpirySecs.toNumber() / 60} minutes`,
-        "Paused": deskAccount.paused,
-        "Restrict Fulfill": deskAccount.restrictFulfill,
-      });
+  interface DeskAccountProgram {
+    desk: {
+      fetch: (addr: PublicKey) => Promise<DeskAccount>;
+    };
+  }
 
-      // Check for registered tokens
-      log("CHECK", "Checking registered tokens...");
-      
-      // Try to find token registries
-      const tokenRegistries = await connection.getProgramAccounts(new PublicKey(SOLANA_PROGRAM_ID), {
-        filters: [
-          { dataSize: 200 }, // Approximate size of TokenRegistry account
-        ],
-      });
-      
-      if (tokenRegistries.length > 0) {
-        log("INFO", `Found ${tokenRegistries.length} potential token registries`);
-      } else {
-        log("WARNING", "No token registries found - no tokens registered on desk");
-      }
+  const deskAccount = await (program.account as DeskAccountProgram).desk.fetch(
+    new PublicKey(SOLANA_DESK),
+  );
+
+  log("INFO", "Desk State:", {
+    Owner: deskAccount.owner.toBase58(),
+    Agent: deskAccount.agent.toBase58(),
+    "USDC Mint": deskAccount.usdcMint.toBase58(),
+    "Next Consignment ID": deskAccount.nextConsignmentId.toString(),
+    "Next Offer ID": deskAccount.nextOfferId.toString(),
+    "Min USD (8d)": `$${deskAccount.minUsdAmount8d.toNumber() / 1e8}`,
+    "Quote Expiry": `${deskAccount.quoteExpirySecs.toNumber() / 60} minutes`,
+    Paused: deskAccount.paused,
+    "Restrict Fulfill": deskAccount.restrictFulfill,
+  });
+
+  // Check for registered tokens
+  log("CHECK", "Checking registered tokens...");
+
+  // Try to find token registries
+  const tokenRegistries = await connection.getProgramAccounts(new PublicKey(SOLANA_PROGRAM_ID), {
+    filters: [{ dataSize: 200 }], // Approximate size of TokenRegistry account
+  });
+
+  if (tokenRegistries.length > 0) {
+    log("INFO", `Found ${tokenRegistries.length} potential token registries`);
+  } else {
+    log("WARNING", "No token registries found - no tokens registered on desk");
   }
 
   // 4. Check deployer wallet
   log("CHECK", "Checking deployer wallet...");
-  
+
   const privateKey = process.env.SOLANA_MAINNET_PRIVATE_KEY;
   if (privateKey) {
     let keypairBytes: Uint8Array;
     if (privateKey.startsWith("[")) {
       keypairBytes = Uint8Array.from(JSON.parse(privateKey));
     } else {
-      const bs58 = await import("bs58").then(m => m.default);
+      const bs58 = await import("bs58").then((m) => m.default);
       keypairBytes = bs58.decode(privateKey);
     }
     const wallet = Keypair.fromSecretKey(keypairBytes);
     const balance = await connection.getBalance(wallet.publicKey);
-    
+
     log("INFO", "Deployer Wallet:", {
-      "Address": wallet.publicKey.toBase58(),
+      Address: wallet.publicKey.toBase58(),
       "SOL Balance": balance / LAMPORTS_PER_SOL,
     });
 
@@ -487,12 +532,12 @@ async function validateFlows() {
   if (!consignRes.ok) {
     throw new Error(`GET /api/consignments failed: ${consignRes.status} ${consignRes.statusText}`);
   }
-  const data = await consignRes.json() as { consignments?: unknown[] } | unknown[];
-  const count = Array.isArray(data) 
-    ? data.length 
-    : (Array.isArray((data as { consignments?: unknown[] }).consignments) 
-        ? (data as { consignments: unknown[] }).consignments.length 
-        : 0);
+  const data = (await consignRes.json()) as { consignments?: unknown[] } | unknown[];
+  const count = Array.isArray(data)
+    ? data.length
+    : Array.isArray((data as { consignments?: unknown[] }).consignments)
+      ? (data as { consignments: unknown[] }).consignments.length
+      : 0;
   log("SUCCESS", "GET /api/consignments", { count });
 
   // 3. Test approve endpoint (dry run)
@@ -502,9 +547,9 @@ async function validateFlows() {
     body: JSON.stringify({ offerId: "999999", chain: "base", dryRun: true }),
   });
   // Should fail gracefully (offer doesn't exist)
-  log("INFO", "POST /api/otc/approve (dry run)", { 
+  log("INFO", "POST /api/otc/approve (dry run)", {
     status: approveRes.status,
-    reachable: true 
+    reachable: true,
   });
 
   log("SUCCESS", "Flow validation complete");
@@ -543,12 +588,12 @@ async function executeRealTransactions() {
 
   // Example: Create a small test offer (if consignments exist)
   log("STEP", "Checking for available consignments...");
-  
-  const nextConsignmentId = await publicClient.readContract({
+
+  const nextConsignmentId = (await publicClient.readContract({
     address: OTC_ADDRESS,
     abi: OTC_ABI,
     functionName: "nextConsignmentId",
-  }) as bigint;
+  })) as bigint;
 
   if (nextConsignmentId <= 1n) {
     log("WARNING", "No consignments available - cannot create offer");
@@ -556,14 +601,28 @@ async function executeRealTransactions() {
   }
 
   // Read consignment 1
-  const consignment = await publicClient.readContract({
+  const consignment = (await publicClient.readContract({
     address: OTC_ADDRESS,
     abi: OTC_ABI,
     functionName: "consignments",
     args: [1n],
-  }) as [
-    `0x${string}`, Address, bigint, bigint, boolean, number, number, 
-    number, number, number, number, bigint, bigint, number, boolean, bigint
+  })) as [
+    `0x${string}`,
+    Address,
+    bigint,
+    bigint,
+    boolean,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    bigint,
+    bigint,
+    number,
+    boolean,
+    bigint,
   ];
 
   if (!consignment[14]) {
@@ -572,9 +631,9 @@ async function executeRealTransactions() {
   }
 
   log("INFO", "Using Consignment #1", {
-    "Remaining": formatEther(consignment[3]),
+    Remaining: formatEther(consignment[3]),
     "Min Deal": formatEther(consignment[11]),
-    "Negotiable": consignment[4],
+    Negotiable: consignment[4],
   });
 
   // Create a minimal offer
@@ -583,10 +642,10 @@ async function executeRealTransactions() {
   const lockupDays = consignment[4] ? consignment[9] : consignment[6]; // min or fixed lockup
 
   log("TX", "Creating offer...", {
-    "Amount": formatEther(testAmount),
-    "Discount": `${discountBps / 100}%`,
-    "Lockup": `${lockupDays} days`,
-    "Currency": "USDC",
+    Amount: formatEther(testAmount),
+    Discount: `${discountBps / 100}%`,
+    Lockup: `${lockupDays} days`,
+    Currency: "USDC",
   });
 
   const { request } = await publicClient.simulateContract({
@@ -612,16 +671,16 @@ async function executeRealTransactions() {
   if (receipt.status !== "success") {
     throw new Error("Transaction failed");
   }
-  
+
   log("SUCCESS", "Transaction confirmed");
-  
+
   // Backend approval
-  const nextOfferId = await publicClient.readContract({
+  const nextOfferId = (await publicClient.readContract({
     address: OTC_ADDRESS,
     abi: OTC_ABI,
     functionName: "nextOfferId",
-  }) as bigint;
-  
+  })) as bigint;
+
   const offerId = Number(nextOfferId) - 1;
   log("STEP", `Requesting backend approval for offer #${offerId}...`);
 
@@ -633,9 +692,11 @@ async function executeRealTransactions() {
 
   if (!approveRes.ok) {
     const errorText = await approveRes.text();
-    throw new Error(`Backend approval failed: ${approveRes.status} ${approveRes.statusText} - ${errorText}`);
+    throw new Error(
+      `Backend approval failed: ${approveRes.status} ${approveRes.statusText} - ${errorText}`,
+    );
   }
-  
+
   const approveData = await approveRes.json();
   log("SUCCESS", "Backend approval", approveData);
 }
@@ -673,7 +734,7 @@ async function main() {
   }
 
   section("VALIDATION SUMMARY");
-  
+
   console.log(`
   EVM (Base):    ✅ VALID
   Solana:        ✅ VALID
@@ -687,4 +748,3 @@ main().catch((err) => {
   console.error("Fatal error:", err);
   process.exit(1);
 });
-

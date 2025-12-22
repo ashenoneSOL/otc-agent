@@ -25,13 +25,17 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 
-// Contract addresses
-const OTC_ADDRESS = "0x23eD9EC8deb2F88Ec44a2dbbe1bbE7Be7EFc02b9" as Address;
+// Contract addresses - from src/config/deployments/mainnet-evm.json
+const OTC_ADDRESS = "0x5a1C9911E104F18267505918894fd7d343739657" as Address;
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
 const _ETH_USD_FEED = "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70" as Address;
 
-// Private key (from user - for testing only)
-const PRIVATE_KEY = "0xf698946a955d76b8bb8ae1c7920b60db1039214c1d1d" as Hex;
+// Private key from environment variable (MAINNET_PRIVATE_KEY takes precedence)
+const PRIVATE_KEY = (process.env.MAINNET_PRIVATE_KEY ?? process.env.EVM_PRIVATE_KEY ?? "") as Hex;
+if (!PRIVATE_KEY || PRIVATE_KEY.length < 64) {
+  console.error("ERROR: MAINNET_PRIVATE_KEY or EVM_PRIVATE_KEY not set in environment");
+  process.exit(1);
+}
 
 // ABIs
 const OTC_ABI = [

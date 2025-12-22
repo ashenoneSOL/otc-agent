@@ -456,7 +456,7 @@ async function testEvmChain(chainKey: string): Promise<void> {
   console.log(`\n2️⃣ Reading OTC contract state...`);
 
   // Read core state
-  type ViewFunctionName =
+  type _ViewFunctionName =
     | "nextConsignmentId"
     | "nextOfferId"
     | "tokens"
