@@ -369,14 +369,27 @@ async function findPumpSwapPools(
   ];
 
   // Run sequentially to avoid rate limits
-  const poolsBase = await connection.getProgramAccounts(PUMPSWAP_AMM_PROGRAM, {
-    filters: filtersBase,
-  });
-  await sleep(RPC_CALL_DELAY_MS);
+  // Wrap in try-catch to handle Helius rate limiting on getProgramAccounts
+  let poolsBase: Awaited<ReturnType<typeof connection.getProgramAccounts>> = [];
+  let poolsQuote: Awaited<ReturnType<typeof connection.getProgramAccounts>> = [];
 
-  const poolsQuote = await connection.getProgramAccounts(PUMPSWAP_AMM_PROGRAM, {
-    filters: filtersQuote,
-  });
+  try {
+    poolsBase = await connection.getProgramAccounts(PUMPSWAP_AMM_PROGRAM, {
+      filters: filtersBase,
+    });
+    await sleep(RPC_CALL_DELAY_MS);
+
+    poolsQuote = await connection.getProgramAccounts(PUMPSWAP_AMM_PROGRAM, {
+      filters: filtersQuote,
+    });
+  } catch (error) {
+    // Helius may reject getProgramAccounts for programs with many accounts
+    // Gracefully degrade - other pool sources will still work
+    console.warn(
+      `[PumpSwap] getProgramAccounts failed (likely rate limited), skipping PumpSwap pools: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return pools;
+  }
 
   const all = [
     ...(Array.isArray(poolsBase) ? poolsBase : []),

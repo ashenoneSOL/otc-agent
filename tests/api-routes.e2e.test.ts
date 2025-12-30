@@ -86,13 +86,23 @@ type PoolCheckResponse = TokenPoolCheckResponse;
 
 /**
  * Type-safe fetch wrapper that parses JSON response.
+ * Automatically includes Origin header for mutation requests (CSRF protection).
  */
 async function fetchJson<T>(
   url: string,
   options?: RequestInit,
 ): Promise<{ status: number; data: T }> {
+  const method = options?.method?.toUpperCase() || "GET";
+  const needsOrigin = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
+
+  const headers = new Headers(options?.headers);
+  if (needsOrigin && !headers.has("origin")) {
+    headers.set("origin", BASE_URL);
+  }
+
   const response = await fetch(url, {
     ...options,
+    headers,
     signal: AbortSignal.timeout(TEST_TIMEOUT - 1000),
   });
   const data = (await response.json()) as T;
@@ -1381,8 +1391,8 @@ describe("API Routes Integration Tests", () => {
             tokenAddress: TEST_EVM_TOKEN,
           }),
         });
-        // Should handle gracefully
-        expect([200, 400, 500]).toContain(status);
+        // Should handle gracefully - 401 if auth required, 400/500 for schema/server errors
+        expect([200, 400, 401, 500]).toContain(status);
       },
       TEST_TIMEOUT,
     );

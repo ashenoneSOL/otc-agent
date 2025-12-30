@@ -3,11 +3,14 @@
 // Solana imports
 import type { Wallet } from "@coral-xyz/anchor";
 import * as anchor from "@coral-xyz/anchor";
+import { useWallet as useSolanaWallet } from "@solana/wallet-adapter-react";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { PublicKey as SolPubkey, type Transaction } from "@solana/web3.js";
+import { useWallets } from "@privy-io/react-auth";
+import bs58 from "bs58";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
-import { useAccount, useChainId } from "wagmi";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAccount, useChainId, useSignMessage } from "wagmi";
 import { type Chain, isSolanaChain, SUPPORTED_CHAINS } from "@/config/chains";
 import { useWalletConnection } from "@/contexts";
 import { useOTC } from "@/hooks/contracts/useOTC";
@@ -44,6 +47,13 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
   const chainId = useChainId();
   const { solanaPublicKey, solanaWallet } = useWalletConnection();
 
+  // Solana wallet adapter for signMessage
+  const { signMessage: solanaAdapterSignMessage } = useSolanaWallet();
+  // EVM signMessage from wagmi
+  const { signMessageAsync: evmSignMessage } = useSignMessage();
+  // Privy wallets for signMessage fallback
+  const { wallets } = useWallets();
+
   // Mutation hooks for withdrawal operations
   const solanaWithdrawMutation = useSolanaWithdrawConsignment();
   const evmWithdrawMutation = useWithdrawConsignment();
@@ -51,6 +61,68 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
   // Check chain compatibility for withdrawal
   const consignmentChain = consignment.chain as Chain;
   const isSolana = isSolanaChain(consignmentChain);
+
+  // Get Privy Solana wallet for signMessage fallback
+  const privySolanaWallet = useMemo(() => {
+    return wallets.find((w) => (w as { chainType?: string }).chainType === "solana");
+  }, [wallets]);
+
+  // Unified sign message function for wallet authentication
+  const signMessage = useCallback(
+    async (message: string): Promise<string> => {
+      if (isSolana) {
+        const messageBytes = new TextEncoder().encode(message);
+
+        // Try 1: Wallet adapter's signMessage (e.g., Phantom via wallet-adapter)
+        if (solanaAdapterSignMessage) {
+          console.log("[ConsignmentRow] Using wallet adapter signMessage");
+          const signatureBytes = await solanaAdapterSignMessage(messageBytes);
+          return bs58.encode(signatureBytes);
+        }
+
+        // Try 2: Privy wallet provider's signMessage
+        if (privySolanaWallet) {
+          console.log("[ConsignmentRow] Trying Privy wallet provider");
+          const typedWallet = privySolanaWallet as {
+            getProvider?: () => Promise<{
+              signMessage?: (message: Uint8Array) => Promise<{ signature: Uint8Array }>;
+            }>;
+          };
+          const provider = await typedWallet.getProvider?.();
+          if (provider?.signMessage) {
+            console.log("[ConsignmentRow] Using Privy provider signMessage");
+            const result = await provider.signMessage(messageBytes);
+            return bs58.encode(result.signature);
+          }
+        }
+
+        // Try 3: Phantom direct (if available in window)
+        if (typeof window !== "undefined") {
+          const phantom = (
+            window as Window & {
+              phantom?: { solana?: { signMessage?: (msg: Uint8Array) => Promise<{ signature: Uint8Array }> } };
+            }
+          ).phantom?.solana;
+          if (phantom?.signMessage) {
+            console.log("[ConsignmentRow] Using Phantom direct signMessage");
+            const result = await phantom.signMessage(messageBytes);
+            return bs58.encode(result.signature);
+          }
+        }
+
+        throw new Error(
+          "Solana wallet does not support signing messages. Please use a wallet like Phantom that supports message signing.",
+        );
+      } else {
+        if (!evmSignMessage) {
+          throw new Error("EVM wallet not available for signing");
+        }
+        // Return hex signature for EVM
+        return await evmSignMessage({ message });
+      }
+    },
+    [isSolana, solanaAdapterSignMessage, privySolanaWallet, evmSignMessage],
+  );
 
   // FAIL-FAST: chain must be valid Chain type, SUPPORTED_CHAINS guarantees ChainConfig exists
   if (!(consignmentChain in SUPPORTED_CHAINS)) {
@@ -70,6 +142,10 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
 
   // Only truly blocking reasons disable the button
   const withdrawDisabledReason = useMemo(() => {
+    // Check if already withdrawn or no remaining amount
+    if (consignment.status === "withdrawn" || isWithdrawn) return "Already withdrawn";
+    if (consignment.remainingAmount === "0") return "Nothing to withdraw";
+
     if (isSolana) {
       if (!solanaPublicKey) return "Connect Solana wallet";
       if (!solanaWallet) return "Solana wallet not connected";
@@ -80,7 +156,7 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
     if (!address) return "Connect wallet";
     if (!consignment.contractConsignmentId) return "Not deployed on-chain";
     return null;
-  }, [isSolana, solanaPublicKey, solanaWallet, address, consignment.contractConsignmentId]);
+  }, [isSolana, solanaPublicKey, solanaWallet, address, consignment.contractConsignmentId, consignment.status, consignment.remainingAmount, isWithdrawn]);
 
   // Calculate deal count based on sold amount (memoized)
   const calculatedDealCount = useMemo(() => {
@@ -172,8 +248,9 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
 
       setIsWithdrawing(true);
 
-      // Use HTTP-only connection (no WebSocket) since we're using a proxy
-      const connection = createSolanaConnection();
+      try {
+        // Use HTTP-only connection (no WebSocket) since we're using a proxy
+        const connection = createSolanaConnection();
 
       // Fetch IDL and create program
       const idl = await fetchSolanaIdl();
@@ -231,7 +308,9 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
 
       // Verify consignment is active and has remaining amount
       if (!consignmentData.isActive) {
-        throw new Error("Consignment is not active");
+        throw new Error(
+          "This listing is no longer active. It may have been fully used in deals or already withdrawn.",
+        );
       }
 
       // consignmentData.remainingAmount is a BN, convert to string for comparison
@@ -324,13 +403,46 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
       await evmWithdrawMutation.mutateAsync({
         consignmentId: consignment.id,
         callerAddress: solanaPublicKey,
+        signMessage,
       });
 
-      setIsWithdrawn(true);
-      setTimeout(() => {
-        if (onUpdate) onUpdate();
-      }, 500);
-      setIsWithdrawing(false);
+        setIsWithdrawn(true);
+        setTimeout(() => {
+          if (onUpdate) onUpdate();
+        }, 500);
+      } catch (err) {
+        console.error("[ConsignmentRow] Solana withdrawal error:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+
+        // Provide user-friendly messages for common errors
+        if (errorMsg.includes("not active") || errorMsg.includes("BadState") || errorMsg.includes("no longer active")) {
+          setWithdrawError(
+            "This listing is no longer active. It may have been fully used in deals or already withdrawn.",
+          );
+          // Mark as withdrawn locally to disable the button
+          setIsWithdrawn(true);
+          // Sync database status with on-chain state (no auth required)
+          fetch(`/api/consignments/${encodeURIComponent(consignment.id)}/sync-status`, {
+            method: "POST",
+          })
+            .then(() => {
+              console.log("[ConsignmentRow] Database status synced with on-chain");
+              if (onUpdate) onUpdate();
+            })
+            .catch((syncErr) => {
+              console.warn("[ConsignmentRow] Failed to sync status:", syncErr);
+            });
+        } else if (errorMsg.includes("Nothing to withdraw")) {
+          setWithdrawError("All tokens have already been withdrawn or used in deals.");
+          setIsWithdrawn(true);
+        } else if (errorMsg.includes("not the consigner")) {
+          setWithdrawError("You are not the owner of this listing.");
+        } else {
+          setWithdrawError(errorMsg);
+        }
+      } finally {
+        setIsWithdrawing(false);
+      }
     } else {
       // EVM withdrawal path
       // FAIL-FAST: Validate all requirements for EVM withdrawal
@@ -352,29 +464,41 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
 
       setIsWithdrawing(true);
 
-      // Switch chain if needed - wallet handles the prompt
-      if (!isOnCorrectChain) {
-        await switchToChain(consignmentChain);
+      try {
+        // Switch chain if needed - wallet handles the prompt
+        if (!isOnCorrectChain) {
+          await switchToChain(consignmentChain);
+        }
+
+        const contractConsignmentId = BigInt(consignment.contractConsignmentId);
+
+        // Execute on-chain withdrawal (user pays gas)
+        const txHash = await withdrawConsignment(contractConsignmentId);
+        setWithdrawTxHash(txHash as string);
+
+        // Update database status after successful on-chain withdrawal
+        // Uses mutation for automatic cache invalidation
+        // FAIL-FAST: address must be defined at this point (validated earlier)
+        if (!address) {
+          throw new Error("EVM wallet address is undefined - this should never happen");
+        }
+        await evmWithdrawMutation.mutateAsync({
+          consignmentId: consignment.id,
+          callerAddress: address,
+          signMessage,
+        });
+
+        setIsWithdrawn(true);
+        setTimeout(() => {
+          if (onUpdate) onUpdate();
+        }, 500);
+      } catch (err) {
+        console.error("[ConsignmentRow] EVM withdrawal error:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        setWithdrawError(errorMsg);
+      } finally {
+        setIsWithdrawing(false);
       }
-
-      const contractConsignmentId = BigInt(consignment.contractConsignmentId);
-
-      // Execute on-chain withdrawal (user pays gas)
-      const txHash = await withdrawConsignment(contractConsignmentId);
-      setWithdrawTxHash(txHash as string);
-
-      // Update database status after successful on-chain withdrawal
-      // Uses mutation for automatic cache invalidation
-      await evmWithdrawMutation.mutateAsync({
-        consignmentId: consignment.id,
-        callerAddress: address,
-      });
-
-      setIsWithdrawn(true);
-      setTimeout(() => {
-        if (onUpdate) onUpdate();
-      }, 500);
-      setIsWithdrawing(false);
     }
   };
 

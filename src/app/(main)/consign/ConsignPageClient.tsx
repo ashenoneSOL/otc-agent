@@ -4,14 +4,17 @@
 import type { Wallet } from "@coral-xyz/anchor";
 import * as anchor from "@coral-xyz/anchor";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { useWallet as useSolanaWallet } from "@solana/wallet-adapter-react";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import {
   Keypair,
   PublicKey as SolPubkey,
   SystemProgram as SolSystemProgram,
 } from "@solana/web3.js";
+import bs58 from "bs58";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSignMessage } from "wagmi";
 import type { TokenWithBalance } from "@/components/consignment-form/token-selection-step";
 import { WalletAvatar } from "@/components/wallet-avatar";
 import { type Chain, SUPPORTED_CHAINS } from "@/config/chains";
@@ -28,6 +31,7 @@ import {
   getTokenProgramId,
   SOLANA_DESK,
   SOLANA_RPC,
+  waitForSolanaTx,
 } from "@/utils/solana-otc";
 import {
   extractAddressFromTokenId,
@@ -89,8 +93,77 @@ export default function ConsignPageClient() {
   } = useWalletConnection();
   const { disconnect, connectWallet } = useWalletActions();
   const { login, ready: privyReady } = usePrivy();
-  useWallets(); // Keeping hook for wallet state sync
+  const { wallets } = useWallets();
   const { createConsignmentOnChain, approveToken, getRequiredGasDeposit } = useOTC();
+
+  // Solana wallet adapter for signMessage (may not be available for all wallets)
+  const { signMessage: solanaAdapterSignMessage } = useSolanaWallet();
+
+  // EVM signMessage from wagmi
+  const { signMessageAsync: evmSignMessage } = useSignMessage();
+
+  // Get Privy Solana wallet for signMessage fallback
+  const privySolanaWallet = useMemo(() => {
+    return wallets.find((w) => (w as { chainType?: string }).chainType === "solana");
+  }, [wallets]);
+
+  // Unified sign message function for wallet authentication
+  // Tries multiple sources: wallet adapter > Privy provider > Phantom direct
+  const signMessage = useCallback(
+    async (message: string): Promise<string> => {
+      if (activeFamily === "solana") {
+        const messageBytes = new TextEncoder().encode(message);
+
+        // Try 1: Wallet adapter's signMessage (e.g., Phantom via wallet-adapter)
+        if (solanaAdapterSignMessage) {
+          console.log("[signMessage] Using wallet adapter signMessage");
+          const signatureBytes = await solanaAdapterSignMessage(messageBytes);
+          return bs58.encode(signatureBytes);
+        }
+
+        // Try 2: Privy wallet provider's signMessage
+        if (privySolanaWallet) {
+          console.log("[signMessage] Trying Privy wallet provider");
+          const typedWallet = privySolanaWallet as {
+            getProvider?: () => Promise<{
+              signMessage?: (message: Uint8Array) => Promise<{ signature: Uint8Array }>;
+            }>;
+          };
+          const provider = await typedWallet.getProvider?.();
+          if (provider?.signMessage) {
+            console.log("[signMessage] Using Privy provider signMessage");
+            const result = await provider.signMessage(messageBytes);
+            return bs58.encode(result.signature);
+          }
+        }
+
+        // Try 3: Phantom direct (if available in window)
+        if (typeof window !== "undefined") {
+          const phantom = (
+            window as Window & {
+              phantom?: { solana?: { signMessage?: (msg: Uint8Array) => Promise<{ signature: Uint8Array }> } };
+            }
+          ).phantom?.solana;
+          if (phantom?.signMessage) {
+            console.log("[signMessage] Using Phantom direct signMessage");
+            const result = await phantom.signMessage(messageBytes);
+            return bs58.encode(result.signature);
+          }
+        }
+
+        throw new Error(
+          "Solana wallet does not support signing messages. Please use a wallet like Phantom that supports message signing.",
+        );
+      } else {
+        if (!evmSignMessage) {
+          throw new Error("EVM wallet not available for signing");
+        }
+        // Return hex signature for EVM
+        return await evmSignMessage({ message });
+      }
+    },
+    [activeFamily, solanaAdapterSignMessage, privySolanaWallet, evmSignMessage],
+  );
 
   const [step, setStep] = useState(1);
   const [selectedToken, setSelectedToken] = useState<TokenWithBalance | null>(null);
@@ -493,19 +566,8 @@ export default function ConsignPageClient() {
             preflightCommitment: "confirmed",
           });
 
-          // Confirm with blockhash context for proper expiry handling
-          const confirmation = await connection.confirmTransaction(
-            {
-              signature,
-              blockhash,
-              lastValidBlockHeight,
-            },
-            "confirmed",
-          );
-
-          if (confirmation.value.err) {
-            throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-          }
+          // Use HTTP polling for confirmation (avoids WebSocket CSP issues)
+          await waitForSolanaTx(connection, signature, "confirmed");
 
           return signature;
         };
@@ -798,6 +860,7 @@ export default function ConsignPageClient() {
                   onCreateConsignment={handleCreateConsignment}
                   getBlockExplorerUrl={getBlockExplorerUrl}
                   onBack={handleBack}
+                  signMessage={signMessage}
                 />
               );
             })()}

@@ -21,6 +21,12 @@ interface SubmissionStepStatus {
   canRetry?: boolean;
 }
 
+/**
+ * Sign message function type - returns base58 encoded signature for Solana,
+ * hex encoded signature for EVM
+ */
+type SignMessageFn = (message: string) => Promise<string>;
+
 interface SubmissionStepProps {
   formData: {
     tokenId: string;
@@ -53,6 +59,8 @@ interface SubmissionStepProps {
   ) => Promise<{ txHash: string; consignmentId: string }>;
   getBlockExplorerUrl: (txHash: string) => string;
   onBack: () => void;
+  /** Sign message function for wallet authentication */
+  signMessage: SignMessageFn;
 }
 
 export function SubmissionStepComponent({
@@ -69,6 +77,7 @@ export function SubmissionStepComponent({
   onCreateConsignment,
   getBlockExplorerUrl,
   onBack,
+  signMessage,
 }: SubmissionStepProps) {
   const router = useRouter();
   const createConsignmentMutation = useCreateConsignment();
@@ -194,6 +203,8 @@ export function SubmissionStepComponent({
       tokenDecimals: selectedTokenDecimals,
       tokenAddress: selectedTokenAddress,
       tokenLogoUrl: selectedTokenLogoUrl,
+      // Wallet signing for API authentication
+      signMessage,
     };
 
     console.log("[SubmissionStep] Saving to database:", {
@@ -216,6 +227,7 @@ export function SubmissionStepComponent({
     selectedTokenName,
     selectedTokenAddress,
     selectedTokenLogoUrl,
+    signMessage,
     createConsignmentMutation,
   ]);
 

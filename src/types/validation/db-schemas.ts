@@ -54,10 +54,16 @@ export type TokenBalance = z.infer<typeof TokenBalanceSchema>;
 /**
  * Solana token balance structure
  * Single source of truth - used by both API routes and hooks
+ *
+ * NOTE: `amount` uses nonnegative() without .int() because raw token amounts
+ * can exceed Number.MAX_SAFE_INTEGER (9007199254740991). Zod's .int() enforces
+ * the safe integer range which would reject large token balances.
+ * JavaScript floats can still represent these numbers, just with potential
+ * precision loss for very large values (which is acceptable for display).
  */
 export const SolanaTokenBalanceSchema = z.object({
   mint: AddressSchema,
-  amount: z.number().int().nonnegative(),
+  amount: z.number().nonnegative(), // No .int() - raw amounts can exceed MAX_SAFE_INTEGER
   decimals: z.number().int().min(0).max(255),
   symbol: NonEmptyStringSchema,
   name: z.string(),
@@ -171,13 +177,9 @@ const OTCConsignmentBaseSchema = z.object({
     (val) => (val === undefined || val === null ? 0 : val),
     z.number().int().min(0).max(10000),
   ),
+  // Legacy data may be missing maxDiscountBps - default to 30% (protocol max)
   maxDiscountBps: z.preprocess(
-    (val) => {
-      if (val === undefined || val === null) {
-        throw new Error("maxDiscountBps is required - cannot use default");
-      }
-      return val;
-    },
+    (val) => (val === undefined || val === null ? 3000 : val),
     z.number().int().min(0).max(3000, "Maximum discount cannot exceed 30%"),
   ),
   minLockupDays: z.preprocess(
@@ -192,12 +194,12 @@ const OTCConsignmentBaseSchema = z.object({
     (val) => (val === undefined || val === null ? "1" : val),
     BigIntStringSchema,
   ),
-  maxDealAmount: z.preprocess((val) => {
-    if (val === undefined || val === null) {
-      throw new Error("maxDealAmount is required - cannot use default");
-    }
-    return val;
-  }, BigIntStringSchema),
+  // Legacy data may be missing maxDealAmount - default to very large value (effectively unlimited)
+  maxDealAmount: z.preprocess(
+    (val) =>
+      val === undefined || val === null ? "999999999999999999999999999999999999" : val,
+    BigIntStringSchema,
+  ),
   isFractionalized: z.boolean(),
   isPrivate: z.boolean(),
   allowedBuyers: OptionalAddressArraySchema,

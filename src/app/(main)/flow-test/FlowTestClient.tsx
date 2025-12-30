@@ -50,14 +50,25 @@ import {
 
 // Use ChainFamily from @/types instead of local alias
 
-// Constants
+// Get network to determine which token config to use
+const network = getCurrentNetwork();
+const isLocal = network === "local";
+
+// Token config - use local deployment when available, otherwise mainnet
 const ELIZAOS_TOKEN_CONFIG = {
   evm: {
-    base: {
-      address: "0xea17Df5Cf6D172224892B5477A16ACb111182478", // elizaOS on Base mainnet
-      symbol: "ELIZAOS",
-      decimals: 9, // ELIZAOS uses 9 decimals, not 18
-    },
+    base: isLocal
+      ? {
+          // Local Anvil deployment
+          address: "0x5FbDB2315678afecb367f032d93F642f64180aa3", // elizaToken from local-evm.json
+          symbol: "ELIZA",
+          decimals: 18, // Local token uses 18 decimals (standard ERC20)
+        }
+      : {
+          address: "0xea17Df5Cf6D172224892B5477A16ACb111182478", // elizaOS on Base mainnet
+          symbol: "ELIZAOS",
+          decimals: 9, // ELIZAOS uses 9 decimals, not 18
+        },
   },
   solana: {
     mainnet: {
@@ -206,6 +217,10 @@ export default function FlowTestClient() {
   const [availableBalanceWei, setAvailableBalanceWei] = useState<bigint | null>(null);
   // Use ref to store balance for reliable access in callbacks (avoids stale closure issues)
   const availableBalanceRef = useRef<bigint | null>(null);
+  // Use ref to store consignment ID for reliable access in callbacks (avoids stale closure issues)
+  const consignmentIdRef = useRef<string | null>(null);
+  // Use ref to store Solana deposit amount for reliable access in callbacks (avoids stale closure issues)
+  const solanaDepositAmountRef = useRef<bigint | null>(null);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
   const stepResultsRef = useRef<Record<string, StepStatus>>({});
@@ -415,8 +430,10 @@ export default function FlowTestClient() {
       setSolanaPriceUsd(null);
       setSolanaMinUsd(null);
       setSolanaDepositAmount(null);
+      solanaDepositAmountRef.current = null;
       setAvailableBalanceWei(null);
       availableBalanceRef.current = null;
+      consignmentIdRef.current = null;
 
       setTestState({
         chain,
@@ -824,9 +841,11 @@ export default function FlowTestClient() {
       );
 
       addLog(`Consignment created. ID: ${result.consignmentId}`);
+      const consignmentIdStr = result.consignmentId.toString();
+      consignmentIdRef.current = consignmentIdStr; // Store in ref for reliable access
       setTestState((prev) => ({
         ...prev,
-        consignmentId: result.consignmentId.toString(),
+        consignmentId: consignmentIdStr,
       }));
 
       updateStep("deposit", {
@@ -958,6 +977,7 @@ export default function FlowTestClient() {
       const amount = new anchor.BN(depositAmountLamports.toString());
       const minDeal = new anchor.BN(minDealLamports.toString());
       setSolanaDepositAmount(depositAmountLamports);
+      solanaDepositAmountRef.current = depositAmountLamports; // Store in ref for reliable access
       addLog(
         `Depositing ${Number(depositAmountLamports) / 10 ** tokenConfig.decimals} ${tokenConfig.symbol} to satisfy minimum order`,
       );
@@ -1010,15 +1030,17 @@ export default function FlowTestClient() {
       await confirmTransactionPolling(connection, sig, "confirmed");
 
       addLog(`Consignment created: ${sig}`);
+      const consignmentIdStr = consignmentKeypair.publicKey.toString();
+      consignmentIdRef.current = consignmentIdStr; // Store in ref for reliable access
       setTestState((prev) => ({
         ...prev,
-        consignmentId: consignmentKeypair.publicKey.toString(),
+        consignmentId: consignmentIdStr,
       }));
 
       updateStep("deposit", {
         status: "success",
         txHash: sig,
-        details: `Consignment: ${consignmentKeypair.publicKey.toString().slice(0, 8)}...`,
+        details: `Consignment: ${consignmentIdStr.slice(0, 8)}...`,
       });
     }
   }, [
@@ -1041,7 +1063,9 @@ export default function FlowTestClient() {
     updateStep("buy", { status: "running" });
     addLog("Buying tokens at 10% discount...");
 
-    if (!testState.consignmentId) {
+    // Use ref for reliable access (avoids stale closure)
+    const consignmentId = consignmentIdRef.current || testState.consignmentId;
+    if (!consignmentId) {
       throw new Error("No consignment ID - deposit step must complete first");
     }
 
@@ -1076,10 +1100,10 @@ export default function FlowTestClient() {
       });
 
       addLog(`Next offer ID will be: ${nextOfferId.toString()}`);
-      addLog(`Creating offer for 50 tokens from consignment ${testState.consignmentId}...`);
+      addLog(`Creating offer for 50 tokens from consignment ${consignmentId}...`);
 
       const txHash = await createOfferFromConsignment({
-        consignmentId: BigInt(testState.consignmentId),
+        consignmentId: BigInt(consignmentId),
         tokenAmountWei,
         discountBps: 1000, // 10%
         paymentCurrency: 0, // ETH
@@ -1218,13 +1242,16 @@ export default function FlowTestClient() {
         `Token amount for offer: ${buyAmountReadable} tokens (${buyAmountLamports.toString()} lamports)`,
       );
 
+      // Use ref for reliable access (avoids stale closure)
+      const depositAmount = solanaDepositAmountRef.current || solanaDepositAmount;
+
       // Verify deposit covers buy amount
-      if (!solanaDepositAmount) {
+      if (!depositAmount) {
         throw new Error("Solana deposit amount not available");
       }
-      if (solanaDepositAmount < buyAmountLamports) {
+      if (depositAmount < buyAmountLamports) {
         throw new Error(
-          `Deposit (${Number(solanaDepositAmount) / 10 ** tokenConfig.decimals} tokens) is less than buy amount (${buyAmountReadable} tokens)`,
+          `Deposit (${Number(depositAmount) / 10 ** tokenConfig.decimals} tokens) is less than buy amount (${buyAmountReadable} tokens)`,
         );
       }
 
@@ -1249,7 +1276,7 @@ export default function FlowTestClient() {
       );
 
       // Get the consignment ID from the consignment account
-      const consignmentPubkey = new SolPubkey(testState.consignmentId);
+      const consignmentPubkey = new SolPubkey(consignmentId);
       interface ConsignmentAccountProgram {
         consignment: {
           fetch: (addr: SolPubkey) => Promise<{ id: anchor.BN }>;
@@ -1258,14 +1285,14 @@ export default function FlowTestClient() {
       const consignmentAccount = await (
         program.account as ConsignmentAccountProgram
       ).consignment.fetch(consignmentPubkey);
-      const consignmentId = new anchor.BN(consignmentAccount.id.toString());
+      const consignmentIdBN = new anchor.BN(consignmentAccount.id.toString());
       addLog(
-        `Using consignment ID: ${consignmentId.toString()} from ${testState.consignmentId.slice(0, 8)}...`,
+        `Using consignment ID: ${consignmentIdBN.toString()} from ${consignmentId.slice(0, 8)}...`,
       );
 
       const tx = await program.methods
         .createOfferFromConsignment(
-          consignmentId, // consignment_id
+          consignmentIdBN, // consignment_id
           tokenAmountWei, // token_amount
           SOLANA_DISCOUNT_BPS, // discount_bps
           SOLANA_PAYMENT_CURRENCY, // currency (0 = SOL, 1 = USDC)
@@ -1302,7 +1329,7 @@ export default function FlowTestClient() {
           offerId: nextOfferId.toString(),
           chain: "solana",
           offerAddress: offerKeypair.publicKey.toString(),
-          consignmentAddress: testState.consignmentId, // Consignment public key stored from deposit step
+          consignmentAddress: consignmentId, // Consignment public key stored from deposit step
         }),
       });
 
@@ -1344,14 +1371,16 @@ export default function FlowTestClient() {
     updateStep("withdraw", { status: "running" });
     addLog("Withdrawing remaining tokens...");
 
-    if (!testState.consignmentId) {
+    // Use ref for reliable access (avoids stale closure)
+    const consignmentId = consignmentIdRef.current || testState.consignmentId;
+    if (!consignmentId) {
       throw new Error("No consignment ID - deposit step must complete first");
     }
 
     if (testState.chain === "evm") {
-      addLog(`Withdrawing from consignment ${testState.consignmentId}...`);
+      addLog(`Withdrawing from consignment ${consignmentId}...`);
 
-      const txHash = await withdrawConsignment(BigInt(testState.consignmentId));
+      const txHash = await withdrawConsignment(BigInt(consignmentId));
 
       addLog(`Withdrawal complete: ${txHash}`);
       updateStep("withdraw", {
@@ -1386,8 +1415,8 @@ export default function FlowTestClient() {
       const tokenMintPk = new SolPubkey(tokenConfig.address);
       const consignerPk = new SolPubkey(activePublicKey);
 
-      addLog(`Consignment address from state: ${testState.consignmentId}`);
-      const consignmentPk = new SolPubkey(testState.consignmentId);
+      addLog(`Consignment address from state: ${consignmentId}`);
+      const consignmentPk = new SolPubkey(consignmentId);
       addLog(`Consignment pubkey: ${consignmentPk.toBase58()}`);
 
       const tokenProgramId = await getTokenProgramId(connection, tokenMintPk);
@@ -1461,7 +1490,7 @@ export default function FlowTestClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          consignmentAddress: testState.consignmentId,
+          consignmentAddress: consignmentId,
           consignerAddress: activePublicKey,
           signedTransaction: Buffer.from(serializedTx).toString("base64"),
         }),
@@ -1825,6 +1854,7 @@ export default function FlowTestClient() {
                     }
                     const value = input.value.trim();
                     if (value) {
+                      consignmentIdRef.current = value; // Store in ref for reliable access
                       setTestState((prev) => ({
                         ...prev,
                         consignmentId: value,

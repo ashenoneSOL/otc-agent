@@ -67,15 +67,23 @@ function skipIfNoServer(): boolean {
 /**
  * Helper to make API calls to services via their exposed routes
  * (Services are exercised through API routes in E2E tests)
+ * Automatically includes Origin header for mutation requests (CSRF protection).
  */
 async function apiCall<T>(
   method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
   body?: Record<string, unknown>,
 ): Promise<{ status: number; data: T }> {
+  // Include Origin header for mutation requests (CSRF protection)
+  const needsOrigin = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (needsOrigin) {
+    headers.origin = BASE_URL;
+  }
+
   const options: RequestInit = {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers,
     signal: AbortSignal.timeout(SERVICE_TIMEOUT),
   };
   if (body) {

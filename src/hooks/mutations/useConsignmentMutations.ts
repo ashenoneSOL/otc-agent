@@ -13,6 +13,42 @@ import { throwApiError } from "../lib/api-helpers";
 import { consignmentKeys, walletTokenKeys } from "../queryKeys";
 
 /**
+ * Wallet authentication headers for API calls
+ */
+interface WalletAuthHeaders {
+  "x-wallet-address": string;
+  "x-wallet-signature": string;
+  "x-auth-message": string;
+  "x-auth-timestamp": string;
+}
+
+/**
+ * Sign message function type - returns base58 encoded signature for Solana,
+ * hex encoded signature for EVM
+ */
+type SignMessageFn = (message: string) => Promise<string>;
+
+/**
+ * Generate authentication headers for API calls
+ * Message format: "Authorize OTC action at {timestamp}"
+ */
+async function generateAuthHeaders(
+  address: string,
+  signMessage: SignMessageFn,
+): Promise<WalletAuthHeaders> {
+  const timestamp = Date.now().toString();
+  const message = `Authorize OTC action at ${timestamp}`;
+  const signature = await signMessage(message);
+
+  return {
+    "x-wallet-address": address,
+    "x-wallet-signature": signature,
+    "x-auth-message": message,
+    "x-auth-timestamp": timestamp,
+  };
+}
+
+/**
  * Input for creating a consignment
  * Matches API request schema at /api/consignments
  */
@@ -42,6 +78,8 @@ interface CreateConsignmentInput {
   tokenDecimals?: number;
   tokenAddress?: string;
   tokenLogoUrl?: string | null;
+  // Auth - signMessage function to generate wallet signature
+  signMessage?: SignMessageFn;
 }
 
 /**
@@ -59,6 +97,7 @@ interface CreateConsignmentResponse {
 interface WithdrawConsignmentInput {
   consignmentId: string;
   callerAddress: string;
+  signMessage: SignMessageFn;
 }
 
 /**
@@ -87,10 +126,23 @@ interface UpdateConsignmentInput {
  * Create a new consignment via API
  */
 async function createConsignment(input: CreateConsignmentInput): Promise<OTCConsignment> {
+  const { signMessage, consignerAddress, ...bodyData } = input;
+
+  // FAIL-FAST: signMessage is required for authenticated API calls
+  if (!signMessage) {
+    throw new Error("signMessage function is required for creating consignments");
+  }
+
+  // Generate authentication headers
+  const authHeaders = await generateAuthHeaders(consignerAddress, signMessage);
+
   const response = await fetch("/api/consignments", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    body: JSON.stringify({ ...bodyData, consignerAddress }),
   });
 
   if (!response.ok) {
@@ -110,10 +162,17 @@ async function createConsignment(input: CreateConsignmentInput): Promise<OTCCons
  * Withdraw a consignment (mark as withdrawn in DB)
  */
 async function withdrawConsignment(input: WithdrawConsignmentInput): Promise<void> {
-  const response = await fetch(
-    `/api/consignments/${encodeURIComponent(input.consignmentId)}?callerAddress=${encodeURIComponent(input.callerAddress)}`,
-    { method: "DELETE" },
-  );
+  const { signMessage, callerAddress, consignmentId } = input;
+
+  // Generate authentication headers
+  const authHeaders = await generateAuthHeaders(callerAddress, signMessage);
+
+  const response = await fetch(`/api/consignments/${encodeURIComponent(consignmentId)}`, {
+    method: "DELETE",
+    headers: {
+      ...authHeaders,
+    },
+  });
 
   if (!response.ok) {
     await throwApiError(response, "Failed to update database after withdrawal");

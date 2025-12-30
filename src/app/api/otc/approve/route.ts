@@ -781,10 +781,15 @@ async function handleApproval(request: NextRequest) {
   }
 
   if (!tokenAddress) {
-    // For local testing, skip price validation if token not registered
+    // For local/dev testing, skip price validation if token not registered
+    // Check both network setting and NODE_ENV to handle cases where NETWORK isn't set
     const network = getNetwork();
-    if (network === "local") {
-      console.log("[Approve API] Local network - skipping price validation (token not in DB)");
+    const isDevEnvironment = process.env.NODE_ENV === "development" || network === "local";
+    if (isDevEnvironment) {
+      console.log(
+        "[Approve API] Development mode - skipping price validation (token not in DB)",
+        { network, nodeEnv: process.env.NODE_ENV },
+      );
     } else {
       return NextResponse.json(
         {

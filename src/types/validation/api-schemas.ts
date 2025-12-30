@@ -60,44 +60,80 @@ export const CreateConsignmentRequestSchema = z
     tokenId: NonEmptyStringSchema,
     consignerAddress: AddressSchema,
     amount: z
-      .union([BigIntStringSchema, z.number(), z.string()])
-      .transform((val) => {
+      .union([BigIntStringSchema, z.number().int().positive(), z.string()])
+      .superRefine((val, ctx) => {
         if (typeof val === "number") {
           if (!Number.isInteger(val)) {
-            throw new Error(
-              "Amount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                "Amount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
+            });
+            return z.NEVER;
           }
-          if (val < 0) {
-            throw new Error("Amount must be non-negative");
+          if (val <= 0) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Amount must be a positive integer",
+            });
+            return z.NEVER;
           }
-          return val.toString();
         }
         if (typeof val === "string") {
           // Reject decimal inputs
           if (val.includes(".")) {
-            throw new Error(
-              "Amount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                "Amount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
+            });
+            return z.NEVER;
           }
+          // Check for negative string values
+          if (val.startsWith("-")) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Amount must be a positive integer",
+            });
+            return z.NEVER;
+          }
+          // Check if valid number
           const num = Number(val);
           if (Number.isNaN(num) || !Number.isFinite(num)) {
-            throw new Error(`Invalid number: ${val}`);
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Invalid number: ${val}`,
+            });
+            return z.NEVER;
           }
-          if (num < 0) {
-            throw new Error("Amount must be non-negative");
+          // Validate BigInt conversion
+          try {
+            const bigVal = BigInt(val);
+            if (bigVal <= 0n) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Amount must be a positive integer",
+              });
+              return z.NEVER;
+            }
+          } catch {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Invalid number format: ${val}`,
+            });
+            return z.NEVER;
           }
+        }
+      })
+      .transform((val) => {
+        if (typeof val === "number") {
+          return val.toString();
+        }
+        if (typeof val === "string") {
           return BigInt(val).toString();
         }
         return val;
-      })
-      .refine(
-        (val) => {
-          const num = BigInt(val);
-          return num > 0n;
-        },
-        { message: "Amount must be a positive integer" },
-      ),
+      }),
     isNegotiable: z.boolean(),
     fixedDiscountBps: BpsSchema.optional(),
     fixedLockupDays: z.number().int().min(0).optional(),
@@ -106,71 +142,111 @@ export const CreateConsignmentRequestSchema = z
     minLockupDays: z.number().int().min(0).optional(),
     maxLockupDays: z.number().int().min(0).optional(),
     minDealAmount: z
-      .union([BigIntStringSchema, z.number(), z.string()])
+      .union([BigIntStringSchema, z.number().int().nonnegative(), z.string()])
       .optional()
-      .transform((val) => {
-        if (val === undefined) return undefined;
+      .superRefine((val, ctx) => {
+        if (val === undefined) return;
         if (typeof val === "number") {
           if (!Number.isInteger(val)) {
-            throw new Error(
-              "minDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                "minDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
+            });
+            return z.NEVER;
           }
           if (val < 0) {
-            throw new Error("minDealAmount must be non-negative");
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "minDealAmount must be non-negative",
+            });
+            return z.NEVER;
           }
-          return val.toString();
         }
         if (typeof val === "string") {
-          // Reject decimal inputs
           if (val.includes(".")) {
-            throw new Error(
-              "minDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                "minDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
+            });
+            return z.NEVER;
+          }
+          if (val.startsWith("-")) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "minDealAmount must be non-negative",
+            });
+            return z.NEVER;
           }
           const num = Number(val);
           if (Number.isNaN(num) || !Number.isFinite(num)) {
-            throw new Error(`Invalid number: ${val}`);
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Invalid number: ${val}`,
+            });
+            return z.NEVER;
           }
-          if (num < 0) {
-            throw new Error("minDealAmount must be non-negative");
-          }
-          return BigInt(val).toString();
         }
+      })
+      .transform((val) => {
+        if (val === undefined) return undefined;
+        if (typeof val === "number") return val.toString();
+        if (typeof val === "string") return BigInt(val).toString();
         return val;
       }),
     maxDealAmount: z
-      .union([BigIntStringSchema, z.number(), z.string()])
+      .union([BigIntStringSchema, z.number().int().nonnegative(), z.string()])
       .optional()
-      .transform((val) => {
-        if (val === undefined) return undefined;
+      .superRefine((val, ctx) => {
+        if (val === undefined) return;
         if (typeof val === "number") {
           if (!Number.isInteger(val)) {
-            throw new Error(
-              "maxDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                "maxDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
+            });
+            return z.NEVER;
           }
           if (val < 0) {
-            throw new Error("maxDealAmount must be non-negative");
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "maxDealAmount must be non-negative",
+            });
+            return z.NEVER;
           }
-          return val.toString();
         }
         if (typeof val === "string") {
-          // Reject decimal inputs
           if (val.includes(".")) {
-            throw new Error(
-              "maxDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                "maxDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
+            });
+            return z.NEVER;
+          }
+          if (val.startsWith("-")) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "maxDealAmount must be non-negative",
+            });
+            return z.NEVER;
           }
           const num = Number(val);
           if (Number.isNaN(num) || !Number.isFinite(num)) {
-            throw new Error(`Invalid number: ${val}`);
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Invalid number: ${val}`,
+            });
+            return z.NEVER;
           }
-          if (num < 0) {
-            throw new Error("maxDealAmount must be non-negative");
-          }
-          return BigInt(val).toString();
         }
+      })
+      .transform((val) => {
+        if (val === undefined) return undefined;
+        if (typeof val === "number") return val.toString();
+        if (typeof val === "string") return BigInt(val).toString();
         return val;
       }),
     isFractionalized: z.boolean().optional(),

@@ -56,14 +56,24 @@ function skipIfNoServer(): boolean {
 }
 
 /**
- * Type-safe fetch helper
+ * Type-safe fetch helper.
+ * Automatically includes Origin header for mutation requests (CSRF protection).
  */
 async function fetchJson<T>(
   url: string,
   options?: RequestInit,
 ): Promise<{ status: number; data: T }> {
+  const method = options?.method?.toUpperCase() || "GET";
+  const needsOrigin = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
+
+  const headers = new Headers(options?.headers);
+  if (needsOrigin && !headers.has("origin")) {
+    headers.set("origin", BASE_URL);
+  }
+
   const response = await fetch(url, {
     ...options,
+    headers,
     signal: AbortSignal.timeout(TEST_TIMEOUT - 1000),
   });
   const data = (await response.json()) as T;
@@ -589,6 +599,7 @@ describe("React Query Hooks Integration Tests", () => {
 
         const response = await fetch(`${BASE_URL}/api/consignments`, {
           method: "POST",
+          headers: { origin: BASE_URL }, // CSRF requires origin header
           body: JSON.stringify({ tokenId: "test" }),
           // No Content-Type header
         });
@@ -622,7 +633,7 @@ describe("React Query Hooks Integration Tests", () => {
 
         const response = await fetch(`${BASE_URL}/api/consignments`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", origin: BASE_URL },
           body: "{invalid json",
         });
 

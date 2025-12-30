@@ -4,9 +4,9 @@
  * Migration fix script
  *
  * Fixes inconsistent migration state in the database by:
- * 1. Dropping conflicting constraints/indexes that block migrations
+ * 1. Dropping all Eliza system tables (they will be recreated fresh)
  * 2. Resetting the migration tracker for @elizaos/plugin-sql
- * 3. Allowing the system to re-migrate cleanly
+ * 3. Allowing the system to create tables from scratch
  *
  * Usage: bun scripts/fix-migrations.ts
  */
@@ -42,7 +42,7 @@ if (!postgresUrl) {
 
 const isRemote = !postgresUrl.includes("localhost") && !postgresUrl.includes("127.0.0.1");
 
-console.log(`🔧 Migration Fix Script`);
+console.log(`🔧 Migration Fix Script (Nuclear Reset)`);
 console.log(`📍 Database: ${isRemote ? "Remote (Vercel/Neon)" : `Local (port ${port})`}`);
 console.log("");
 
@@ -55,111 +55,9 @@ async function main() {
 
   const client = await pool.connect();
 
-  // Step 1: Check for the conflicting constraint
-  console.log("1️⃣  Checking for conflicting constraints...");
+  // Step 1: Reset migration tracker for plugin-sql
+  console.log("1️⃣  Resetting migration tracker...");
 
-  const constraintsResult = await client.query(`
-      SELECT constraint_name, table_name, constraint_type
-      FROM information_schema.table_constraints 
-      WHERE constraint_name LIKE '%server_agents%'
-    `);
-
-  if (constraintsResult.rows.length > 0) {
-    console.log(`   Found ${constraintsResult.rows.length} conflicting constraint(s):`);
-    for (const c of constraintsResult.rows) {
-      console.log(`   - ${c.constraint_name} on ${c.table_name} (${c.constraint_type})`);
-    }
-  } else {
-    console.log("   No conflicting constraints found in information_schema");
-  }
-
-  // Step 2: Check for the server_agents table
-  console.log("\n2️⃣  Checking for server_agents table...");
-
-  const tablesResult = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' AND table_name = 'server_agents'
-    `);
-
-  if (tablesResult.rows.length > 0) {
-    console.log("   Table 'server_agents' exists");
-
-    // Drop the table entirely since it's in an inconsistent state
-    console.log("   Dropping server_agents table...");
-    await client.query(`DROP TABLE IF EXISTS public.server_agents CASCADE`);
-    console.log("   Dropped server_agents table");
-  } else {
-    console.log("   Table 'server_agents' does not exist");
-  }
-
-  // Step 2b: Check for message_server_agents table (the migration wants to drop this)
-  console.log("\n2b️⃣  Checking for message_server_agents table...");
-
-  const messageServerAgentsTableResult = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' AND table_name = 'message_server_agents'
-    `);
-
-  if (messageServerAgentsTableResult.rows.length > 0) {
-    console.log("   Table 'message_server_agents' exists");
-
-    // The migration will drop this table, but the constraints have conflicting names
-    // with the new server_agents table. Drop the constraints first.
-    console.log("   Dropping message_server_agents constraints...");
-
-    // Drop foreign key constraints first
-    await client.query(`
-        ALTER TABLE IF EXISTS public.message_server_agents 
-        DROP CONSTRAINT IF EXISTS server_agents_server_id_message_servers_id_fk CASCADE
-      `);
-    await client.query(`
-        ALTER TABLE IF EXISTS public.message_server_agents 
-        DROP CONSTRAINT IF EXISTS server_agents_agent_id_agents_id_fk CASCADE
-      `);
-
-    // Now drop the primary key constraint (which also drops the index)
-    await client.query(`
-        ALTER TABLE IF EXISTS public.message_server_agents 
-        DROP CONSTRAINT IF EXISTS server_agents_server_id_agent_id_pk CASCADE
-      `);
-
-    console.log("   Dropped conflicting constraints from message_server_agents");
-
-    // Now drop the entire table since the migration will recreate it with different structure
-    console.log("   Dropping message_server_agents table...");
-    await client.query(`DROP TABLE IF EXISTS public.message_server_agents CASCADE`);
-    console.log("   Dropped message_server_agents table");
-  } else {
-    console.log("   Table 'message_server_agents' does not exist");
-  }
-
-  // Step 3: Check for the constraint index directly in pg_class
-  console.log("\n3️⃣  Checking for orphaned indexes...");
-
-  const indexesResult = await client.query(`
-      SELECT indexname, tablename 
-      FROM pg_indexes 
-      WHERE indexname LIKE '%server_agents%'
-    `);
-
-  if (indexesResult.rows.length > 0) {
-    console.log(`   Found ${indexesResult.rows.length} index(es):`);
-    for (const idx of indexesResult.rows) {
-      console.log(`   - ${idx.indexname} on ${idx.tablename}`);
-      // Drop the index
-      await client.query(`DROP INDEX IF EXISTS "${idx.indexname}" CASCADE`);
-      console.log(`   Dropped index ${idx.indexname}`);
-    }
-  } else {
-    console.log("   No orphaned indexes found");
-  }
-
-  // Step 4: Reset migration tracker for plugin-sql
-  console.log("\n4️⃣  Resetting migration tracker...");
-
-  // Check if migrations schema exists
   const migrationSchemaResult = await client.query(`
       SELECT schema_name 
       FROM information_schema.schemata 
@@ -167,9 +65,7 @@ async function main() {
     `);
 
   if (migrationSchemaResult.rows.length > 0) {
-    console.log("   migrations schema exists, cleaning up...");
-
-    // Delete plugin-sql entries from migration tracker tables
+    console.log("   migrations schema exists, clearing all entries...");
     await client.query(
       `DELETE FROM migrations._migrations WHERE plugin_name = '@elizaos/plugin-sql'`,
     );
@@ -177,54 +73,95 @@ async function main() {
     await client.query(
       `DELETE FROM migrations._snapshots WHERE plugin_name = '@elizaos/plugin-sql'`,
     );
-
     console.log("   Cleared @elizaos/plugin-sql migration history");
   } else {
     console.log("   migrations schema does not exist (will be created on first run)");
   }
 
-  // Step 5: Fix message_server_agents table if it exists
-  console.log("\n5️⃣  Checking for message_server_agents table...");
+  // Step 2: Drop ALL Eliza system tables (they will be recreated fresh)
+  console.log("\n2️⃣  Dropping Eliza system tables (will be recreated fresh)...");
 
-  const messageServerAgentsResult = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' AND table_name = 'message_server_agents'
+  // These are the Eliza plugin-sql tables - drop in correct order for FK constraints
+  const elizaTables = [
+    "embeddings",
+    "logs",
+    "memories",
+    "participants",
+    "components",
+    "tasks",
+    "relationships",
+    "channel_participants",
+    "central_messages",
+    "channels",
+    "rooms",
+    "entities",
+    "worlds",
+    "message_server_agents",
+    "server_agents",
+    "message_servers",
+    "agents",
+    "cache",
+  ];
+
+  for (const table of elizaTables) {
+    const tableExists = await client.query(
+      `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`,
+      [table],
+    );
+    if (tableExists.rows.length > 0) {
+      console.log(`   Dropping ${table}...`);
+      await client.query(`DROP TABLE IF EXISTS public.${table} CASCADE`);
+    }
+  }
+  console.log("   Done dropping Eliza tables");
+
+  // Step 3: Drop orphaned indexes
+  console.log("\n3️⃣  Checking for orphaned indexes...");
+
+  const indexesResult = await client.query(`
+      SELECT indexname, tablename 
+      FROM pg_indexes 
+      WHERE schemaname = 'public' 
+        AND (indexname LIKE '%server_agents%' 
+             OR indexname LIKE '%eliza%'
+             OR indexname LIKE 'idx_memories%'
+             OR indexname LIKE 'idx_participants%'
+             OR indexname LIKE 'idx_relationships%'
+             OR indexname LIKE 'idx_embedding%'
+             OR indexname LIKE 'idx_fragments%')
     `);
 
-  if (messageServerAgentsResult.rows.length > 0) {
-    console.log("   Table 'message_server_agents' exists (will be dropped by migration)");
+  if (indexesResult.rows.length > 0) {
+    console.log(`   Found ${indexesResult.rows.length} index(es) to drop:`);
+    for (const idx of indexesResult.rows) {
+      console.log(`   - ${idx.indexname}`);
+      await client.query(`DROP INDEX IF EXISTS public."${idx.indexname}" CASCADE`);
+    }
   } else {
-    console.log("   Table 'message_server_agents' does not exist");
+    console.log("   No orphaned indexes found");
   }
 
-  // Step 6: Check channels table columns
-  console.log("\n6️⃣  Checking channels table columns...");
+  // Step 4: Check what OTC tables remain (these are OUR tables, not Eliza's)
+  console.log("\n4️⃣  Checking OTC application tables...");
 
-  const channelColumnsResult = await client.query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_schema = 'public' AND table_name = 'channels'
-    `);
-
-  if (channelColumnsResult.rows.length > 0) {
-    const colNames = channelColumnsResult.rows.map((c: { column_name: string }) => c.column_name);
-    console.log(`   Columns: ${colNames.join(", ")}`);
-
-    // Check for the columns that the migration wants to add/remove
-    if (colNames.includes("message_server_id")) {
-      console.log("   message_server_id exists (will be dropped by migration)");
-    }
-    if (colNames.includes("server_id")) {
-      console.log("   server_id already exists");
+  const otcTables = ["tokens", "consignments", "purchases", "quotes", "user_sessions"];
+  for (const table of otcTables) {
+    const tableExists = await client.query(
+      `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`,
+      [table],
+    );
+    if (tableExists.rows.length > 0) {
+      const countResult = await client.query(`SELECT COUNT(*) as count FROM public.${table}`);
+      const count = parseInt(countResult.rows[0].count, 10);
+      console.log(`   ${table}: ${count} rows (preserved)`);
     } else {
-      console.log("   server_id does NOT exist (will be added by migration)");
+      console.log(`   ${table}: does not exist`);
     }
-  } else {
-    console.log("   channels table does not exist or has no columns");
   }
 
-  console.log("\nMigration fix complete");
+  console.log("\n✅ Migration fix complete");
+  console.log("   All Eliza tables dropped - they will be recreated on next startup.");
+  console.log("   Your OTC application data (tokens, consignments, etc.) has been preserved.");
   console.log("   Run your development server again to apply migrations cleanly.");
 
   client.release();

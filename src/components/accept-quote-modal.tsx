@@ -11,7 +11,7 @@ import {
 } from "@solana/web3.js";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { Abi, Address } from "viem";
 import { createPublicClient, erc20Abi, formatUnits, http } from "viem";
 import { base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "viem/chains";
@@ -439,6 +439,13 @@ export function AcceptQuoteModal({
     contractConsignmentId,
     consignmentRemainingTokens,
   } = state;
+
+  // Use ref to track latest contractConsignmentId to avoid stale closure issues
+  // executeTransaction may capture stale state if called before re-render completes
+  const contractConsignmentIdRef = useRef(contractConsignmentId);
+  useEffect(() => {
+    contractConsignmentIdRef.current = contractConsignmentId;
+  }, [contractConsignmentId]);
 
   const { handleTransactionError } = useTransactionErrorHandler();
   const { login, ready: privyReady } = usePrivy();
@@ -1207,6 +1214,17 @@ export function AcceptQuoteModal({
     await executeTransaction().catch((err) => {
       console.error("[AcceptQuote] executeTransaction error:", err);
       const error = err instanceof Error ? err : new Error(String(err));
+
+      // Check for Solana BadState error (consignment inactive or registry mismatch)
+      const errorStr = error.message || String(err);
+      if (errorStr.includes("BadState") || errorStr.includes("0x1779") || errorStr.includes("6009")) {
+        const badStateMessage =
+          "This listing is no longer available. The seller may have withdrawn their tokens, " +
+          "or the listing has been deactivated. Please request a new quote from the chat.";
+        dispatch({ type: "TRANSACTION_ERROR", payload: badStateMessage });
+        throw new Error(badStateMessage);
+      }
+
       // Use TransactionError type which already has cause, details, and shortMessage
       const txError: TransactionError = {
         ...error,
@@ -1435,8 +1453,10 @@ export function AcceptQuoteModal({
       }
 
       // Validate we have a consignment address for Solana
+      // Use ref to get latest value, avoiding stale closure issues
+      const currentContractConsignmentId = contractConsignmentIdRef.current;
       console.log(
-        `[AcceptQuote] At transaction time, contractConsignmentId: ${contractConsignmentId}`,
+        `[AcceptQuote] At transaction time, contractConsignmentId: ${currentContractConsignmentId}`,
       );
       if (!initialQuote.tokenChain) throw new Error("Quote missing tokenChain");
       if (!initialQuote.tokenSymbol) throw new Error("Quote missing tokenSymbol");
@@ -1446,15 +1466,15 @@ export function AcceptQuoteModal({
         tokenSymbol: initialQuote.tokenSymbol, // Required field
         tokenChain: initialQuote.tokenChain, // Required field
       });
-      if (!contractConsignmentId) {
+      if (!currentContractConsignmentId) {
         throw new Error(
           "No consignment available for this token. Please ensure the seller has deposited tokens to the OTC desk.",
         );
       }
 
       // Fetch consignment's numeric ID from on-chain account
-      const consignmentPubkey = new SolPubkey(contractConsignmentId);
-      console.log(`[AcceptQuote] Fetching consignment account: ${contractConsignmentId}`);
+      const consignmentPubkey = new SolPubkey(currentContractConsignmentId);
+      console.log(`[AcceptQuote] Fetching consignment account: ${currentContractConsignmentId}`);
 
       interface ConsignmentAccountProgram {
         consignment: {
@@ -1528,7 +1548,7 @@ export function AcceptQuoteModal({
           offerId: nextOfferId.toString(),
           chain: "solana",
           offerAddress: offerKeypair.publicKey.toString(),
-          consignmentAddress: contractConsignmentId, // Required for Solana approval
+          consignmentAddress: currentContractConsignmentId, // Required for Solana approval
         }),
       });
 
@@ -1586,12 +1606,17 @@ export function AcceptQuoteModal({
       // CRITICAL: Capture tokenAmount NOW before any async operations
       const finalTokenAmount = tokenAmount;
 
+      // Construct tokenId in the format expected by the database
+      const solanaTokenId = `token-solana-${tokenMintPk.toBase58()}`;
+
       console.log("[Solana] Saving deal completion:", {
         quoteId: initialQuote.quoteId,
         wallet: solanaWalletAddress,
         offerId: nextOfferId.toString(),
         tokenAmount: finalTokenAmount,
         currency,
+        tokenId: solanaTokenId,
+        consignmentId: initialQuote.consignmentId,
       });
 
       const response = await fetch("/api/deal-completion", {
@@ -1600,6 +1625,8 @@ export function AcceptQuoteModal({
         body: JSON.stringify({
           action: "complete",
           quoteId: initialQuote.quoteId,
+          tokenId: solanaTokenId,
+          consignmentId: initialQuote.consignmentId,
           tokenAmount: String(finalTokenAmount),
           paymentCurrency: currency,
           offerId: nextOfferId.toString(),
@@ -1607,6 +1634,11 @@ export function AcceptQuoteModal({
           chain: "solana",
           offerAddress: offerKeypair.publicKey.toString(),
           beneficiary: solanaWalletAddress,
+          // Additional fields required by deal-completion API
+          priceAtQuote: initialQuote.pricePerToken ?? 0,
+          maxPriceDeviationBps: 1000, // 10% default tolerance
+          discountBps: discountBps,
+          lockupDays: lockupDays,
         }),
       });
 
@@ -1687,8 +1719,9 @@ export function AcceptQuoteModal({
     // Step 1: Create offer from consignment (User transaction - ONLY transaction user signs)
     console.log(`[AcceptQuote] Creating offer ${newOfferId}...`);
 
-    // Validate we have a consignment ID
-    if (!contractConsignmentId) {
+    // Validate we have a consignment ID - use ref to get latest value (avoid stale closure)
+    const evmContractConsignmentId = contractConsignmentIdRef.current;
+    if (!evmContractConsignmentId) {
       throw new Error(
         "No consignment available. This quote may not be linked to an active listing. Please request a new quote from the chat.",
       );
@@ -1744,12 +1777,12 @@ export function AcceptQuoteModal({
     const agentCommissionBps =
       typeof initialQuote.agentCommissionBps === "number" ? initialQuote.agentCommissionBps : 0;
 
-    console.log(`[AcceptQuote] Using consignment ID: ${contractConsignmentId}`);
+    console.log(`[AcceptQuote] Using consignment ID: ${evmContractConsignmentId}`);
     console.log(`[AcceptQuote] Token decimals: ${tokenDecimals}, amount wei: ${tokenAmountWei}`);
     console.log(`[AcceptQuote] Agent commission: ${agentCommissionBps} bps`);
 
     const createTxHash = (await createOfferFromConsignment({
-      consignmentId: BigInt(contractConsignmentId),
+      consignmentId: BigInt(evmContractConsignmentId),
       tokenAmountWei,
       discountBps,
       paymentCurrency,
