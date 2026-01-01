@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
   const desk = new PublicKey(SOLANA_DESK);
 
   // Verify desk keypair matches expected desk public key
+  // NOTE: The Solana program's Claim requires desk_signer to have authority
   if (!deskKeypair.publicKey.equals(desk)) {
     console.error(
       "[Solana Claim API] Desk keypair mismatch. Expected:",

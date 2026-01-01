@@ -146,17 +146,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Nothing to withdraw" }, { status: 400 });
   }
 
-  // Verify desk public key matches
+  // Verify desk keypair matches expected desk account
+  // NOTE: The Solana program's WithdrawConsignment requires desk_signer.key() == desk.key()
+  // This means we need the keypair for the desk account itself, NOT the owner
   if (!deskKeypair.publicKey.equals(desk)) {
     console.error(
-      "[Withdraw Consignment API] Desk keypair mismatch. Expected:",
+      "[Withdraw Consignment API] Desk keypair mismatch. Expected desk:",
       desk.toBase58(),
       "Got:",
       deskKeypair.publicKey.toBase58(),
     );
     return NextResponse.json(
       {
-        error: `Desk keypair mismatch. Expected: ${desk.toBase58()}, Got: ${deskKeypair.publicKey.toBase58()}`,
+        error: `Desk keypair mismatch. Expected desk: ${desk.toBase58()}, Got: ${deskKeypair.publicKey.toBase58()}. ` +
+          "The Solana program requires the desk account's keypair for withdrawals. " +
+          "Configure SOLANA_DESK_PRIVATE_KEY with the correct keypair.",
       },
       { status: 500 },
     );

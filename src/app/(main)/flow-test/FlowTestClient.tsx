@@ -206,6 +206,8 @@ export default function FlowTestClient() {
   const [availableBalanceWei, setAvailableBalanceWei] = useState<bigint | null>(null);
   // Use ref to store balance for reliable access in callbacks (avoids stale closure issues)
   const availableBalanceRef = useRef<bigint | null>(null);
+  // Use ref for consignment ID to avoid state race conditions in sequential step execution
+  const consignmentIdRef = useRef<string | null>(null);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
   const stepResultsRef = useRef<Record<string, StepStatus>>({});
@@ -281,7 +283,19 @@ export default function FlowTestClient() {
       }),
     });
 
-    const priceJson: PriceUpdateResponse = (await priceRes.json()) as PriceUpdateResponse;
+    let priceJson: PriceUpdateResponse;
+    try {
+      priceJson = (await priceRes.json()) as PriceUpdateResponse;
+    } catch {
+      throw new Error(`Failed to parse price update response (status: ${priceRes.status})`);
+    }
+
+    if (!priceRes.ok) {
+      const errorMsg =
+        (priceJson as { error?: string }).error || `Price update failed: ${priceRes.status}`;
+      throw new Error(errorMsg);
+    }
+
     const apiPriceUsd = extractPriceUsd(priceJson);
 
     const idl = await fetchSolanaIdl();
@@ -824,6 +838,8 @@ export default function FlowTestClient() {
       );
 
       addLog(`Consignment created. ID: ${result.consignmentId}`);
+      // Update ref first for synchronous access in sequential steps
+      consignmentIdRef.current = result.consignmentId.toString();
       setTestState((prev) => ({
         ...prev,
         consignmentId: result.consignmentId.toString(),
@@ -1010,6 +1026,8 @@ export default function FlowTestClient() {
       await confirmTransactionPolling(connection, sig, "confirmed");
 
       addLog(`Consignment created: ${sig}`);
+      // Update ref first for synchronous access in sequential steps
+      consignmentIdRef.current = consignmentKeypair.publicKey.toString();
       setTestState((prev) => ({
         ...prev,
         consignmentId: consignmentKeypair.publicKey.toString(),
@@ -1041,7 +1059,9 @@ export default function FlowTestClient() {
     updateStep("buy", { status: "running" });
     addLog("Buying tokens at 10% discount...");
 
-    if (!testState.consignmentId) {
+    // Use ref as fallback for synchronous access (handles state race conditions)
+    const consignmentId = testState.consignmentId || consignmentIdRef.current;
+    if (!consignmentId) {
       throw new Error("No consignment ID - deposit step must complete first");
     }
 
@@ -1076,10 +1096,10 @@ export default function FlowTestClient() {
       });
 
       addLog(`Next offer ID will be: ${nextOfferId.toString()}`);
-      addLog(`Creating offer for 50 tokens from consignment ${testState.consignmentId}...`);
+      addLog(`Creating offer for 50 tokens from consignment ${consignmentId}...`);
 
       const txHash = await createOfferFromConsignment({
-        consignmentId: BigInt(testState.consignmentId),
+        consignmentId: BigInt(consignmentId),
         tokenAmountWei,
         discountBps: 1000, // 10%
         paymentCurrency: 0, // ETH
@@ -1249,7 +1269,7 @@ export default function FlowTestClient() {
       );
 
       // Get the consignment ID from the consignment account
-      const consignmentPubkey = new SolPubkey(testState.consignmentId);
+      const consignmentPubkey = new SolPubkey(consignmentId);
       interface ConsignmentAccountProgram {
         consignment: {
           fetch: (addr: SolPubkey) => Promise<{ id: anchor.BN }>;
@@ -1258,14 +1278,14 @@ export default function FlowTestClient() {
       const consignmentAccount = await (
         program.account as ConsignmentAccountProgram
       ).consignment.fetch(consignmentPubkey);
-      const consignmentId = new anchor.BN(consignmentAccount.id.toString());
+      const solanaConsignmentId = new anchor.BN(consignmentAccount.id.toString());
       addLog(
-        `Using consignment ID: ${consignmentId.toString()} from ${testState.consignmentId.slice(0, 8)}...`,
+        `Using consignment ID: ${solanaConsignmentId.toString()} from ${consignmentId.slice(0, 8)}...`,
       );
 
       const tx = await program.methods
         .createOfferFromConsignment(
-          consignmentId, // consignment_id
+          solanaConsignmentId, // consignment_id (numeric ID from on-chain account)
           tokenAmountWei, // token_amount
           SOLANA_DISCOUNT_BPS, // discount_bps
           SOLANA_PAYMENT_CURRENCY, // currency (0 = SOL, 1 = USDC)
@@ -1302,7 +1322,7 @@ export default function FlowTestClient() {
           offerId: nextOfferId.toString(),
           chain: "solana",
           offerAddress: offerKeypair.publicKey.toString(),
-          consignmentAddress: testState.consignmentId, // Consignment public key stored from deposit step
+          consignmentAddress: consignmentId, // Consignment public key stored from deposit step
         }),
       });
 

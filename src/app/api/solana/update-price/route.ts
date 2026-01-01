@@ -164,6 +164,17 @@ export async function POST(request: NextRequest) {
 
   const { tokenMint, forceUpdate = false } = data;
 
+  try {
+    return await handlePriceUpdate(tokenMint, forceUpdate);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[Update Price] Error:`, message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function handlePriceUpdate(tokenMint: string, forceUpdate: boolean): Promise<NextResponse> {
+
   const solanaConfig = getSolanaConfig();
 
   const network = getNetwork();
