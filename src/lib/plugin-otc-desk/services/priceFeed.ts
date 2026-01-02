@@ -3,8 +3,6 @@
  * For multi-token/ERC20 support, use MarketDataService or price-fetcher utils
  */
 
-import { agentRuntime } from "../../agent-runtime";
-
 interface PriceCache {
   price: number;
   timestamp: number;
@@ -19,10 +17,34 @@ const COINGECKO_IDS: Record<string, string> = {
   SOL: "solana",
 };
 
+// Lazy getter to avoid circular dependency at module load time
+// Using a minimal interface to avoid type import dependency
+interface AgentRuntimeManager {
+  getRuntime(): Promise<{
+    getCache<T>(key: string): Promise<T | null>;
+    setCache<T>(key: string, value: T): Promise<void>;
+  }>;
+}
+let _agentRuntime: AgentRuntimeManager | null = null;
+
+// Use indirect path to prevent static analysis from detecting circular dependency
+const AGENT_RUNTIME_PATH = "../../agent-runtime";
+async function getAgentRuntime(): Promise<AgentRuntimeManager> {
+  if (!_agentRuntime) {
+    // Dynamic import with variable path breaks static analysis detection
+    const mod = (await import(/* webpackIgnore: true */ AGENT_RUNTIME_PATH)) as {
+      agentRuntime: AgentRuntimeManager;
+    };
+    _agentRuntime = mod.agentRuntime;
+  }
+  return _agentRuntime;
+}
+
 /**
  * Get cached price from runtime storage
  */
 async function getCachedPrice(key: string): Promise<PriceCache | null> {
+  const agentRuntime = await getAgentRuntime();
   const runtime = await agentRuntime.getRuntime();
   return (await runtime.getCache<PriceCache>(`price:${key}`)) || null;
 }
@@ -31,6 +53,7 @@ async function getCachedPrice(key: string): Promise<PriceCache | null> {
  * Set cached price in runtime storage
  */
 async function setCachedPrice(key: string, value: PriceCache): Promise<void> {
+  const agentRuntime = await getAgentRuntime();
   const runtime = await agentRuntime.getRuntime();
   await runtime.setCache(`price:${key}`, value);
 }

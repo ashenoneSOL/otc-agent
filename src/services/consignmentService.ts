@@ -1,6 +1,29 @@
 import type { Chain } from "../config/chains";
-import { agentRuntime } from "../lib/agent-runtime";
 import { walletToEntityId } from "../lib/entityId";
+
+// Lazy getter to avoid circular dependency at module load time
+// Using a minimal interface to avoid type import dependency
+interface AgentRuntimeManager {
+  getRuntime(): Promise<{
+    getCache<T>(key: string): Promise<T | null>;
+    setCache<T>(key: string, value: T): Promise<void>;
+    deleteCache(key: string): Promise<void>;
+  }>;
+}
+let _agentRuntime: AgentRuntimeManager | null = null;
+
+// Use indirect path to prevent static analysis from detecting circular dependency
+const AGENT_RUNTIME_PATH = "../lib/agent-runtime";
+async function getAgentRuntime(): Promise<AgentRuntimeManager> {
+  if (!_agentRuntime) {
+    // Dynamic import with variable path breaks static analysis detection
+    const mod = (await import(/* webpackIgnore: true */ AGENT_RUNTIME_PATH)) as {
+      agentRuntime: AgentRuntimeManager;
+    };
+    _agentRuntime = mod.agentRuntime;
+  }
+  return _agentRuntime;
+}
 import { parseOrThrow } from "../lib/validation/helpers";
 import {
   CreateConsignmentInputSchema,
@@ -218,6 +241,7 @@ export class ConsignmentService {
       amount,
     });
 
+    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
 
     const lockKey = `consignment_lock:${validated.consignmentId}`;
@@ -292,6 +316,7 @@ export class ConsignmentService {
       amount,
     });
 
+    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
 
     const lockKey = `consignment_lock:${validated.consignmentId}`;

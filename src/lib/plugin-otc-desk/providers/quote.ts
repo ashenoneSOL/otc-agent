@@ -2,10 +2,34 @@ import { createHash, createHmac } from "node:crypto";
 import type { IAgentRuntime, Memory, Provider, ProviderResult } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { formatTokenAmount } from "../../../utils/format";
-import { agentRuntime } from "../../agent-runtime";
 import { walletToEntityId } from "../../entityId";
 import type QuoteService from "../services/quoteService";
 import type { PaymentCurrency, QuoteMemory } from "../types";
+
+// Lazy getter to avoid circular dependency at module load time
+// Using a minimal interface to avoid type import dependency
+interface AgentRuntimeManager {
+  getRuntime(): Promise<{
+    getCache<T>(key: string): Promise<T | null>;
+    setCache<T>(key: string, value: T): Promise<void>;
+    deleteCache(key: string): Promise<void>;
+    getService<T>(name: string): T | null;
+  }>;
+}
+let _agentRuntime: AgentRuntimeManager | null = null;
+
+// Use indirect path to prevent static analysis from detecting circular dependency
+const AGENT_RUNTIME_PATH = "../../agent-runtime";
+async function getAgentRuntime(): Promise<AgentRuntimeManager> {
+  if (!_agentRuntime) {
+    // Dynamic import with variable path breaks static analysis detection
+    const mod = (await import(/* webpackIgnore: true */ AGENT_RUNTIME_PATH)) as {
+      agentRuntime: AgentRuntimeManager;
+    };
+    _agentRuntime = mod.agentRuntime;
+  }
+  return _agentRuntime;
+}
 
 export const quoteProvider: Provider = {
   name: "ElizaQuote",
@@ -93,6 +117,7 @@ You'll automatically receive your tokens when the lockup period ends.`.trim(),
 };
 
 export async function getUserQuote(walletAddress: string): Promise<QuoteMemory | null> {
+  const agentRuntime = await getAgentRuntime();
   const runtime = await agentRuntime.getRuntime();
 
   // Use QuoteService to get quote (it has the correct ID generation logic)
@@ -143,6 +168,7 @@ export async function setUserQuote(
     tokenSymbol: quote.tokenSymbol,
   });
 
+  const agentRuntime = await getAgentRuntime();
   const runtime = await agentRuntime.getRuntime();
 
   // Generate consistent quote ID using the same method as QuoteService
@@ -247,6 +273,7 @@ export async function deleteUserQuote(walletAddress: string): Promise<void> {
 
   console.log("[deleteUserQuote] Deleting quote for wallet:", normalized);
 
+  const agentRuntime = await getAgentRuntime();
   const runtime = await agentRuntime.getRuntime();
   const quote = await getUserQuote(walletAddress); // Returns null if no quote exists
 

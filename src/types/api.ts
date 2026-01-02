@@ -3,11 +3,11 @@
  * Consolidates duplicate interfaces across API routes
  *
  * NOTE: Balance types (TokenBalance, SolanaTokenBalance) are now inferred from
- * Zod schemas in db-schemas.ts to maintain a single source of truth.
+ * Zod schemas in balance-schemas.ts to maintain a single source of truth.
  */
 
 import type { QuoteMemory } from "../lib/plugin-otc-desk/types";
-import type { SolanaTokenBalance, TokenBalance } from "./validation/db-schemas";
+import type { SolanaTokenBalance, TokenBalance } from "./validation/balance-schemas";
 
 // Re-export balance types for consumers
 export type { SolanaTokenBalance, TokenBalance };

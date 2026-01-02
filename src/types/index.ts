@@ -263,113 +263,26 @@ export interface QuoteAccepted {
 }
 
 //==============================================================================
-// DATABASE TYPES
+// DATABASE TYPES (re-exported from db-types.ts to avoid circular deps)
 //==============================================================================
 
-/**
- * Token in database
- */
-export interface Token {
-  id: string;
-  symbol: string;
-  name: string;
-  contractAddress: string;
-  chain: Chain;
-  decimals: number;
-  logoUrl: string;
-  description: string;
-  website?: string;
-  twitter?: string;
-  isActive: boolean;
-  createdAt: number;
-  updatedAt: number;
-  // Pool address used for price feeds - stored at registration time to avoid re-searching
-  poolAddress?: string;
-  // For Solana PumpSwap pools, also store vault addresses
-  solVault?: string;
-  tokenVault?: string;
-}
+// Import for local use in this file (extends, etc.)
+import type {
+  ConsignmentDeal as ConsignmentDealType,
+  OTCConsignment as OTCConsignmentType,
+  Token as TokenType,
+  TokenMarketData as TokenMarketDataType,
+  UserSessionMemory as UserSessionMemoryType,
+} from "./db-types";
 
-/**
- * Token market data
- */
-export interface TokenMarketData {
-  tokenId: string;
-  priceUsd: number;
-  marketCap: number;
-  volume24h: number;
-  priceChange24h: number;
-  liquidity: number;
-  lastUpdated: number;
-}
-
-/**
- * OTC Consignment in database
- */
-export interface OTCConsignment {
-  id: string;
-  tokenId: string;
-  consignerAddress: string;
-  consignerEntityId: string;
-  totalAmount: string;
-  remainingAmount: string;
-  isNegotiable: boolean;
-  fixedDiscountBps?: number;
-  fixedLockupDays?: number;
-  minDiscountBps: number;
-  maxDiscountBps: number;
-  minLockupDays: number;
-  maxLockupDays: number;
-  minDealAmount: string;
-  maxDealAmount: string;
-  isFractionalized: boolean;
-  isPrivate: boolean;
-  allowedBuyers?: string[];
-  maxPriceVolatilityBps: number;
-  maxTimeToExecuteSeconds: number;
-  status: "active" | "paused" | "depleted" | "withdrawn";
-  contractConsignmentId?: string;
-  chain: Chain;
-  createdAt: number;
-  updatedAt: number;
-  lastDealAt?: number;
-}
-
-/**
- * Consignment deal record
- */
-export interface ConsignmentDeal {
-  id: string;
-  consignmentId: string;
-  quoteId: string;
-  tokenId: string;
-  buyerAddress: string;
-  amount: string;
-  discountBps: number;
-  lockupDays: number;
-  executedAt: number;
-  offerId?: string;
-  status: "pending" | "executed" | "failed";
-}
-
-//==============================================================================
-// USER SESSION TYPES
-//==============================================================================
-
-/**
- * User session memory
- */
-export interface UserSessionMemory {
-  id: string;
-  entityId: string;
-  walletAddress: string;
-  chainFamily: "evm" | "solana";
-  preferredChain?: string;
-  lastActiveAt: number;
-  sessionData?: Record<string, string | number | boolean>;
-  createdAt: number;
-  updatedAt: number;
-}
+// Re-export for external consumers
+export type {
+  ConsignmentDeal,
+  OTCConsignment,
+  Token,
+  TokenMarketData,
+  UserSessionMemory,
+} from "./db-types";
 
 //==============================================================================
 // UTILITY TYPES
@@ -378,7 +291,7 @@ export interface UserSessionMemory {
 /**
  * Token with balance information (used for wallet token display)
  */
-export interface TokenWithBalance extends Token {
+export interface TokenWithBalance extends TokenType {
   balance: string;
   balanceFormatted?: string; // Optional - human-readable balance
   balanceUsd: number;
@@ -394,8 +307,8 @@ export type WalletToken = TokenWithBalance;
  * Token combined with market data
  */
 export interface TokenWithMarketData {
-  token: Token;
-  marketData: TokenMarketData | null;
+  token: TokenType;
+  marketData: TokenMarketDataType | null;
 }
 
 /**
