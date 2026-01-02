@@ -68,6 +68,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     wallet: walletAdapterWallet,
     signTransaction: walletAdapterSignTransaction,
     signAllTransactions: walletAdapterSignAllTransactions,
+    signMessage: walletAdapterSignMessage,
     connected: walletAdapterConnected,
   } = useSolanaWalletAdapter();
 
@@ -424,6 +425,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
             signTransaction: walletAdapterSignTransaction as SolanaWalletAdapter["signTransaction"],
             signAllTransactions:
               walletAdapterSignAllTransactions as SolanaWalletAdapter["signAllTransactions"],
+            signMessage: walletAdapterSignMessage,
           });
         }
         return;
@@ -437,11 +439,16 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
           if (process.env.NODE_ENV === "development") {
             console.log("[MultiWallet] Using Privy Solana wallet:", typedWallet.address);
           }
+          // Check if provider supports signMessage
+          const providerWithSignMessage = provider as typeof provider & {
+            signMessage?: (message: Uint8Array) => Promise<Uint8Array>;
+          };
           setSolanaWalletAdapter({
             publicKey: { toBase58: () => typedWallet.address },
             signTransaction: <T extends SolanaTransaction>(tx: T) => provider.signTransaction(tx),
             signAllTransactions: <T extends SolanaTransaction>(txs: T[]) =>
               provider.signAllTransactions(txs),
+            signMessage: providerWithSignMessage.signMessage,
           });
           return;
         }
@@ -468,6 +475,13 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
                   phantom.signTransaction(tx),
                 signAllTransactions: <T extends SolanaTransaction>(txs: T[]) =>
                   phantom.signAllTransactions(txs),
+                // Wrap Phantom's signMessage to extract signature from response
+                signMessage: phantom.signMessage
+                  ? async (message: Uint8Array) => {
+                      const result = await phantom.signMessage(message);
+                      return result.signature;
+                    }
+                  : undefined,
               });
             }
             return;

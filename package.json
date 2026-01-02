@@ -25,6 +25,7 @@
     "@heroicons/react": "^2.2.0",
     "@neynar/nodejs-sdk": "^3.112.0",
     "@privy-io/react-auth": "^3.9.1",
+    "@solana-program/memo": "^0.10.0",
     "@solana/spl-token": "^0.4.14",
     "@solana/wallet-adapter-react": "^0.15.39",
     "@solana/web3.js": "^1.98.4",
@@ -53,6 +54,7 @@
     "sharp": "^0.34.5",
     "sonner": "^2.0.7",
     "tailwindcss": "^4.1.18",
+    "tweetnacl": "^1.0.3",
     "uuid": "^13.0.0",
     "viem": "^2.43.2",
     "wagmi": "^3.1.0",
@@ -78,7 +80,7 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "postinstall": "cd solana/otc-program && bun install",
+    "postinstall": "[ -d solana/otc-program ] && cd solana/otc-program && bun install || true",
     "dev": "./scripts/dev.sh",
     "start": "next start -p 4444",
     "build": "./scripts/build.sh",

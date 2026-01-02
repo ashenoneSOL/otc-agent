@@ -4,6 +4,7 @@ import { AlertCircle, ArrowLeft, Check, ExternalLink, Loader2 } from "lucide-rea
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCreateConsignment } from "@/hooks/mutations";
+import { useWalletAuth } from "@/hooks/useWalletAuth";
 import { formatTokenAmountFull } from "@/utils/format";
 import { Button } from "../button";
 
@@ -72,6 +73,7 @@ export function SubmissionStepComponent({
 }: SubmissionStepProps) {
   const router = useRouter();
   const createConsignmentMutation = useCreateConsignment();
+  const { getAuthHeaders, canSign } = useWalletAuth();
 
   // Use refs to avoid stale closure issues in async callbacks
   const contractConsignmentIdRef = useRef<string | null>(null);
@@ -180,6 +182,10 @@ export function SubmissionStepComponent({
     // FAIL-FAST: Token name should be provided, fallback to symbol if missing (acceptable)
     const tokenName = selectedTokenName || selectedTokenSymbol;
 
+    // Get wallet auth headers for API authentication (required in non-local environments)
+    // Skip if wallet can't sign (local testing mode will work without auth)
+    const walletAuth = canSign ? await getAuthHeaders() : undefined;
+
     const consignmentData = {
       ...formData,
       amount: toRawAmount(formData.amount),
@@ -194,6 +200,8 @@ export function SubmissionStepComponent({
       tokenDecimals: selectedTokenDecimals,
       tokenAddress: selectedTokenAddress,
       tokenLogoUrl: selectedTokenLogoUrl,
+      // Wallet auth for API authentication
+      walletAuth,
     };
 
     console.log("[SubmissionStep] Saving to database:", {
@@ -202,6 +210,7 @@ export function SubmissionStepComponent({
       tokenDecimals: selectedTokenDecimals,
       chain,
       contractConsignmentId: contractConsignmentIdRef.current,
+      hasWalletAuth: !!walletAuth,
     });
 
     // Use React Query mutation - handles cache invalidation automatically
@@ -217,6 +226,8 @@ export function SubmissionStepComponent({
     selectedTokenAddress,
     selectedTokenLogoUrl,
     createConsignmentMutation,
+    canSign,
+    getAuthHeaders,
   ]);
 
   const processStep = useCallback(

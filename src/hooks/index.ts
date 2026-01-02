@@ -91,6 +91,8 @@ export {
   useTokenLookup,
 } from "./useTokenLookup";
 export { useTransactionErrorHandler } from "./useTransactionErrorHandler";
+// Wallet auth (signing for API authentication)
+export { useWalletAuth } from "./useWalletAuth";
 // Wallet tokens
 export {
   useInvalidateWalletTokens,

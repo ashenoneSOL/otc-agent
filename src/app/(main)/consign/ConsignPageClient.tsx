@@ -28,6 +28,7 @@ import {
   getTokenProgramId,
   SOLANA_DESK,
   SOLANA_RPC,
+  waitForSolanaTx,
 } from "@/utils/solana-otc";
 import {
   extractAddressFromTokenId,
@@ -476,8 +477,7 @@ export default function ConsignPageClient() {
           consignmentKp: anchor.web3.Keypair,
         ): Promise<string> => {
           // Get fresh blockhash right before sending
-          const { blockhash, lastValidBlockHeight } =
-            await connection.getLatestBlockhash("confirmed");
+          const { blockhash } = await connection.getLatestBlockhash("confirmed");
           transaction.recentBlockhash = blockhash;
           transaction.feePayer = consignerPk;
 
@@ -493,19 +493,8 @@ export default function ConsignPageClient() {
             preflightCommitment: "confirmed",
           });
 
-          // Confirm with blockhash context for proper expiry handling
-          const confirmation = await connection.confirmTransaction(
-            {
-              signature,
-              blockhash,
-              lastValidBlockHeight,
-            },
-            "confirmed",
-          );
-
-          if (confirmation.value.err) {
-            throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-          }
+          // Use HTTP polling for confirmation (avoids WebSocket CSP issues)
+          await waitForSolanaTx(connection, signature, "confirmed");
 
           return signature;
         };

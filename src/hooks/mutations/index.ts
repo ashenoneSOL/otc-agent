@@ -11,6 +11,9 @@ export {
   useWithdrawConsignment,
 } from "./useConsignmentMutations";
 
+// Types
+export type { WalletAuthHeaders } from "./useConsignmentMutations";
+
 export {
   useApproveOffer,
   useClaimTokens,

@@ -45,7 +45,8 @@ export const TokenBalanceSchema = z.object({
   name: z.string(),
   decimals: z.number().int().min(0).max(255),
   balance: BigIntStringSchema,
-  logoUrl: UrlSchema.optional(),
+  // logoUrl can be null from external APIs (DeFiLlama, etc.)
+  logoUrl: UrlSchema.nullable().optional(),
   priceUsd: NonNegativeNumberSchema.optional(),
   balanceUsd: NonNegativeNumberSchema.optional(),
 });

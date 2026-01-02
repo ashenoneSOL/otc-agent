@@ -174,7 +174,6 @@ export async function POST(request: NextRequest) {
 }
 
 async function handlePriceUpdate(tokenMint: string, forceUpdate: boolean): Promise<NextResponse> {
-
   const solanaConfig = getSolanaConfig();
 
   const network = getNetwork();

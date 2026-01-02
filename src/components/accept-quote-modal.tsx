@@ -11,7 +11,7 @@ import {
 } from "@solana/web3.js";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { Abi, Address } from "viem";
 import { createPublicClient, erc20Abi, formatUnits, http } from "viem";
 import { base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "viem/chains";
@@ -440,6 +440,18 @@ export function AcceptQuoteModal({
     consignmentRemainingTokens,
   } = state;
 
+  // Track whether we're still loading consignment data
+  // If we have a consignmentId but no remaining tokens yet, we're loading
+  const isConsignmentLoading =
+    Boolean(initialQuote.consignmentId) && contractConsignmentId === null && !error;
+
+  // Use ref to track latest contractConsignmentId to avoid stale closure issues
+  // executeTransaction may capture stale state if called before re-render completes
+  const contractConsignmentIdRef = useRef(contractConsignmentId);
+  useEffect(() => {
+    contractConsignmentIdRef.current = contractConsignmentId;
+  }, [contractConsignmentId]);
+
   const { handleTransactionError } = useTransactionErrorHandler();
   const { login, ready: privyReady } = usePrivy();
 
@@ -596,6 +608,21 @@ export function AcceptQuoteModal({
       });
     }
   }, [isOpen, initialTokenAmount, isSolanaToken, quoteChain]);
+
+  // Clamp token amount when consignment data loads and reveals a lower max
+  useEffect(() => {
+    if (typeof consignmentRemainingTokens === "number" && consignmentRemainingTokens > 0) {
+      if (tokenAmount > consignmentRemainingTokens) {
+        console.log(
+          `[AcceptQuote] Clamping tokenAmount from ${tokenAmount} to ${consignmentRemainingTokens} (consignment max)`,
+        );
+        dispatch({
+          type: "SET_TOKEN_AMOUNT",
+          payload: Math.min(tokenAmount, consignmentRemainingTokens),
+        });
+      }
+    }
+  }, [consignmentRemainingTokens, tokenAmount]);
 
   // Look up token metadata - FAIL-FAST if quote missing required fields
   useEffect(() => {
@@ -1042,11 +1069,26 @@ export function AcceptQuoteModal({
   }, [maxTokenPerOrder, isSolanaToken, solanaTokenDecimals]);
 
   const effectiveMaxTokens = useMemo(() => {
+    // CRITICAL: If we have a consignmentId, we MUST use consignment's remaining amount
+    // The quote's tokenAmount might be total supply, not this specific deal's amount
     if (typeof consignmentRemainingTokens === "number" && consignmentRemainingTokens > 0) {
       return Math.min(contractMaxTokens, consignmentRemainingTokens);
     }
+    // If we have a consignmentId but data hasn't loaded yet, use a safe minimum
+    // This prevents showing incorrect max while loading
+    if (initialQuote.consignmentId && contractConsignmentId === null) {
+      // Still loading consignment data - use 1 as placeholder (will update when loaded)
+      return 1;
+    }
+    // No consignment (shouldn't happen for valid quotes) - fall back to quote amount
     return Math.min(contractMaxTokens, maxAvailableTokens);
-  }, [contractMaxTokens, maxAvailableTokens, consignmentRemainingTokens]);
+  }, [
+    contractMaxTokens,
+    maxAvailableTokens,
+    consignmentRemainingTokens,
+    initialQuote.consignmentId,
+    contractConsignmentId,
+  ]);
 
   const clampAmount = useCallback(
     (value: number) => {
@@ -1207,6 +1249,36 @@ export function AcceptQuoteModal({
     await executeTransaction().catch((err) => {
       console.error("[AcceptQuote] executeTransaction error:", err);
       const error = err instanceof Error ? err : new Error(String(err));
+
+      // Check for Solana BadState error (consignment inactive or registry mismatch)
+      const errorStr = error.message || String(err);
+      if (
+        errorStr.includes("BadState") ||
+        errorStr.includes("0x1779") ||
+        errorStr.includes("6009")
+      ) {
+        // Report to backend to hide this listing from others
+        if (contractConsignmentIdRef.current && initialQuote.consignmentId) {
+          fetch("/api/consignments/report-unavailable", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contractConsignmentId: contractConsignmentIdRef.current,
+              consignmentDbId: initialQuote.consignmentId,
+              chain: "solana",
+            }),
+          }).catch((reportErr) => {
+            console.warn("[AcceptQuote] Failed to report unavailable consignment:", reportErr);
+          });
+        }
+
+        const badStateMessage =
+          "This listing is no longer available. The seller may have withdrawn their tokens, " +
+          "or the listing has been deactivated. Please request a new quote from the chat.";
+        dispatch({ type: "TRANSACTION_ERROR", payload: badStateMessage });
+        throw new Error(badStateMessage);
+      }
+
       // Use TransactionError type which already has cause, details, and shortMessage
       const txError: TransactionError = {
         ...error,
@@ -1435,8 +1507,10 @@ export function AcceptQuoteModal({
       }
 
       // Validate we have a consignment address for Solana
+      // Use ref to get latest value, avoiding stale closure issues
+      const currentContractConsignmentId = contractConsignmentIdRef.current;
       console.log(
-        `[AcceptQuote] At transaction time, contractConsignmentId: ${contractConsignmentId}`,
+        `[AcceptQuote] At transaction time, contractConsignmentId: ${currentContractConsignmentId}`,
       );
       if (!initialQuote.tokenChain) throw new Error("Quote missing tokenChain");
       if (!initialQuote.tokenSymbol) throw new Error("Quote missing tokenSymbol");
@@ -1446,15 +1520,15 @@ export function AcceptQuoteModal({
         tokenSymbol: initialQuote.tokenSymbol, // Required field
         tokenChain: initialQuote.tokenChain, // Required field
       });
-      if (!contractConsignmentId) {
+      if (!currentContractConsignmentId) {
         throw new Error(
           "No consignment available for this token. Please ensure the seller has deposited tokens to the OTC desk.",
         );
       }
 
       // Fetch consignment's numeric ID from on-chain account
-      const consignmentPubkey = new SolPubkey(contractConsignmentId);
-      console.log(`[AcceptQuote] Fetching consignment account: ${contractConsignmentId}`);
+      const consignmentPubkey = new SolPubkey(currentContractConsignmentId);
+      console.log(`[AcceptQuote] Fetching consignment account: ${currentContractConsignmentId}`);
 
       interface ConsignmentAccountProgram {
         consignment: {
@@ -1528,7 +1602,7 @@ export function AcceptQuoteModal({
           offerId: nextOfferId.toString(),
           chain: "solana",
           offerAddress: offerKeypair.publicKey.toString(),
-          consignmentAddress: contractConsignmentId, // Required for Solana approval
+          consignmentAddress: currentContractConsignmentId, // Required for Solana approval
         }),
       });
 
@@ -1586,12 +1660,17 @@ export function AcceptQuoteModal({
       // CRITICAL: Capture tokenAmount NOW before any async operations
       const finalTokenAmount = tokenAmount;
 
+      // Construct tokenId in the format expected by the database
+      const solanaTokenId = `token-solana-${tokenMintPk.toBase58()}`;
+
       console.log("[Solana] Saving deal completion:", {
         quoteId: initialQuote.quoteId,
         wallet: solanaWalletAddress,
         offerId: nextOfferId.toString(),
         tokenAmount: finalTokenAmount,
         currency,
+        tokenId: solanaTokenId,
+        consignmentId: initialQuote.consignmentId,
       });
 
       const response = await fetch("/api/deal-completion", {
@@ -1600,6 +1679,8 @@ export function AcceptQuoteModal({
         body: JSON.stringify({
           action: "complete",
           quoteId: initialQuote.quoteId,
+          tokenId: solanaTokenId,
+          consignmentId: initialQuote.consignmentId,
           tokenAmount: String(finalTokenAmount),
           paymentCurrency: currency,
           offerId: nextOfferId.toString(),
@@ -1607,6 +1688,11 @@ export function AcceptQuoteModal({
           chain: "solana",
           offerAddress: offerKeypair.publicKey.toString(),
           beneficiary: solanaWalletAddress,
+          // Additional fields required by deal-completion API
+          priceAtQuote: initialQuote.pricePerToken ?? 0,
+          maxPriceDeviationBps: 1000, // 10% default tolerance
+          discountBps: discountBps,
+          lockupDays: lockupDays,
         }),
       });
 
@@ -1687,8 +1773,9 @@ export function AcceptQuoteModal({
     // Step 1: Create offer from consignment (User transaction - ONLY transaction user signs)
     console.log(`[AcceptQuote] Creating offer ${newOfferId}...`);
 
-    // Validate we have a consignment ID
-    if (!contractConsignmentId) {
+    // Validate we have a consignment ID - use ref to get latest value (avoid stale closure)
+    const evmContractConsignmentId = contractConsignmentIdRef.current;
+    if (!evmContractConsignmentId) {
       throw new Error(
         "No consignment available. This quote may not be linked to an active listing. Please request a new quote from the chat.",
       );
@@ -1744,12 +1831,12 @@ export function AcceptQuoteModal({
     const agentCommissionBps =
       typeof initialQuote.agentCommissionBps === "number" ? initialQuote.agentCommissionBps : 0;
 
-    console.log(`[AcceptQuote] Using consignment ID: ${contractConsignmentId}`);
+    console.log(`[AcceptQuote] Using consignment ID: ${evmContractConsignmentId}`);
     console.log(`[AcceptQuote] Token decimals: ${tokenDecimals}, amount wei: ${tokenAmountWei}`);
     console.log(`[AcceptQuote] Agent commission: ${agentCommissionBps} bps`);
 
     const createTxHash = (await createOfferFromConsignment({
-      consignmentId: BigInt(contractConsignmentId),
+      consignmentId: BigInt(evmContractConsignmentId),
       tokenAmountWei,
       discountBps,
       paymentCurrency,
@@ -2218,9 +2305,9 @@ export function AcceptQuoteModal({
                 <span className="whitespace-nowrap">Balance: {balanceDisplay}</span>
                 <button
                   type="button"
-                  className={`font-medium ${isChainMismatch ? "text-zinc-600 cursor-not-allowed" : "text-brand-400 hover:text-brand-300"}`}
+                  className={`font-medium ${isChainMismatch || isConsignmentLoading ? "text-zinc-600 cursor-not-allowed" : "text-brand-400 hover:text-brand-300"}`}
                   onClick={handleMaxClick}
-                  disabled={isChainMismatch}
+                  disabled={isChainMismatch || isConsignmentLoading}
                 >
                   MAX
                 </button>
@@ -2239,12 +2326,13 @@ export function AcceptQuoteModal({
                 <input
                   data-testid="token-amount-input"
                   type="number"
-                  value={tokenAmount}
+                  value={isConsignmentLoading ? "" : tokenAmount}
+                  placeholder={isConsignmentLoading ? "Loading..." : undefined}
                   onChange={(e) => setTokenAmount(Number(e.target.value))}
                   min={1}
                   max={effectiveMaxTokens}
-                  disabled={isChainMismatch}
-                  className={`w-full bg-transparent border-none outline-none text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight ${isChainMismatch ? "text-zinc-500 cursor-not-allowed" : "text-white"}`}
+                  disabled={isChainMismatch || isConsignmentLoading}
+                  className={`w-full bg-transparent border-none outline-none text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight ${isChainMismatch || isConsignmentLoading ? "text-zinc-500 cursor-not-allowed" : "text-white"}`}
                 />
               )}
               <div className="flex items-center gap-3 text-right flex-shrink-0">
@@ -2286,7 +2374,11 @@ export function AcceptQuoteModal({
             {!isFixedPriceDeal && (
               <>
                 <div className="mt-1 text-[10px] sm:text-xs text-zinc-500">
-                  {`1 - ${effectiveMaxTokens.toLocaleString()} ${initialQuote.tokenSymbol} available`}
+                  {isConsignmentLoading ? (
+                    <span className="animate-pulse">Loading available amount...</span>
+                  ) : (
+                    `1 - ${effectiveMaxTokens.toLocaleString()} ${initialQuote.tokenSymbol} available`
+                  )}
                 </div>
                 <div className="mt-2">
                   <input
@@ -2296,8 +2388,8 @@ export function AcceptQuoteModal({
                     max={effectiveMaxTokens}
                     value={tokenAmount}
                     onChange={(e) => setTokenAmount(Number(e.target.value))}
-                    disabled={isChainMismatch}
-                    className={`w-full ${isChainMismatch ? "accent-zinc-600 cursor-not-allowed opacity-50" : "accent-brand-500"}`}
+                    disabled={isChainMismatch || isConsignmentLoading}
+                    className={`w-full ${isChainMismatch || isConsignmentLoading ? "accent-zinc-600 cursor-not-allowed opacity-50" : "accent-brand-500"}`}
                   />
                 </div>
               </>
@@ -2442,18 +2534,25 @@ export function AcceptQuoteModal({
                 insufficientFunds ||
                 isProcessing ||
                 isChainMismatch ||
-                isWaitingForNativePrice
+                isWaitingForNativePrice ||
+                isConsignmentLoading
               }
               title={
                 isChainMismatch
                   ? `Switch to ${quoteChain === "solana" ? "Solana" : "EVM"} first`
                   : isWaitingForNativePrice
                     ? "Loading prices..."
-                    : undefined
+                    : isConsignmentLoading
+                      ? "Loading deal data..."
+                      : undefined
               }
             >
               <div className="px-4 py-2">
-                {isWaitingForNativePrice ? "Loading Prices..." : "Buy Now"}
+                {isConsignmentLoading
+                  ? "Loading..."
+                  : isWaitingForNativePrice
+                    ? "Loading Prices..."
+                    : "Buy Now"}
               </div>
             </Button>
           </div>

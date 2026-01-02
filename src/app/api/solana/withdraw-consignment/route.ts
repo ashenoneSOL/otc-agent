@@ -158,7 +158,8 @@ export async function POST(request: NextRequest) {
     );
     return NextResponse.json(
       {
-        error: `Desk keypair mismatch. Expected desk: ${desk.toBase58()}, Got: ${deskKeypair.publicKey.toBase58()}. ` +
+        error:
+          `Desk keypair mismatch. Expected desk: ${desk.toBase58()}, Got: ${deskKeypair.publicKey.toBase58()}. ` +
           "The Solana program requires the desk account's keypair for withdrawals. " +
           "Configure SOLANA_DESK_PRIVATE_KEY with the correct keypair.",
       },

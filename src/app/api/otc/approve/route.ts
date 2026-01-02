@@ -757,11 +757,11 @@ async function handleApproval(request: NextRequest) {
   // The offer.tokenId is a bytes32 (keccak256 of token address)
   if (offer.tokenId) {
     console.log("[Approve API] Looking up token by on-chain tokenId:", offer.tokenId);
-    
+
     // Debug: List all tokens in DB
     const allTokens = await TokenDB.getAllTokens();
     console.log("[Approve API] Total tokens in DB:", allTokens.length);
-    
+
     const token = await TokenDB.getTokenByOnChainId(offer.tokenId);
     if (token) {
       tokenAddress = token.contractAddress;
@@ -780,7 +780,7 @@ async function handleApproval(request: NextRequest) {
             const addr = getAddress(t.contractAddress);
             const computedId = keccak256(encodePacked(["address"], [addr])).toLowerCase();
             console.log(`  - ${t.symbol} (${t.chain}): ${t.contractAddress} -> ${computedId}`);
-          } catch (e) {
+          } catch {
             console.log(`  - ${t.symbol} (${t.chain}): ${t.contractAddress} (invalid address)`);
           }
         }
@@ -818,14 +818,17 @@ async function handleApproval(request: NextRequest) {
     try {
       // Read tokens mapping from contract: tokens[tokenId] returns RegisteredToken struct
       // struct RegisteredToken { address tokenAddress; uint8 decimals; bool isActive; address priceOracle; }
-      const tokenData = await safeReadContract<readonly [string, number, boolean, string]>(publicClient, {
-        address: OTC_ADDRESS,
-        abi,
-        functionName: "tokens",
-        args: [offer.tokenId],
-      });
+      const tokenData = await safeReadContract<readonly [string, number, boolean, string]>(
+        publicClient,
+        {
+          address: OTC_ADDRESS,
+          abi,
+          functionName: "tokens",
+          args: [offer.tokenId],
+        },
+      );
 
-      if (tokenData && tokenData[0] && tokenData[0] !== "0x0000000000000000000000000000000000000000") {
+      if (tokenData?.[0] && tokenData[0] !== "0x0000000000000000000000000000000000000000") {
         tokenAddress = tokenData[0];
         // Use the chain from the request (chainType) or default to base
         tokenChain = (chainType as "ethereum" | "base" | "bsc") || "base";
@@ -1128,7 +1131,9 @@ async function handleApproval(request: NextRequest) {
   // If we sent a successful approval tx but state still shows not approved,
   // trust the transaction receipt and proceed (RPC lag on mainnet)
   if (!approvedOffer.approved && txHash) {
-    console.log("[Approve API] WARNING: State shows not approved but tx succeeded - trusting receipt");
+    console.log(
+      "[Approve API] WARNING: State shows not approved but tx succeeded - trusting receipt",
+    );
     // Force approved state since tx succeeded
     approvedOffer = { ...approvedOffer, approved: true };
   }

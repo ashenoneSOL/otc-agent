@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
+import { PageFooter } from "@/components/page-footer";
 
 // Dynamically import the deals component to avoid SSR issues with wagmi hooks
 const MyDealsContent = dynamic(() => import("./MyDealsContent").then((mod) => mod.MyDealsContent), {
@@ -18,17 +19,20 @@ const MyDealsContent = dynamic(() => import("./MyDealsContent").then((mod) => mo
 
 export default function Page() {
   return (
-    <Suspense
-      fallback={
-        <main className="flex-1 min-h-[60dvh] flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <h1 className="text-2xl font-semibold">My Deals</h1>
-            <p className="text-zinc-600 dark:text-zinc-400">Loading...</p>
-          </div>
-        </main>
-      }
-    >
-      <MyDealsContent />
-    </Suspense>
+    <div className="flex flex-col h-full min-h-0">
+      <Suspense
+        fallback={
+          <main className="flex-1 min-h-[60dvh] flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <h1 className="text-2xl font-semibold">My Deals</h1>
+              <p className="text-zinc-600 dark:text-zinc-400">Loading...</p>
+            </div>
+          </main>
+        }
+      >
+        <MyDealsContent />
+      </Suspense>
+      <PageFooter />
+    </div>
   );
 }

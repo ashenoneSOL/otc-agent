@@ -70,6 +70,10 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
 
   // Only truly blocking reasons disable the button
   const withdrawDisabledReason = useMemo(() => {
+    // Check if already withdrawn or no remaining amount
+    if (consignment.status === "withdrawn" || isWithdrawn) return "Already withdrawn";
+    if (consignment.remainingAmount === "0") return "Nothing to withdraw";
+
     if (isSolana) {
       if (!solanaPublicKey) return "Connect Solana wallet";
       if (!solanaWallet) return "Solana wallet not connected";
@@ -80,7 +84,16 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
     if (!address) return "Connect wallet";
     if (!consignment.contractConsignmentId) return "Not deployed on-chain";
     return null;
-  }, [isSolana, solanaPublicKey, solanaWallet, address, consignment.contractConsignmentId]);
+  }, [
+    isSolana,
+    solanaPublicKey,
+    solanaWallet,
+    address,
+    consignment.contractConsignmentId,
+    consignment.status,
+    consignment.remainingAmount,
+    isWithdrawn,
+  ]);
 
   // Calculate deal count based on sold amount (memoized)
   const calculatedDealCount = useMemo(() => {
@@ -172,165 +185,206 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
 
       setIsWithdrawing(true);
 
-      // Use HTTP-only connection (no WebSocket) since we're using a proxy
-      const connection = createSolanaConnection();
+      try {
+        // Use HTTP-only connection (no WebSocket) since we're using a proxy
+        const connection = createSolanaConnection();
 
-      // Fetch IDL and create program
-      const idl = await fetchSolanaIdl();
-      const desk = new SolPubkey(SOLANA_DESK);
-      const consignmentPubkey = new SolPubkey(consignment.contractConsignmentId);
-      const consignerPk = new SolPubkey(solanaPublicKey);
+        // Fetch IDL and create program
+        const idl = await fetchSolanaIdl();
+        const desk = new SolPubkey(SOLANA_DESK);
+        const consignmentPubkey = new SolPubkey(consignment.contractConsignmentId);
+        const consignerPk = new SolPubkey(solanaPublicKey);
 
-      // Adapt wallet to Anchor's Wallet interface
-      type SignableTransaction = Transaction;
-      const signTransaction = solanaWallet.signTransaction as (
-        tx: SignableTransaction,
-      ) => Promise<SignableTransaction>;
+        // Adapt wallet to Anchor's Wallet interface
+        type SignableTransaction = Transaction;
+        const signTransaction = solanaWallet.signTransaction as (
+          tx: SignableTransaction,
+        ) => Promise<SignableTransaction>;
 
-      const anchorWallet = {
-        publicKey: consignerPk,
-        signTransaction: signTransaction as Wallet["signTransaction"],
-        signAllTransactions: solanaWallet.signAllTransactions as Wallet["signAllTransactions"],
-      } as Wallet;
+        const anchorWallet = {
+          publicKey: consignerPk,
+          signTransaction: signTransaction as Wallet["signTransaction"],
+          signAllTransactions: solanaWallet.signAllTransactions as Wallet["signAllTransactions"],
+        } as Wallet;
 
-      const provider = new anchor.AnchorProvider(connection, anchorWallet, {
-        commitment: "confirmed",
-      });
+        const provider = new anchor.AnchorProvider(connection, anchorWallet, {
+          commitment: "confirmed",
+        });
 
-      const program = new anchor.Program(idl, provider);
+        const program = new anchor.Program(idl, provider);
 
-      interface ConsignmentAccountProgram {
-        consignment: {
-          fetch: (pubkey: SolPubkey) => Promise<{
-            consigner: SolPubkey;
-            desk: SolPubkey;
-            isActive: boolean;
-            remainingAmount: { toString(): string };
-            tokenMint: SolPubkey;
-            id: { toString(): string };
-          }>;
-        };
-      }
+        interface ConsignmentAccountProgram {
+          consignment: {
+            fetch: (pubkey: SolPubkey) => Promise<{
+              consigner: SolPubkey;
+              desk: SolPubkey;
+              isActive: boolean;
+              remainingAmount: { toString(): string };
+              tokenMint: SolPubkey;
+              id: { toString(): string };
+            }>;
+          };
+        }
 
-      const programAccounts = program.account as ConsignmentAccountProgram;
-      const consignmentData = await programAccounts.consignment.fetch(consignmentPubkey);
+        const programAccounts = program.account as ConsignmentAccountProgram;
+        const consignmentData = await programAccounts.consignment.fetch(consignmentPubkey);
 
-      if (!consignmentData) {
-        throw new Error("Consignment not found on-chain");
-      }
+        if (!consignmentData) {
+          throw new Error("Consignment not found on-chain");
+        }
 
-      // Verify consignment belongs to expected desk
-      if (consignmentData.desk.toString() !== desk.toString()) {
-        throw new Error("Consignment does not belong to the expected desk");
-      }
+        // Verify consignment belongs to expected desk
+        if (consignmentData.desk.toString() !== desk.toString()) {
+          throw new Error("Consignment does not belong to the expected desk");
+        }
 
-      // Verify consigner matches
-      if (consignmentData.consigner.toString() !== solanaPublicKey) {
-        throw new Error("You are not the consigner of this consignment");
-      }
+        // Verify consigner matches
+        if (consignmentData.consigner.toString() !== solanaPublicKey) {
+          throw new Error("You are not the consigner of this consignment");
+        }
 
-      // Verify consignment is active and has remaining amount
-      if (!consignmentData.isActive) {
-        throw new Error("Consignment is not active");
-      }
+        // Verify consignment is active and has remaining amount
+        if (!consignmentData.isActive) {
+          throw new Error(
+            "This listing is no longer active. It may have been fully used in deals or already withdrawn.",
+          );
+        }
 
-      // consignmentData.remainingAmount is a BN, convert to string for comparison
-      const remainingAmountStr = consignmentData.remainingAmount.toString();
-      if (remainingAmountStr === "0") {
-        throw new Error("Nothing to withdraw");
-      }
+        // consignmentData.remainingAmount is a BN, convert to string for comparison
+        const remainingAmountStr = consignmentData.remainingAmount.toString();
+        if (remainingAmountStr === "0") {
+          throw new Error("Nothing to withdraw");
+        }
 
-      const tokenMintPk = new SolPubkey(consignmentData.tokenMint);
+        const tokenMintPk = new SolPubkey(consignmentData.tokenMint);
 
-      // Detect token program (Token or Token-2022)
-      const tokenProgramId = await getTokenProgramId(connection, tokenMintPk);
-      console.log(`[ConsignmentRow] Using token program: ${tokenProgramId.toString()}`);
+        // Detect token program (Token or Token-2022)
+        const tokenProgramId = await getTokenProgramId(connection, tokenMintPk);
+        console.log(`[ConsignmentRow] Using token program: ${tokenProgramId.toString()}`);
 
-      // Get consigner's token ATA (must exist to receive tokens)
-      const consignerTokenAta = await getAssociatedTokenAddress(
-        tokenMintPk,
-        consignerPk,
-        false,
-        tokenProgramId,
-      );
-
-      // Verify consigner ATA exists (SPL Token program requires it for transfers)
-      const consignerAtaInfo = await connection.getAccountInfo(consignerTokenAta);
-      if (!consignerAtaInfo) {
-        throw new Error(
-          "Your token account does not exist. You need to have a token account for this token to receive the withdrawal.",
+        // Get consigner's token ATA (must exist to receive tokens)
+        const consignerTokenAta = await getAssociatedTokenAddress(
+          tokenMintPk,
+          consignerPk,
+          false,
+          tokenProgramId,
         );
+
+        // Verify consigner ATA exists (SPL Token program requires it for transfers)
+        const consignerAtaInfo = await connection.getAccountInfo(consignerTokenAta);
+        if (!consignerAtaInfo) {
+          throw new Error(
+            "Your token account does not exist. You need to have a token account for this token to receive the withdrawal.",
+          );
+        }
+
+        // Get desk's token treasury
+        const deskTokenTreasury = await getAssociatedTokenAddress(
+          tokenMintPk,
+          desk,
+          true, // allowOwnerOffCurve - desk is a PDA
+          tokenProgramId,
+        );
+
+        // Build withdrawal transaction
+        // Note: The consignmentId argument is for logging/verification, the actual consignment is identified by the account
+        const consignmentId = new anchor.BN(consignmentData.id.toString());
+
+        console.log("[ConsignmentRow] Building withdrawal transaction:", {
+          consignment: consignmentPubkey.toString(),
+          consignmentId: consignmentId.toString(),
+          consigner: consignerPk.toString(),
+          desk: desk.toString(),
+          tokenMint: tokenMintPk.toString(),
+          remainingAmount: remainingAmountStr,
+        });
+
+        const tx = await program.methods
+          .withdrawConsignment(consignmentId)
+          .accounts({
+            consignment: consignmentPubkey,
+            desk: desk,
+            tokenMint: tokenMintPk, // Required for TransferChecked
+            deskSigner: desk, // Desk public key - API will add signature via partialSign
+            consigner: consignerPk,
+            deskTokenTreasury: deskTokenTreasury,
+            consignerTokenAta: consignerTokenAta,
+            tokenProgram: tokenProgramId, // Token or Token-2022
+          })
+          .transaction();
+
+        // Set recent blockhash and fee payer
+        const { blockhash } = await connection.getLatestBlockhash("confirmed");
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = consignerPk;
+
+        // Sign with user wallet (consigner signature)
+        console.log("[ConsignmentRow] Signing transaction with consigner wallet...");
+        const signedTx = await signTransaction(tx);
+        console.log("[ConsignmentRow] Transaction signed by consigner");
+
+        // Send to API to add desk signature and submit
+        const signedTxBase64 = signedTx
+          .serialize({ requireAllSignatures: false })
+          .toString("base64");
+
+        // Use mutation for API call - handles cache invalidation automatically
+        const apiResult = await solanaWithdrawMutation.mutateAsync({
+          consignmentAddress: consignment.contractConsignmentId,
+          consignerAddress: solanaPublicKey,
+          signedTransaction: signedTxBase64,
+        });
+
+        setWithdrawTxHash(apiResult.signature);
+
+        // Update database status after successful on-chain withdrawal
+        // Uses mutation for automatic cache invalidation
+        await evmWithdrawMutation.mutateAsync({
+          consignmentId: consignment.id,
+          callerAddress: solanaPublicKey,
+        });
+
+        setIsWithdrawn(true);
+        setTimeout(() => {
+          if (onUpdate) onUpdate();
+        }, 500);
+      } catch (err) {
+        console.error("[ConsignmentRow] Solana withdrawal error:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+
+        // Provide user-friendly messages for common errors
+        if (
+          errorMsg.includes("not active") ||
+          errorMsg.includes("BadState") ||
+          errorMsg.includes("no longer active")
+        ) {
+          setWithdrawError(
+            "This listing is no longer active. It may have been fully used in deals or already withdrawn.",
+          );
+          // Mark as withdrawn locally to disable the button
+          setIsWithdrawn(true);
+          // Sync database status with on-chain state (no auth required)
+          fetch(`/api/consignments/${encodeURIComponent(consignment.id)}/sync-status`, {
+            method: "POST",
+          })
+            .then(() => {
+              console.log("[ConsignmentRow] Database status synced with on-chain");
+              if (onUpdate) onUpdate();
+            })
+            .catch((syncErr) => {
+              console.warn("[ConsignmentRow] Failed to sync status:", syncErr);
+            });
+        } else if (errorMsg.includes("Nothing to withdraw")) {
+          setWithdrawError("All tokens have already been withdrawn or used in deals.");
+          setIsWithdrawn(true);
+        } else if (errorMsg.includes("not the consigner")) {
+          setWithdrawError("You are not the owner of this listing.");
+        } else {
+          setWithdrawError(errorMsg);
+        }
+      } finally {
+        setIsWithdrawing(false);
       }
-
-      // Get desk's token treasury
-      const deskTokenTreasury = await getAssociatedTokenAddress(
-        tokenMintPk,
-        desk,
-        true, // allowOwnerOffCurve - desk is a PDA
-        tokenProgramId,
-      );
-
-      // Build withdrawal transaction
-      // Note: The consignmentId argument is for logging/verification, the actual consignment is identified by the account
-      const consignmentId = new anchor.BN(consignmentData.id.toString());
-
-      console.log("[ConsignmentRow] Building withdrawal transaction:", {
-        consignment: consignmentPubkey.toString(),
-        consignmentId: consignmentId.toString(),
-        consigner: consignerPk.toString(),
-        desk: desk.toString(),
-        tokenMint: tokenMintPk.toString(),
-        remainingAmount: remainingAmountStr,
-      });
-
-      const tx = await program.methods
-        .withdrawConsignment(consignmentId)
-        .accounts({
-          consignment: consignmentPubkey,
-          desk: desk,
-          tokenMint: tokenMintPk, // Required for TransferChecked
-          deskSigner: desk, // Desk public key - API will add signature via partialSign
-          consigner: consignerPk,
-          deskTokenTreasury: deskTokenTreasury,
-          consignerTokenAta: consignerTokenAta,
-          tokenProgram: tokenProgramId, // Token or Token-2022
-        })
-        .transaction();
-
-      // Set recent blockhash and fee payer
-      const { blockhash } = await connection.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = consignerPk;
-
-      // Sign with user wallet (consigner signature)
-      console.log("[ConsignmentRow] Signing transaction with consigner wallet...");
-      const signedTx = await signTransaction(tx);
-      console.log("[ConsignmentRow] Transaction signed by consigner");
-
-      // Send to API to add desk signature and submit
-      const signedTxBase64 = signedTx.serialize({ requireAllSignatures: false }).toString("base64");
-
-      // Use mutation for API call - handles cache invalidation automatically
-      const apiResult = await solanaWithdrawMutation.mutateAsync({
-        consignmentAddress: consignment.contractConsignmentId,
-        consignerAddress: solanaPublicKey,
-        signedTransaction: signedTxBase64,
-      });
-
-      setWithdrawTxHash(apiResult.signature);
-
-      // Update database status after successful on-chain withdrawal
-      // Uses mutation for automatic cache invalidation
-      await evmWithdrawMutation.mutateAsync({
-        consignmentId: consignment.id,
-        callerAddress: solanaPublicKey,
-      });
-
-      setIsWithdrawn(true);
-      setTimeout(() => {
-        if (onUpdate) onUpdate();
-      }, 500);
-      setIsWithdrawing(false);
     } else {
       // EVM withdrawal path
       // FAIL-FAST: Validate all requirements for EVM withdrawal
@@ -352,29 +406,40 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
 
       setIsWithdrawing(true);
 
-      // Switch chain if needed - wallet handles the prompt
-      if (!isOnCorrectChain) {
-        await switchToChain(consignmentChain);
+      try {
+        // Switch chain if needed - wallet handles the prompt
+        if (!isOnCorrectChain) {
+          await switchToChain(consignmentChain);
+        }
+
+        const contractConsignmentId = BigInt(consignment.contractConsignmentId);
+
+        // Execute on-chain withdrawal (user pays gas)
+        const txHash = await withdrawConsignment(contractConsignmentId);
+        setWithdrawTxHash(txHash as string);
+
+        // Update database status after successful on-chain withdrawal
+        // Uses mutation for automatic cache invalidation
+        // FAIL-FAST: address must be defined at this point (validated earlier)
+        if (!address) {
+          throw new Error("EVM wallet address is undefined - this should never happen");
+        }
+        await evmWithdrawMutation.mutateAsync({
+          consignmentId: consignment.id,
+          callerAddress: address,
+        });
+
+        setIsWithdrawn(true);
+        setTimeout(() => {
+          if (onUpdate) onUpdate();
+        }, 500);
+      } catch (err) {
+        console.error("[ConsignmentRow] EVM withdrawal error:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        setWithdrawError(errorMsg);
+      } finally {
+        setIsWithdrawing(false);
       }
-
-      const contractConsignmentId = BigInt(consignment.contractConsignmentId);
-
-      // Execute on-chain withdrawal (user pays gas)
-      const txHash = await withdrawConsignment(contractConsignmentId);
-      setWithdrawTxHash(txHash as string);
-
-      // Update database status after successful on-chain withdrawal
-      // Uses mutation for automatic cache invalidation
-      await evmWithdrawMutation.mutateAsync({
-        consignmentId: consignment.id,
-        callerAddress: address,
-      });
-
-      setIsWithdrawn(true);
-      setTimeout(() => {
-        if (onUpdate) onUpdate();
-      }, 500);
-      setIsWithdrawing(false);
     }
   };
 

@@ -84,10 +84,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   if (!mounted) {
-    // Render children with skeleton providers during SSR/hydration
+    // Render children with minimal providers during SSR/hydration
+    // QueryClientProvider is required for hooks to work during hydration
     return (
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-        {children}
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
       </ThemeProvider>
     );
   }

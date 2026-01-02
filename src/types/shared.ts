@@ -27,12 +27,14 @@ export interface SolanaTransaction {
 }
 
 /**
- * Solana wallet adapter interface for signing transactions
+ * Solana wallet adapter interface for signing transactions and messages
  */
 export interface SolanaWalletAdapter {
   publicKey: { toBase58: () => string } | null;
   signTransaction: <T extends SolanaTransaction>(tx: T) => Promise<T>;
   signAllTransactions: <T extends SolanaTransaction>(txs: T[]) => Promise<T[]>;
+  /** Sign a message (optional - not all adapters support this) */
+  signMessage?: (message: Uint8Array) => Promise<Uint8Array>;
 }
 
 /**
@@ -45,6 +47,8 @@ export interface PhantomProvider {
   connect: () => Promise<{ publicKey: { toBase58(): string } }>;
   signTransaction: <T extends SolanaTransaction>(tx: T) => Promise<T>;
   signAllTransactions: <T extends SolanaTransaction>(txs: T[]) => Promise<T[]>;
+  /** Sign a message (returns signature as Uint8Array) */
+  signMessage?: (message: Uint8Array) => Promise<{ signature: Uint8Array }>;
 }
 
 /**
@@ -100,6 +104,8 @@ export interface PhantomSolanaProvider {
   signAllTransactions: <T extends SolanaTransaction>(txs: T[]) => Promise<T[]>;
   connect: () => Promise<{ publicKey: { toBase58(): string } }>;
   isConnected?: boolean;
+  /** Sign a message (returns signature as Uint8Array) */
+  signMessage?: (message: Uint8Array) => Promise<{ signature: Uint8Array }>;
 }
 
 //==============================================================================
