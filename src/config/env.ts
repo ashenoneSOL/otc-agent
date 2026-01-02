@@ -87,6 +87,10 @@ export function getCronSecret(): string | undefined {
 export function getWorkerAuthToken(): string {
   const token = process.env.WORKER_AUTH_TOKEN;
   if (!token) {
+    // During build phase, return placeholder - actual token only needed at runtime
+    if (isBuildPhase()) {
+      return "build-placeholder-token";
+    }
     throw new Error("WORKER_AUTH_TOKEN must be set for quote signature generation");
   }
   return token;
@@ -106,6 +110,10 @@ export function getHeliusApiKey(): string | undefined {
 export function getHeliusRpcUrl(): string {
   const heliusKey = process.env.HELIUS_API_KEY;
   if (!heliusKey) {
+    // During build phase, return placeholder - actual RPC only needed at runtime
+    if (isBuildPhase()) {
+      return "https://mainnet.helius-rpc.com/?api-key=build-placeholder";
+    }
     throw new Error("[Solana RPC] CRITICAL: HELIUS_API_KEY not configured!");
   }
   return `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
@@ -152,6 +160,14 @@ export function getBlobToken(): string | undefined {
 // =============================================================================
 
 /**
+ * Check if we're in Next.js build phase (static page collection)
+ * During build, we shouldn't throw on missing env vars since they're only needed at runtime
+ */
+function isBuildPhase(): boolean {
+  return process.env.NEXT_PHASE === "phase-production-build";
+}
+
+/**
  * Get PostgreSQL connection URL
  * Checks multiple env var names for compatibility with different hosting providers
  */
@@ -164,7 +180,13 @@ export function getDatabaseUrl(): string {
 
   if (url) return url;
 
-  // FAIL-FAST in production - require explicit database config
+  // During build phase, return a placeholder - actual DB isn't needed for static analysis
+  // The real validation happens at runtime when the DB is actually used
+  if (isBuildPhase()) {
+    return "postgres://build-placeholder:5432/placeholder";
+  }
+
+  // FAIL-FAST in production runtime - require explicit database config
   if (isProduction()) {
     throw new Error(
       "DATABASE_URL must be configured in production - no default credentials allowed",
@@ -203,7 +225,13 @@ export function getNetwork(): NetworkEnvironment {
   // Legacy flag support
   if (process.env.NEXT_PUBLIC_USE_MAINNET === "true") return "mainnet";
 
-  // SECURITY: In production, require explicit network config
+  // During build phase, default to mainnet for static analysis
+  // The real validation happens at runtime
+  if (isBuildPhase()) {
+    return "mainnet";
+  }
+
+  // SECURITY: In production runtime, require explicit network config
   if (isProduction()) {
     throw new Error(
       "NEXT_PUBLIC_NETWORK must be explicitly set in production (mainnet|testnet|local)",
