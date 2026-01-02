@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import type { CachedPrice } from "@/types/api";
+import { agentRuntime } from "../../../lib/agent-runtime";
+import { validationErrorResponse } from "../../../lib/validation/helpers";
+import type { CachedPrice } from "../../../types/api";
 import {
   GetTokenPricesQuerySchema,
   TokenPricesResponseSchema,
-} from "@/types/validation/api-schemas";
-import { fetchCoinGeckoPrices, fetchJupiterPrices } from "@/utils/price-fetcher";
+} from "../../../types/validation/api-schemas";
+import { fetchCoinGeckoPrices, fetchJupiterPrices } from "../../../utils/price-fetcher";
 
 // Price cache TTL: 5 minutes
 const PRICE_CACHE_TTL_MS = 5 * 60 * 1000;

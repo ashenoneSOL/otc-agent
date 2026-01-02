@@ -4,9 +4,10 @@ import {
   PublicKey,
   type VersionedTransactionResponse,
 } from "@solana/web3.js";
-import { getSolanaProgramId } from "@/config/contracts";
-import { getHeliusRpcUrl, getNetwork } from "@/config/env";
-import type { SolanaRegistrationEvent } from "@/utils/solana-otc";
+import { getSolanaProgramId } from "../config/contracts";
+import { getHeliusRpcUrl, getNetwork } from "../config/env";
+import { findBestSolanaPool } from "../utils/pool-finder-solana";
+import type { SolanaRegistrationEvent } from "../utils/solana-otc";
 import { TokenDB } from "./database";
 
 // Protected symbols that can only be registered from verified mint addresses
@@ -272,7 +273,6 @@ async function registerTokenToDatabase(parsed: ParsedRegistration): Promise<void
   let solVault: string | undefined;
   let tokenVault: string | undefined;
   if (parsed.poolAddress) {
-    const { findBestSolanaPool } = await import("@/utils/pool-finder-solana");
     const pool = await findBestSolanaPool(parsed.tokenMint, "mainnet", connection);
     if (pool?.solVault) solVault = pool.solVault;
     if (pool?.tokenVault) tokenVault = pool.tokenVault;

@@ -833,7 +833,7 @@ describe("Service Layer E2E Tests", () => {
   // ==========================================================================
   describe("Hook Schema Validation", () => {
     test("ConsignmentsFiltersSchema validates filter options", async () => {
-      const { ConsignmentsFiltersSchema } = await import("@/types/validation/hook-schemas");
+      const { ConsignmentsFiltersSchema } = await import("../src/types/validation/hook-schemas");
 
       // Valid filters
       expect(() =>
@@ -895,7 +895,7 @@ describe("Service Layer E2E Tests", () => {
     });
 
     test("TokenBatchResponseSchema validates batch response", async () => {
-      const { TokenBatchResponseSchema } = await import("@/types/validation/hook-schemas");
+      const { TokenBatchResponseSchema } = await import("../src/types/validation/hook-schemas");
 
       const validResponse = {
         success: true,
@@ -921,7 +921,7 @@ describe("Service Layer E2E Tests", () => {
     });
 
     test("WalletTokenSchema validates wallet token format", async () => {
-      const { WalletTokenSchema } = await import("@/types/validation/hook-schemas");
+      const { WalletTokenSchema } = await import("../src/types/validation/hook-schemas");
 
       const validWalletToken = {
         id: "token-base-0x1234567890123456789012345678901234567890",
@@ -947,7 +947,7 @@ describe("Service Layer E2E Tests", () => {
     });
 
     test("EvmBalancesResponseSchema validates EVM balances", async () => {
-      const { EvmBalancesResponseSchema } = await import("@/types/validation/hook-schemas");
+      const { EvmBalancesResponseSchema } = await import("../src/types/validation/hook-schemas");
 
       const validResponse = {
         tokens: [

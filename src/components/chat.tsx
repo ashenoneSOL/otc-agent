@@ -4,21 +4,21 @@ import { usePrivy } from "@privy-io/react-auth";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { AcceptQuoteModal } from "@/components/accept-quote-modal";
-import { Button } from "@/components/button";
-import { ChatMessages } from "@/components/chat-messages";
-import { Dialog } from "@/components/dialog";
-import { TextareaWithActions } from "@/components/textarea-with-actions";
-import { TokenHeader } from "@/components/token-header";
-import { InlineSvgSpinner } from "@/components/ui/loading-spinner";
-import { CHAT_SOURCE, USER_NAME } from "@/constants";
-import { useChain, useWalletActions, useWalletConnection } from "@/contexts";
-import { useCreateRoom, useSendMessage } from "@/hooks/useChat";
-import { useConsignments } from "@/hooks/useConsignments";
-import type { Token, TokenMarketData } from "@/types";
-import type { ChatMessage, ChatMessageContent, ChatMessageQuoteData } from "@/types/chat-message";
-import { formatRawTokenAmount } from "@/utils/format";
-import { type OTCQuote, parseMessageXML } from "@/utils/xml-parser";
+import { CHAT_SOURCE, USER_NAME } from "../constants";
+import { useChain, useWalletActions, useWalletConnection } from "../contexts";
+import { useCreateRoom, useSendMessage } from "../hooks/useChat";
+import { useConsignments } from "../hooks/useConsignments";
+import type { Token, TokenMarketData } from "../types";
+import type { ChatMessage, ChatMessageContent, ChatMessageQuoteData } from "../types/chat-message";
+import { formatRawTokenAmount } from "../utils/format";
+import { type OTCQuote, parseMessageXML } from "../utils/xml-parser";
+import { AcceptQuoteModal } from "./accept-quote-modal";
+import { Button } from "./button";
+import { ChatMessages } from "./chat-messages";
+import { Dialog } from "./dialog";
+import { TextareaWithActions } from "./textarea-with-actions";
+import { TokenHeader } from "./token-header";
+import { InlineSvgSpinner } from "./ui/loading-spinner";
 
 interface ChatProps {
   roomId?: string;
@@ -119,8 +119,8 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
   }
 }
 
-// RawRoomMessage imported from @/types
-import type { RawRoomMessage } from "@/types";
+// RawRoomMessage imported from ../types
+import type { RawRoomMessage } from "../types";
 
 // --- Helper: Parse room message into ChatMessage format ---
 function parseRoomMessage(msg: RawRoomMessage, roomId: string): ChatMessage | null {

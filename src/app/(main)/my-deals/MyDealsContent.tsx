@@ -5,26 +5,26 @@ import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/button";
-import { ConsignmentRow } from "@/components/consignment-row";
-import { CardLoading } from "@/components/ui/loading-spinner";
-import { WalletAvatar } from "@/components/wallet-avatar";
-import { useChain, useWalletActions, useWalletConnection } from "@/contexts";
-import { useOTC } from "@/hooks/contracts/useOTC";
-import { quoteKeys } from "@/hooks/queryKeys";
-import { useMyConsignments } from "@/hooks/useConsignments";
-import { useDeals } from "@/hooks/useDeals";
-import { usePrefetchQuote } from "@/hooks/useQuote";
+import { Button } from "../../../components/button";
+import { ConsignmentRow } from "../../../components/consignment-row";
+import { CardLoading } from "../../../components/ui/loading-spinner";
+import { WalletAvatar } from "../../../components/wallet-avatar";
+import { useChain, useWalletActions, useWalletConnection } from "../../../contexts";
+import { useOTC } from "../../../hooks/contracts/useOTC";
+import { quoteKeys } from "../../../hooks/queryKeys";
+import { useMyConsignments } from "../../../hooks/useConsignments";
+import type { DealFromAPI } from "../../../hooks/useDeals";
+import { useDeals } from "../../../hooks/useDeals";
+import { usePrefetchQuote } from "../../../hooks/useQuote";
+import type { Offer } from "../../../types";
 import {
   mergeDealsWithOffers,
   type OfferWithMetadata,
   transformSolanaDeal,
-} from "@/utils/deal-transforms";
-
-// Shared utilities
-import { formatDate, formatTokenAmount, getLockupLabel } from "@/utils/format";
-import { useRenderTracker } from "@/utils/render-tracker";
-import { resumeFreshAuth } from "@/utils/x-share";
+} from "../../../utils/deal-transforms";
+import { formatDate, formatTokenAmount, getLockupLabel } from "../../../utils/format";
+import { useRenderTracker } from "../../../utils/render-tracker";
+import { resumeFreshAuth } from "../../../utils/x-share";
 
 // Re-export type for backward compatibility
 type OfferWithQuoteId = OfferWithMetadata;
@@ -173,7 +173,7 @@ export function MyDealsContent() {
 
     // Transform Solana deals
     if (solanaDeals.length > 0 && solanaPublicKey) {
-      const solanaTransformed = solanaDeals.map((deal) => transformSolanaDeal(deal));
+      const solanaTransformed = solanaDeals.map((deal: DealFromAPI) => transformSolanaDeal(deal));
       allPurchases.push(...solanaTransformed);
     }
 
@@ -187,13 +187,15 @@ export function MyDealsContent() {
         throw new Error("evmAddress is required for EVM deals");
       }
       // Transform contract offers to OfferWithMetadata format (without metadata - will be filtered)
-      const offersWithMetadata: OfferWithMetadata[] = myOffers.map((offer) => ({
-        ...offer,
-        tokenSymbol: "", // Contract offers don't have metadata - mergeDealsWithOffers will filter these out
-        tokenName: "",
-        tokenLogoUrl: undefined,
-        chain: "base", // Default to base for EVM offers
-      }));
+      const offersWithMetadata: OfferWithMetadata[] = myOffers.map(
+        (offer: Offer & { id: bigint }) => ({
+          ...offer,
+          tokenSymbol: "", // Contract offers don't have metadata - mergeDealsWithOffers will filter these out
+          tokenName: "",
+          tokenLogoUrl: undefined,
+          chain: "base", // Default to base for EVM offers
+        }),
+      );
       const evmMerged = mergeDealsWithOffers(evmDeals, offersWithMetadata);
       allPurchases.push(...evmMerged);
     }

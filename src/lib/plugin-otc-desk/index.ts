@@ -20,6 +20,7 @@ import {
   type WorldPayload,
 } from "@elizaos/core";
 import { v4 } from "uuid";
+import { walletToEntityId } from "../entityId";
 import { quoteAction } from "./actions/quote";
 import { tokenProvider as ai16zProvider } from "./providers/ai16z";
 import { otcDeskProvider } from "./providers/otcDesk";
@@ -372,7 +373,6 @@ const messageReceivedHandler = async ({
         return val ? parseFloat(val) : defaultVal;
       };
 
-      const { walletToEntityId } = await import("@/lib/entityId");
       const entityId = message.entityId.toString();
 
       const paymentCurrencyRaw = getTag("paymentCurrency");

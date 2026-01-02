@@ -1,13 +1,13 @@
 import crypto from "node:crypto";
 import { type HeadBlobResult, head, put } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import type { CodexBalanceItem } from "@/types/api";
+import { agentRuntime } from "../../../lib/agent-runtime";
+import { validationErrorResponse } from "../../../lib/validation/helpers";
+import type { CodexBalanceItem } from "../../../types/api";
 import {
   GetSolanaBalancesQuerySchema,
   SolanaBalancesResponseSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../types/validation/api-schemas";
 
 // Wallet balance cache TTL: 15 minutes
 const WALLET_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -225,7 +225,7 @@ function getExtensionFromUrl(url: string): string | null {
   return null;
 }
 
-// CodexBalanceItem imported from @/types/api
+// CodexBalanceItem imported from ../../../types/api
 
 /**
  * Fetch balances from local Solana RPC (for local testing)

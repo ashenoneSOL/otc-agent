@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getCachedTokenAddresses } from "@/lib/cache";
-import { validationErrorResponse } from "@/lib/validation/helpers";
+import { getCachedTokenAddresses } from "../../../../lib/cache";
+import { validationErrorResponse } from "../../../../lib/validation/helpers";
 import {
   GetTokenAddressesQuerySchema,
   TokenAddressesResponseSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../../types/validation/api-schemas";
 
 /**
  * GET /api/tokens/addresses?chain=base

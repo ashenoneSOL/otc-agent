@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { extractErrorMessage, throwApiError } from "@/hooks/lib/api-helpers";
+import { extractErrorMessage, throwApiError } from "../../src/hooks/lib/api-helpers";
 
 describe("api-helpers", () => {
   describe("extractErrorMessage", () => {

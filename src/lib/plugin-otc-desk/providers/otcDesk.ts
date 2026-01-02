@@ -1,5 +1,6 @@
 import type { IAgentRuntime, Memory, Provider } from "@elizaos/core";
-import type { OTCConsignment } from "@/types";
+import { ConsignmentDB, TokenDB } from "../../../services/database";
+import type { OTCConsignment } from "../../../types";
 
 export const otcDeskProvider: Provider = {
   name: "OTC_DESK",
@@ -18,7 +19,6 @@ export const otcDeskProvider: Provider = {
     let currentConsignments: OTCConsignment[] = [];
 
     if (tokenMatch) {
-      const { TokenDB, ConsignmentDB } = await import("@/services/database");
       const symbol = tokenMatch[1];
       const allTokens = await TokenDB.getAllTokens();
       const token = allTokens.find((t) => t.symbol === symbol);

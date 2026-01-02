@@ -8,22 +8,22 @@ import { PublicKey as SolPubkey, type Transaction } from "@solana/web3.js";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useAccount, useChainId } from "wagmi";
-import { type Chain, isSolanaChain, SUPPORTED_CHAINS } from "@/config/chains";
-import { useWalletConnection } from "@/contexts";
-import { useOTC } from "@/hooks/contracts/useOTC";
-import { useSolanaWithdrawConsignment, useWithdrawConsignment } from "@/hooks/mutations";
-import { useToken } from "@/hooks/useToken";
-import type { OTCConsignment } from "@/services/database";
+import { type Chain, isSolanaChain, SUPPORTED_CHAINS } from "../config/chains";
+import { useWalletConnection } from "../contexts";
+import { useOTC } from "../hooks/contracts/useOTC";
+import { useSolanaWithdrawConsignment, useWithdrawConsignment } from "../hooks/mutations";
+import { useToken } from "../hooks/useToken";
+import type { OTCConsignment } from "../services/database";
 // Shared Solana OTC utilities
-import { formatRawTokenAmount } from "@/utils/format";
+import { formatRawTokenAmount } from "../utils/format";
 import {
   createSolanaConnection,
   fetchSolanaIdl,
   getTokenProgramId,
   SOLANA_DESK,
   SOLANA_RPC,
-} from "@/utils/solana-otc";
-import { Button } from "@/components/button";
+} from "../utils/solana-otc";
+import { Button } from "./button";
 
 interface ConsignmentRowProps {
   consignment: OTCConsignment;
@@ -136,7 +136,7 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
   const tokenName = token?.name || "Unknown Token";
   const tokenLogoUrl = token?.logoUrl;
 
-  // formatAmount uses centralized formatRawTokenAmount from @/utils/format
+  // formatAmount uses centralized formatRawTokenAmount from ../utils/format
   const formatAmount = (amount: string) => formatRawTokenAmount(amount, tokenDecimals);
 
   const percentRemaining =

@@ -2,7 +2,7 @@
  * Deal transformation utilities
  */
 
-import type { DealFromAPI } from "@/hooks/useDeals";
+import type { DealFromAPI } from "../hooks/useDeals";
 
 export interface OfferWithMetadata {
   id: bigint;

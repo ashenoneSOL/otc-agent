@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import Image from "next/image";
 
-import logo from "@/components/logo.png";
+import logo from "./logo.png";
 
 interface LogoProps {
   width?: number;

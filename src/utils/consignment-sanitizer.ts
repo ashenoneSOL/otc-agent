@@ -1,5 +1,5 @@
-import type { OTCConsignment } from "@/services/database";
-import type { ConsignmentWithDisplay } from "@/types";
+import type { OTCConsignment } from "../services/database";
+import type { ConsignmentWithDisplay } from "../types";
 
 // Re-export the shared type
 export type { ConsignmentWithDisplay as SanitizedConsignment };

@@ -3,14 +3,14 @@ import path from "node:path";
 import * as anchor from "@coral-xyz/anchor";
 import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 import { type NextRequest, NextResponse } from "next/server";
-import { getSolanaConfig } from "@/config/contracts";
-import { getHeliusRpcUrl, getNetwork } from "@/config/env";
-import { validationErrorResponse } from "@/lib/validation/helpers";
+import { getSolanaConfig } from "../../../../config/contracts";
+import { getHeliusRpcUrl, getNetwork } from "../../../../config/env";
+import { validationErrorResponse } from "../../../../lib/validation/helpers";
 import {
   SolanaWithdrawConsignmentRequestWithSignedTxSchema,
   SolanaWithdrawConsignmentResponseSchema,
-} from "@/types/validation/api-schemas";
-import { createAnchorWallet, loadDeskKeypair } from "@/utils/solana-keypair";
+} from "../../../../types/validation/api-schemas";
+import { createAnchorWallet, loadDeskKeypair } from "../../../../utils/solana-keypair";
 
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;

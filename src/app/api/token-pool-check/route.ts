@@ -1,16 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { type Abi, type Address, createPublicClient, encodePacked, http, keccak256 } from "viem";
 import { base, bsc, mainnet } from "viem/chains";
-import { type Chain, SUPPORTED_CHAINS } from "@/config/chains";
-import { getCurrentNetwork } from "@/config/contracts";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import { safeReadContract } from "@/lib/viem-utils";
-import type { PoolCheckResult } from "@/types";
+import { type Chain, SUPPORTED_CHAINS } from "../../../config/chains";
+import { getCurrentNetwork } from "../../../config/contracts";
+import { validationErrorResponse } from "../../../lib/validation/helpers";
+import { safeReadContract } from "../../../lib/viem-utils";
+import type { PoolCheckResult } from "../../../types";
 import {
   TokenPoolCheckQuerySchema,
   TokenPoolCheckResponseSchema,
-} from "@/types/validation/api-schemas";
-import { findAllPools, type PoolInfo } from "@/utils/pool-finder-base";
+} from "../../../types/validation/api-schemas";
+import { findAllPools, type PoolInfo } from "../../../utils/pool-finder-base";
 
 // ABI for reading token registration status from OTC
 const tokensAbi = [

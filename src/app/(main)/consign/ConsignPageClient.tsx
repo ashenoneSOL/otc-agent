@@ -12,13 +12,15 @@ import {
 } from "@solana/web3.js";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { TokenWithBalance } from "@/components/consignment-form/token-selection-step";
-import { WalletAvatar } from "@/components/wallet-avatar";
-import { type Chain, SUPPORTED_CHAINS } from "@/config/chains";
-import { useChain, useWalletActions, useWalletConnection } from "@/contexts";
-import { useOTC } from "@/hooks/contracts/useOTC";
-import { getExplorerTxUrl } from "@/utils/format";
-import { useRenderTracker } from "@/utils/render-tracker";
+import { createPublicClient, http } from "viem";
+import type { TokenWithBalance } from "../../../components/consignment-form/token-selection-step";
+import { WalletAvatar } from "../../../components/wallet-avatar";
+import { type Chain, SUPPORTED_CHAINS } from "../../../config/chains";
+import { useChain, useWalletActions, useWalletConnection } from "../../../contexts";
+import { useOTC } from "../../../hooks/contracts/useOTC";
+import { getViemChainForType } from "../../../lib/getChain";
+import { getExplorerTxUrl } from "../../../utils/format";
+import { useRenderTracker } from "../../../utils/render-tracker";
 // Shared Solana OTC utilities - consolidated to avoid duplication
 import {
   createSolanaConnection,
@@ -29,29 +31,34 @@ import {
   SOLANA_DESK,
   SOLANA_RPC,
   waitForSolanaTx,
-} from "@/utils/solana-otc";
+} from "../../../utils/solana-otc";
 import {
   extractAddressFromTokenId,
   extractChainFromTokenId,
   getChainFamily,
-} from "@/utils/token-utils";
+} from "../../../utils/token-utils";
+import { waitForEvmTx } from "../../../utils/tx-helpers";
 
 const TokenSelectionStep = dynamic(
   () =>
-    import("@/components/consignment-form/token-selection-step").then((m) => m.TokenSelectionStep),
+    import("../../../components/consignment-form/token-selection-step").then(
+      (m) => m.TokenSelectionStep,
+    ),
   { ssr: false },
 );
 const FormStep = dynamic(
-  () => import("@/components/consignment-form/form-step").then((m) => m.FormStep),
+  () => import("../../../components/consignment-form/form-step").then((m) => m.FormStep),
   { ssr: false },
 );
 const ReviewStep = dynamic(
-  () => import("@/components/consignment-form/review-step").then((m) => m.ReviewStep),
+  () => import("../../../components/consignment-form/review-step").then((m) => m.ReviewStep),
   { ssr: false },
 );
 const SubmissionStepComponent = dynamic(
   () =>
-    import("@/components/consignment-form/submission-step").then((m) => m.SubmissionStepComponent),
+    import("../../../components/consignment-form/submission-step").then(
+      (m) => m.SubmissionStepComponent,
+    ),
   { ssr: false },
 );
 
@@ -204,7 +211,7 @@ export default function ConsignPageClient() {
     }));
   }, []);
 
-  // getBlockExplorerUrl uses centralized getExplorerTxUrl from @/utils/format
+  // getBlockExplorerUrl uses centralized getExplorerTxUrl from ../../../utils/format
   const getBlockExplorerUrl = useCallback(
     (txHash: string) => {
       const chain =
@@ -256,9 +263,6 @@ export default function ConsignPageClient() {
     const chainConfig = SUPPORTED_CHAINS[chain];
     // chainConfig.rpcUrl is required in ChainConfig type - always exists
 
-    const { createPublicClient, http } = await import("viem");
-    const { getViemChainForType } = await import("@/lib/getChain");
-    const { waitForEvmTx } = await import("@/utils/tx-helpers");
     const viemChain = getViemChainForType(chain);
 
     // Check if we're running locally (Anvil/Foundry)

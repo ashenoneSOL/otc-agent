@@ -5,7 +5,7 @@ dotenv.config();
 import type { Character } from "@elizaos/core";
 // @ts-expect-error - package exports not properly configured for Node.js
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
-import { getDatabaseUrl, getGroqModels } from "@/config/env";
+import { getDatabaseUrl, getGroqModels } from "../config/env";
 import { groqPlugin } from "./plugin-groq";
 import { otcDeskPlugin } from "./plugin-otc-desk";
 

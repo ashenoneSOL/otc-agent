@@ -11,10 +11,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Address, createPublicClient, erc20Abi, http } from "viem";
 import { base, bsc, mainnet } from "viem/chains";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import type { Token, TokenMarketData } from "@/types";
-import { TokenResponseSchema } from "@/types/validation/hook-schemas";
-import { parseTokenId } from "@/utils/token-utils";
+import { parseOrThrow } from "../lib/validation/helpers";
+import type { Token, TokenMarketData } from "../types";
+import { TokenResponseSchema } from "../types/validation/hook-schemas";
+import { parseTokenId } from "../utils/token-utils";
 import { priceKeys, tokenKeys } from "./queryKeys";
 
 // Chain configs for on-chain fetching (RPC endpoints via API proxy)

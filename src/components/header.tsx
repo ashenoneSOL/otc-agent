@@ -5,10 +5,10 @@ import clsx from "clsx";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { memo, useState } from "react";
-import { Button } from "@/components/button";
-import { Logo } from "@/components/logo";
-import { WelcomeModal } from "@/components/welcome-modal";
-import { useRenderTracker } from "@/utils/render-tracker";
+import { useRenderTracker } from "../utils/render-tracker";
+import { Button } from "./button";
+import { Logo } from "./logo";
+import { WelcomeModal } from "./welcome-modal";
 
 export const Header = memo(function Header() {
   useRenderTracker("Header");

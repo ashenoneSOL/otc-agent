@@ -3,9 +3,9 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { usePrefetchToken } from "@/hooks";
-import type { OTCConsignment, Token } from "@/services/database";
-import { formatRawTokenAmount } from "@/utils/format";
+import { usePrefetchToken } from "../hooks";
+import type { OTCConsignment, Token } from "../services/database";
+import { formatRawTokenAmount } from "../utils/format";
 
 interface TokenDealsSectionProps {
   token: Token;
@@ -44,7 +44,7 @@ export function TokenDealsSection({ token, consignments }: TokenDealsSectionProp
     prefetchToken(token.id);
   }, [prefetchToken, token.id]);
 
-  // formatAmount uses centralized formatRawTokenAmount from @/utils/format
+  // formatAmount uses centralized formatRawTokenAmount from ../utils/format
   const formatAmount = (amount: string) => formatRawTokenAmount(amount, token.decimals);
 
   // Filter to only active consignments with remaining balance

@@ -1,8 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import type { TokenInfo } from "@/types/api";
-import { TokenLookupQuerySchema, TokenLookupResponseSchema } from "@/types/validation/api-schemas";
-import { isEvmAddress, isSolanaAddress } from "@/utils/address-utils";
+import { validationErrorResponse } from "../../../lib/validation/helpers";
+import type { TokenInfo } from "../../../types/api";
+import {
+  TokenLookupQuerySchema,
+  TokenLookupResponseSchema,
+} from "../../../types/validation/api-schemas";
+import { isEvmAddress, isSolanaAddress } from "../../../utils/address-utils";
 
 // Codex GraphQL endpoint and Solana network ID
 const CODEX_GRAPHQL_URL = "https://graph.codex.io/graphql";

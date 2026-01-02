@@ -7,6 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createMint } from "@solana/spl-token";
 import {
   ComputeBudgetProgram,
   Connection,
@@ -107,7 +108,6 @@ async function main() {
   console.log(`Program ID: ${PROGRAM_ID.toBase58()} (deployed)`);
 
   // Create a mock USDC mint for local testing
-  const { createMint } = await import("@solana/spl-token");
   const usdcMint = await createMint(
     connection,
     payer,

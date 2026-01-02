@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * OTC Flow Validation Script
  *
@@ -15,6 +16,7 @@
  * With real transactions: EXECUTE_TX=true bun scripts/validate-otc-flows.ts
  */
 
+import bs58 from "bs58";
 import { config } from "dotenv";
 
 config({ path: ".env.local" });
@@ -488,7 +490,6 @@ async function validateSolana() {
     if (privateKey.startsWith("[")) {
       keypairBytes = Uint8Array.from(JSON.parse(privateKey));
     } else {
-      const bs58 = await import("bs58").then((m) => m.default);
       keypairBytes = bs58.decode(privateKey);
     }
     const wallet = Keypair.fromSecretKey(keypairBytes);

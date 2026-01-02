@@ -4,7 +4,7 @@
  */
 
 import type { Connection } from "@solana/web3.js";
-import type { EvmPublicClient, SolanaCommitment } from "@/types";
+import type { EvmPublicClient, SolanaCommitment } from "../types";
 
 /**
  * Poll for EVM transaction confirmation

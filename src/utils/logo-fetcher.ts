@@ -7,7 +7,7 @@
  * - CoinGecko: Good fallback, may be rate limited on free tier
  */
 
-import { checksumAddress } from "@/utils/address-utils";
+import { checksumAddress } from "./address-utils";
 
 /** Chain config for logo sources */
 export const CHAIN_LOGO_CONFIG: Record<
@@ -41,7 +41,7 @@ interface LogoFetchOptions {
 }
 
 // Re-export checksumAddress for backwards compatibility
-export { checksumAddress } from "@/utils/address-utils";
+export { checksumAddress } from "./address-utils";
 
 /**
  * Try to get logo from Trust Wallet Assets (GitHub hosted, free)

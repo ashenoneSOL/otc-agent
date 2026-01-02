@@ -1,13 +1,13 @@
 import type { Media, UUID } from "@elizaos/core";
 import { NextResponse } from "next/server";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import type { MemoryWithTimestamp, RouteContext } from "@/types/api";
+import { agentRuntime } from "../../../../../lib/agent-runtime";
+import { parseOrThrow } from "../../../../../lib/validation/helpers";
+import type { MemoryWithTimestamp, RouteContext } from "../../../../../types/api";
 import {
   RoomMessagesResponseSchema,
   SendMessageRequestSchema,
   SendMessageResponseSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../../../types/validation/api-schemas";
 
 // POST /api/rooms/[roomId]/messages - Send a message
 export async function POST(request: Request, ctx: RouteContext) {

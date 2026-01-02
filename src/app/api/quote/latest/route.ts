@@ -1,11 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { validateCSRF } from "@/lib/csrf";
-import { walletToEntityId } from "@/lib/entityId";
-import type QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import type { QuoteMemory } from "@/types";
-import { GetLatestQuoteRequestSchema, QuoteResponseSchema } from "@/types/validation/api-schemas";
+import { agentRuntime } from "../../../../lib/agent-runtime";
+import { validateCSRF } from "../../../../lib/csrf";
+import { walletToEntityId } from "../../../../lib/entityId";
+import type QuoteService from "../../../../lib/plugin-otc-desk/services/quoteService";
+import { parseOrThrow } from "../../../../lib/validation/helpers";
+import { TokenDB } from "../../../../services/database";
+import type { QuoteMemory } from "../../../../types";
+import {
+  GetLatestQuoteRequestSchema,
+  QuoteResponseSchema,
+} from "../../../../types/validation/api-schemas";
 
 export async function GET(request: NextRequest) {
   const runtime = await agentRuntime.getRuntime();
@@ -35,7 +39,6 @@ export async function GET(request: NextRequest) {
   console.log("[Quote API] Found:", quote ? quote.quoteId : "null");
 
   // Fetch token data first - needed for both new and existing quotes
-  const { TokenDB } = await import("@/services/database");
   const token = await TokenDB.getToken(tokenId);
 
   // FAIL-FAST: Token MUST exist (quotes are always for a specific token)

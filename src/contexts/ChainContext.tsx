@@ -9,8 +9,8 @@
  */
 
 import { createContext, useContext } from "react";
-import type { ChainFamily } from "@/config/chains";
-import type { EVMChain } from "@/types";
+import type { ChainFamily } from "../config/chains";
+import type { EVMChain } from "../types";
 
 /**
  * Chain selection state

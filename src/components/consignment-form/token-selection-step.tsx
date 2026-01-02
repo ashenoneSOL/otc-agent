@@ -6,15 +6,19 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChainId } from "wagmi";
 import { base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "wagmi/chains";
-import { InlineLoading } from "@/components/ui/loading-spinner";
-import type { Chain } from "@/config/chains";
-import { useChain, useWalletActions, useWalletConnection } from "@/contexts";
-import { usePrefetchPoolCheck } from "@/hooks/usePoolCheck";
-import { useTokenLookup } from "@/hooks/useTokenLookup";
-import { useRefetchWalletTokens, useWalletTokens, type WalletToken } from "@/hooks/useWalletTokens";
-import { isContractAddress, isSolanaAddress } from "@/utils/address-utils";
-import { formatRawTokenAmount, formatUsdCompact } from "@/utils/format";
-import { Button } from "@/components/button";
+import type { Chain } from "../../config/chains";
+import { useChain, useWalletActions, useWalletConnection } from "../../contexts";
+import { usePrefetchPoolCheck } from "../../hooks/usePoolCheck";
+import { useTokenLookup } from "../../hooks/useTokenLookup";
+import {
+  useRefetchWalletTokens,
+  useWalletTokens,
+  type WalletToken,
+} from "../../hooks/useWalletTokens";
+import { isContractAddress, isSolanaAddress } from "../../utils/address-utils";
+import { formatRawTokenAmount, formatUsdCompact } from "../../utils/format";
+import { Button } from "../button";
+import { InlineLoading } from "../ui/loading-spinner";
 
 // Token avatar component with fallback on image error
 function TokenAvatar({
@@ -71,8 +75,8 @@ interface TokenSelectionProps {
   onTokenSelect?: (token: TokenWithBalance) => void;
 }
 
-// formatBalance uses centralized formatRawTokenAmount from @/utils/format
-// formatUsd uses centralized formatUsdCompact from @/utils/format
+// formatBalance uses centralized formatRawTokenAmount from ../../utils/format
+// formatUsd uses centralized formatUsdCompact from ../../utils/format
 
 export function TokenSelectionStep({
   formData,

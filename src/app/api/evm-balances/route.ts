@@ -3,18 +3,18 @@ import { head, put } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
 import { type Address, createPublicClient, http } from "viem";
 import { foundry } from "viem/chains";
-import { getEvmConfig } from "@/config/contracts";
-import { getNetwork, LOCAL_DEFAULTS } from "@/config/env";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import type { TokenBalance } from "@/types/api";
+import { getEvmConfig } from "../../../config/contracts";
+import { getNetwork, LOCAL_DEFAULTS } from "../../../config/env";
+import { agentRuntime } from "../../../lib/agent-runtime";
+import { validationErrorResponse } from "../../../lib/validation/helpers";
+import type { TokenBalance } from "../../../types/api";
 import {
   EvmBalancesResponseSchema,
   GetEvmBalancesQuerySchema,
-} from "@/types/validation/api-schemas";
-import { checksumAddress } from "@/utils/address-utils";
+} from "../../../types/validation/api-schemas";
+import { checksumAddress } from "../../../utils/address-utils";
 
-// TokenBalance type imported from @/types/api
+// TokenBalance type imported from ../../../types/api
 
 // Metadata cache (permanent - token metadata doesn't change)
 // logoCheckedAt: timestamp when we last tried to find a logo

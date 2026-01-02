@@ -3,10 +3,10 @@
 import { AlertCircle, ArrowLeft, Check, ExternalLink, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useCreateConsignment } from "@/hooks/mutations";
-import { useWalletAuth } from "@/hooks/useWalletAuth";
-import { formatTokenAmountFull } from "@/utils/format";
-import { Button } from "@/components/button";
+import { useCreateConsignment } from "../../hooks/mutations";
+import { useWalletAuth } from "../../hooks/useWalletAuth";
+import { formatTokenAmountFull } from "../../utils/format";
+import { Button } from "../button";
 
 /**
  * Submission step progress tracking (local to this component)
@@ -353,7 +353,7 @@ export function SubmissionStepComponent({
     router.push("/my-deals");
   };
 
-  // formatAmount uses centralized formatTokenAmountFull from @/utils/format
+  // formatAmount uses centralized formatTokenAmountFull from ../../utils/format
   const formatAmount = (amount: string) => {
     const num = parseFloat(amount);
     return Number.isNaN(num) ? "0" : formatTokenAmountFull(num);

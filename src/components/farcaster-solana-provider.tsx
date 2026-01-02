@@ -2,7 +2,7 @@
 
 import { FarcasterSolanaProvider } from "@farcaster/mini-app-solana";
 import { useEffect, useMemo, useRef } from "react";
-import { SUPPORTED_CHAINS } from "@/config/chains";
+import { SUPPORTED_CHAINS } from "../config/chains";
 
 /**
  * Get Solana RPC endpoint - supports proxy path or full URL

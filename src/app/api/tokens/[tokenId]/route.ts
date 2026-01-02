@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { ConsignmentDB, MarketDataDB, TokenDB } from "@/services/database";
-import type { Token } from "@/types";
-import { TokenByIdResponseSchema } from "@/types/validation/api-schemas";
-import { sanitizeConsignmentForBuyer } from "@/utils/consignment-sanitizer";
+import { ConsignmentDB, MarketDataDB, TokenDB } from "../../../../services/database";
+import type { Token } from "../../../../types";
+import { TokenByIdResponseSchema } from "../../../../types/validation/api-schemas";
+import { sanitizeConsignmentForBuyer } from "../../../../utils/consignment-sanitizer";
 
 export async function GET(
   _request: NextRequest,

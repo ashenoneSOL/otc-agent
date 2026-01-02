@@ -1,9 +1,9 @@
 "use client";
 
 import { memo, useCallback } from "react";
-import type { Chain } from "@/config/chains";
-import { SUPPORTED_CHAINS } from "@/config/chains";
-import { useRenderTracker } from "@/utils/render-tracker";
+import type { Chain } from "../config/chains";
+import { SUPPORTED_CHAINS } from "../config/chains";
+import { useRenderTracker } from "../utils/render-tracker";
 
 interface ChainSelectorProps {
   selected: Chain[];

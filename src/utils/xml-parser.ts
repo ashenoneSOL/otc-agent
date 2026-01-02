@@ -2,10 +2,10 @@
  * Utility to parse XML from agent messages
  */
 
-import type { Chain, OTCQuote, QuoteAccepted } from "@/types";
+import type { Chain, OTCQuote, QuoteAccepted } from "../types";
 
 // Re-export types for consumers
-export type { OTCQuote, QuoteAccepted } from "@/types";
+export type { OTCQuote, QuoteAccepted } from "../types";
 
 /**
  * Extract XML from message text

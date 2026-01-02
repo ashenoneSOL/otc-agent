@@ -9,7 +9,7 @@ import type {
   VersionedTransaction,
 } from "@solana/web3.js";
 import type { Address } from "viem";
-import type { Chain, ChainFamily } from "@/config/chains";
+import type { Chain, ChainFamily } from "../config/chains";
 
 //==============================================================================
 // SOLANA TYPES
@@ -112,8 +112,8 @@ export interface PhantomSolanaProvider {
 // CHAIN & NETWORK TYPES
 //==============================================================================
 
-// ChainType is exported from @/lib/plugin-otc-desk/types (source of truth)
-// NetworkType is exported from @/config/contracts.ts (source of truth)
+// ChainType is exported from ../lib/plugin-otc-desk/types (source of truth)
+// NetworkType is exported from ../config/contracts.ts (source of truth)
 
 /**
  * Quote chain type (for UI components)
@@ -128,7 +128,7 @@ export type QuoteChain = "base" | "bsc" | "ethereum" | "solana" | null;
  * Payment currency options
  * Re-export from Zod validation schemas
  */
-import type { PaymentCurrency } from "@/types/validation/schemas";
+import type { PaymentCurrency } from "./validation/schemas";
 export type Currency = PaymentCurrency;
 
 /**
@@ -580,7 +580,7 @@ export interface MetaMaskFixtures {
 
 /**
  * EVM deployment snapshot for tests (minimal address info)
- * Note: Full deployment config with all fields is in @/config/contracts.ts
+ * Note: Full deployment config with all fields is in ../config/contracts.ts
  */
 export interface EvmDeploymentSnapshot {
   readonly otc: Address;
@@ -590,7 +590,7 @@ export interface EvmDeploymentSnapshot {
 
 /**
  * Solana deployment snapshot for tests (minimal address info)
- * Note: Full deployment config with all fields is in @/config/contracts.ts
+ * Note: Full deployment config with all fields is in ../config/contracts.ts
  */
 export interface SolanaDeploymentSnapshot {
   readonly programId: string;

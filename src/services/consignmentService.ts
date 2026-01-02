@@ -1,13 +1,14 @@
-import type { Chain } from "@/config/chains";
-import { walletToEntityId } from "@/lib/entityId";
-import { parseOrThrow } from "@/lib/validation/helpers";
+import type { Chain } from "../config/chains";
+import { agentRuntime } from "../lib/agent-runtime";
+import { walletToEntityId } from "../lib/entityId";
+import { parseOrThrow } from "../lib/validation/helpers";
 import {
   CreateConsignmentInputSchema,
   RecordDealInputSchema,
   ReleaseReservationInputSchema,
   ReserveAmountInputSchema,
   UpdateConsignmentInputSchema,
-} from "@/types/validation/service-schemas";
+} from "../types/validation/service-schemas";
 import {
   ConsignmentDB,
   type ConsignmentDeal,
@@ -217,7 +218,6 @@ export class ConsignmentService {
       amount,
     });
 
-    const { agentRuntime } = await import("@/lib/agent-runtime");
     const runtime = await agentRuntime.getRuntime();
 
     const lockKey = `consignment_lock:${validated.consignmentId}`;
@@ -292,7 +292,6 @@ export class ConsignmentService {
       amount,
     });
 
-    const { agentRuntime } = await import("@/lib/agent-runtime");
     const runtime = await agentRuntime.getRuntime();
 
     const lockKey = `consignment_lock:${validated.consignmentId}`;

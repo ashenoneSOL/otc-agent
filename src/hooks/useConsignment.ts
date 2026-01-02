@@ -11,7 +11,7 @@
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { OTCConsignment } from "@/types";
+import type { OTCConsignment } from "../types";
 import { consignmentKeys } from "./queryKeys";
 
 /**

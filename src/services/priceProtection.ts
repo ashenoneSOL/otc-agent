@@ -1,6 +1,6 @@
-import type { Chain } from "@/config/chains";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import { ValidateQuotePriceInputSchema } from "@/types/validation/service-schemas";
+import type { Chain } from "../config/chains";
+import { parseOrThrow } from "../lib/validation/helpers";
+import { ValidateQuotePriceInputSchema } from "../types/validation/service-schemas";
 import { MarketDataDB } from "./database";
 import { MarketDataService } from "./marketDataService";
 

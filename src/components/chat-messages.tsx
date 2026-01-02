@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-
-import { ChatMessage } from "@/components/chat-message";
-import { USER_NAME } from "@/constants";
-import type { Citation } from "@/types/chat";
-import type { ChatMessage as ChatMessageType } from "@/types/chat-message";
+import { USER_NAME } from "../constants";
+import type { Citation } from "../types/chat";
+import type { ChatMessage as ChatMessageType } from "../types/chat-message";
+import { ChatMessage } from "./chat-message";
 
 interface ChatMessagesProps {
   messages: ChatMessageType[];
@@ -45,8 +44,6 @@ export function ChatMessages({
   }, [messages, scrollToBottom]);
 
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-  const _lastMessageName = lastMessage?.name ?? null;
-  const _lastMessageText = lastMessage?.text ?? null;
 
   useEffect(() => {
     if (!lastMessage) return;

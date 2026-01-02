@@ -24,11 +24,12 @@ import {
   type VersionedTransaction,
 } from "@solana/web3.js";
 import bs58 from "bs58";
-import { getSolanaConfig } from "@/config/contracts";
-import { getHeliusRpcUrl } from "@/config/env";
+import { getSolanaConfig } from "../src/config/contracts";
+import { getHeliusRpcUrl } from "../src/config/env";
 // Load IDL
-import idl from "@/contracts/solana-otc.idl.json";
-import { findBestSolanaPool } from "@/utils/pool-finder-solana";
+import idl from "../src/contracts/solana-otc.idl.json";
+import { TokenDB } from "../src/services/database";
+import { findBestSolanaPool } from "../src/utils/pool-finder-solana";
 
 // Helper to create Anchor wallet from keypair
 class KeypairWallet implements AnchorWallet {
@@ -98,7 +99,6 @@ async function main() {
   console.log("✅ Verified: Signer is desk owner\n");
 
   // Get all tokens from database
-  const { TokenDB } = await import("@/services/database");
   const tokens = await TokenDB.getAllTokens();
   const solanaTokens = tokens.filter((t) => t.chain === "solana" && t.contractAddress);
 

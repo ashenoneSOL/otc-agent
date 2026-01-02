@@ -21,11 +21,15 @@ import {
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
-import { type Chain, type ChainConfig, SUPPORTED_CHAINS } from "@/config/chains";
-import { getCurrentNetwork } from "@/config/contracts";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
-import type { ConsignmentCreationResult, ConsignmentParams, Offer } from "@/types";
-import { findBestPool } from "@/utils/pool-finder-base";
+import { z } from "zod";
+import { type Chain, type ChainConfig, SUPPORTED_CHAINS } from "../../config/chains";
+import { getCurrentNetwork } from "../../config/contracts";
+import otcArtifact from "../../contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { parseOrThrow } from "../../lib/validation/helpers";
+import type { ConsignmentCreationResult, ConsignmentParams, Offer } from "../../types";
+import { ChainSchema } from "../../types/validation/schemas";
+import { ConsignmentParamsSchema } from "../../types/validation/service-schemas";
+import { findBestPool } from "../../utils/pool-finder-base";
 
 // Cache for OTC addresses per chain
 const otcAddressCache: Record<string, Address | undefined> = {};
@@ -120,7 +124,7 @@ interface TransactionLog {
 // Type-safe wrapper for readContract that handles wagmi client and dynamic ABIs
 // The client type is inferred, we only need to specify the return type
 // Uses MinimalPublicClient interface to work with both PublicClient and custom clients
-import type { MinimalPublicClient } from "@/lib/viem-utils";
+import type { MinimalPublicClient } from "../../lib/viem-utils";
 
 async function readContractFromClient<T>(
   client: MinimalPublicClient | PublicClient,
@@ -784,11 +788,6 @@ export function useOTC(): {
       }
 
       // Validate parameters with Zod
-      const { parseOrThrow } = await import("@/lib/validation/helpers");
-      const { ConsignmentParamsSchema } = await import("@/types/validation/service-schemas");
-      const { ChainSchema } = await import("@/types/validation/schemas");
-      const { z } = await import("zod");
-
       // Convert bigint params to strings for validation, then back to bigint
       const paramsForValidation = {
         ...params,

@@ -11,9 +11,9 @@
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import type { Chain, PoolCheckResult } from "@/types";
-import { PoolCheckResultSchema } from "@/types/validation/hook-schemas";
+import { parseOrThrow } from "../lib/validation/helpers";
+import type { Chain, PoolCheckResult } from "../types";
+import { PoolCheckResultSchema } from "../types/validation/hook-schemas";
 import { poolKeys } from "./queryKeys";
 
 /**

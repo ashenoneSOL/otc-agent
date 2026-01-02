@@ -10,7 +10,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { getDatabaseUrl, getGroqApiKey, getGroqModels, isProduction } from "@/config/env";
+import { getDatabaseUrl, getGroqApiKey, getGroqModels, isProduction } from "../config/env";
 import agent from "./agent";
 
 // Global state for serverless environment persistence

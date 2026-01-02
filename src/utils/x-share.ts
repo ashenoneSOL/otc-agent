@@ -1,7 +1,7 @@
 "use client";
 
 // Client-side helpers for X (Twitter) sharing via our backend endpoints
-import type { PendingShare, XCredentials } from "@/types";
+import type { PendingShare, XCredentials } from "../types";
 
 const STORAGE_KEY = "twitter-oauth-token";
 const OAUTH_REDIRECT_ORIGIN_KEY = "OAUTH_REDIRECT_ORIGIN";

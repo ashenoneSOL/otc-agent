@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { invalidateConsignmentCache } from "@/lib/cache";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import { getAuthHeaders, verifyWalletOwnership } from "@/lib/wallet-auth";
-import { ConsignmentService } from "@/services/consignmentService";
-import { ConsignmentDB } from "@/services/database";
-import type { OTCConsignment } from "@/types";
+import { invalidateConsignmentCache } from "../../../../lib/cache";
+import { validationErrorResponse } from "../../../../lib/validation/helpers";
+import { getAuthHeaders, verifyWalletOwnership } from "../../../../lib/wallet-auth";
+import { ConsignmentService } from "../../../../services/consignmentService";
+import { ConsignmentDB } from "../../../../services/database";
+import type { OTCConsignment } from "../../../../types";
 import {
   ConsignmentByIdResponseSchema,
   DeleteConsignmentResponseSchema,
@@ -12,8 +12,11 @@ import {
   GetConsignmentByIdQuerySchema,
   UpdateConsignmentRequestSchema,
   UpdateConsignmentResponseSchema,
-} from "@/types/validation/api-schemas";
-import { isConsignmentOwner, sanitizeConsignmentForBuyer } from "@/utils/consignment-sanitizer";
+} from "../../../../types/validation/api-schemas";
+import {
+  isConsignmentOwner,
+  sanitizeConsignmentForBuyer,
+} from "../../../../utils/consignment-sanitizer";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const routeParams = await params;

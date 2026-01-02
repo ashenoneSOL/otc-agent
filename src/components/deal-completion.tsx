@@ -2,10 +2,10 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/button";
-import { useCompleteDeal, useShareDeal } from "@/hooks/mutations";
-import { formatTokenAmountFull, getExplorerTxUrl } from "@/utils/format";
-import { createDealShareImage } from "@/utils/share-card";
+import { useCompleteDeal, useShareDeal } from "../hooks/mutations";
+import { formatTokenAmountFull, getExplorerTxUrl } from "../utils/format";
+import { createDealShareImage } from "../utils/share-card";
+import { Button } from "./button";
 
 // Extended Navigator type for Web Share API with files support
 interface ShareData {

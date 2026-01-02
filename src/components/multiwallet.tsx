@@ -13,7 +13,7 @@ import {
 } from "react";
 import { useAccount, useChainId, useConnect, useDisconnect } from "wagmi";
 import { base, baseSepolia, bsc, bscTestnet, localhost } from "wagmi/chains";
-import { type ChainFamily, SUPPORTED_CHAINS } from "@/config/chains";
+import { type ChainFamily, SUPPORTED_CHAINS } from "../config/chains";
 import {
   ChainContext,
   type ChainContextValue,
@@ -21,7 +21,7 @@ import {
   type WalletActionsContextValue,
   WalletConnectionContext,
   type WalletConnectionContextValue,
-} from "@/contexts";
+} from "../contexts";
 import type {
   EVMChain,
   PhantomSolanaProvider,
@@ -29,9 +29,9 @@ import type {
   PrivySolanaWallet,
   SolanaTransaction,
   SolanaWalletAdapter,
-} from "@/types";
-import { useRenderTracker } from "@/utils/render-tracker";
-import { clearWalletCaches } from "@/utils/wallet-utils";
+} from "../types";
+import { useRenderTracker } from "../utils/render-tracker";
+import { clearWalletCaches } from "../utils/wallet-utils";
 
 /**
  * Combined MultiWallet context value
@@ -376,7 +376,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
   const solanaWalletAddressRef = useRef<string | null>(null);
   const [solanaWalletAdapter, setSolanaWalletAdapter] = useState<SolanaWalletAdapter | null>(null);
 
-  // PhantomSolanaProvider imported from @/types
+  // PhantomSolanaProvider imported from ../types
 
   useEffect(() => {
     let mounted = true;
@@ -478,7 +478,11 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
                 // Wrap Phantom's signMessage to extract signature from response
                 signMessage: phantom.signMessage
                   ? async (message: Uint8Array) => {
-                      const result = await phantom.signMessage(message);
+                      const signMessageFn = phantom.signMessage;
+                      if (!signMessageFn) {
+                        throw new Error("Phantom signMessage not available");
+                      }
+                      const result = await signMessageFn(message);
                       return result.signature;
                     }
                   : undefined,
@@ -516,6 +520,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     walletAdapterWallet,
     walletAdapterSignTransaction,
     walletAdapterSignAllTransactions,
+    walletAdapterSignMessage,
   ]);
 
   // === Action handlers ===
@@ -838,4 +843,4 @@ export function useMultiWallet(): MultiWalletContextValue {
 }
 
 // Re-export the split hooks for convenience
-export { useChain, useWalletActions, useWalletConnection } from "@/contexts";
+export { useChain, useWalletActions, useWalletConnection } from "../contexts";

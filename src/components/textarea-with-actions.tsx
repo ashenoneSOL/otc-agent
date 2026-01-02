@@ -5,7 +5,7 @@ import clsx from "clsx";
 import { Loader2 } from "lucide-react";
 import { forwardRef, memo } from "react";
 
-import { Button } from "@/components/button";
+import { Button } from "./button";
 
 const ChatForm = memo(
   forwardRef<

@@ -7,16 +7,16 @@
  */
 
 import { type Abi, type Address, createPublicClient, http } from "viem";
-import { getOtcAddress } from "@/config/contracts";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
-import { getChain, getRpcUrl } from "@/lib/getChain";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import type { MinimalPublicClient } from "@/lib/viem-utils";
+import { getOtcAddress } from "../config/contracts";
+import otcArtifact from "../contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { getChain, getRpcUrl } from "../lib/getChain";
+import { parseOrThrow } from "../lib/validation/helpers";
+import type { MinimalPublicClient } from "../lib/viem-utils";
 import {
   HealthCheckOutputSchema,
   ReconciliationResultSchema,
   ReconciliationSummarySchema,
-} from "@/types/validation/service-schemas";
+} from "../types/validation/service-schemas";
 import { QuoteDB } from "./database";
 
 // OnChainOffer matches the struct returned by the OTC contract

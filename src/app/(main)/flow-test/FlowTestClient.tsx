@@ -12,12 +12,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Abi, Address } from "viem";
 import { createPublicClient, http } from "viem";
 import { base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "viem/chains";
-import { Button } from "@/components/button";
-import { type Chain, SUPPORTED_CHAINS } from "@/config/chains";
-import { getCurrentNetwork } from "@/config/contracts";
-import { useChain, useWalletActions, useWalletConnection } from "@/contexts";
-import { useOTC } from "@/hooks/contracts/useOTC";
-import { safeReadContract } from "@/lib/viem-utils";
+import { Button } from "../../../components/button";
+import { type Chain, SUPPORTED_CHAINS } from "../../../config/chains";
+import { getCurrentNetwork } from "../../../config/contracts";
+import { useChain, useWalletActions, useWalletConnection } from "../../../contexts";
+import { useOTC } from "../../../hooks/contracts/useOTC";
+import { safeReadContract } from "../../../lib/viem-utils";
 import type {
   AnchorWallet,
   ChainFamily,
@@ -31,9 +31,8 @@ import type {
   TestState,
   TokenRegistryAccount,
   WalletSigner,
-} from "@/types";
-import { getExplorerTxUrl } from "@/utils/format";
-
+} from "../../../types";
+import { getExplorerTxUrl } from "../../../utils/format";
 // Shared Solana OTC utilities
 import {
   calculateRequiredTokenAmount,
@@ -46,9 +45,10 @@ import {
   getTokenProgramId,
   SOLANA_DESK,
   waitForSolanaTx,
-} from "@/utils/solana-otc";
+} from "../../../utils/solana-otc";
+import { waitForEvmTx } from "../../../utils/tx-helpers";
 
-// Use ChainFamily from @/types instead of local alias
+// Use ChainFamily from ../../../types instead of local alias
 
 // Constants
 const ELIZAOS_TOKEN_CONFIG = {
@@ -762,7 +762,6 @@ export default function FlowTestClient() {
     addLog("Waiting for approval confirmation...");
 
     // Wait for approval tx to be mined before proceeding
-    const { waitForEvmTx } = await import("@/utils/tx-helpers");
     const chainConfig = SUPPORTED_CHAINS.base;
     const viemChain = getViemChain("base");
     const publicClient = createPublicClient({
@@ -1522,7 +1521,7 @@ export default function FlowTestClient() {
       ? Boolean(activePublicKey && activeSigner && activeSigner.signTransaction)
       : Boolean(evmAddress);
 
-  // getExplorerUrl uses centralized getExplorerTxUrl from @/utils/format
+  // getExplorerUrl uses centralized getExplorerTxUrl from ../../../utils/format
   const getExplorerUrl = (txHash: string) => {
     if (testState.chain === "solana") {
       return getExplorerTxUrl(txHash, "solana");

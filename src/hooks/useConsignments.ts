@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import type { Chain, OTCConsignment } from "@/types";
+import { parseOrThrow } from "../lib/validation/helpers";
+import type { Chain, OTCConsignment } from "../types";
 import {
   type ConsignmentsFilters,
   ConsignmentsFiltersSchema,
   ConsignmentsResponseSchema,
-} from "@/types/validation/hook-schemas";
+} from "../types/validation/hook-schemas";
 import { consignmentKeys } from "./queryKeys";
 
 async function fetchConsignments(filters: ConsignmentsFilters): Promise<OTCConsignment[]> {

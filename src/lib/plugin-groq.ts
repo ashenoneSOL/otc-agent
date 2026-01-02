@@ -11,7 +11,7 @@ import {
   ModelType,
   type TokenizeTextParams,
 } from "@elizaos/core";
-import { getGroqApiKey, getGroqModels } from "@/config/env";
+import { getGroqApiKey, getGroqModels } from "../config/env";
 
 /**
  * Retrieves the Groq API base URL, using runtime settings or environment variables if available.

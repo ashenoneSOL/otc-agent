@@ -1,22 +1,31 @@
 import { Connection } from "@solana/web3.js";
 import { type NextRequest, NextResponse } from "next/server";
 import { type Abi, type Address, createPublicClient, http } from "viem";
-import { getOtcAddress } from "@/config/contracts";
-import { getHeliusRpcUrl, getNetwork } from "@/config/env";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { validateCSRF } from "@/lib/csrf";
-import { walletToEntityId } from "@/lib/entityId";
-import { getChain, getRpcUrl } from "@/lib/getChain";
-import type QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
-import type { QuoteMemory } from "@/lib/plugin-otc-desk/types";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import { safeReadContract } from "@/lib/viem-utils";
-import { DealCompletionService, type PaymentCurrency } from "@/services/database";
+import { getOtcAddress } from "../../../config/contracts";
+import { getHeliusRpcUrl, getNetwork } from "../../../config/env";
+import otcArtifact from "../../../contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { agentRuntime } from "../../../lib/agent-runtime";
+import { validateCSRF } from "../../../lib/csrf";
+import { walletToEntityId } from "../../../lib/entityId";
+import { getChain, getRpcUrl } from "../../../lib/getChain";
+import { getSolPriceUsd } from "../../../lib/plugin-otc-desk/services/priceFeed";
+import type QuoteService from "../../../lib/plugin-otc-desk/services/quoteService";
+import type { QuoteMemory } from "../../../lib/plugin-otc-desk/types";
+import { validationErrorResponse } from "../../../lib/validation/helpers";
+import { safeReadContract } from "../../../lib/viem-utils";
+import { ConsignmentService } from "../../../services/consignmentService";
+import {
+  ConsignmentDB,
+  DealCompletionService,
+  MarketDataDB,
+  type PaymentCurrency,
+  TokenDB,
+} from "../../../services/database";
+import { PriceProtectionService } from "../../../services/priceProtection";
 import {
   DealCompletionRequestSchema,
   DealCompletionResponseSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../types/validation/api-schemas";
 
 export async function POST(request: NextRequest) {
   const csrfError = validateCSRF(request);
@@ -42,10 +51,6 @@ export async function POST(request: NextRequest) {
 
   if (action === "complete") {
     if (consignmentId && tokenId) {
-      const { PriceProtectionService } = await import("@/services/priceProtection");
-      const { TokenDB } = await import("@/services/database");
-      const { ConsignmentService } = await import("@/services/consignmentService");
-
       const priceProtection = new PriceProtectionService();
       const consignmentService = new ConsignmentService();
       const token = await TokenDB.getToken(tokenId);
@@ -228,7 +233,6 @@ export async function POST(request: NextRequest) {
 
       // Try to get actual token price from market data
       if (quote.tokenId) {
-        const { MarketDataDB } = await import("@/services/database");
         const marketData = await MarketDataDB.getMarketData(quote.tokenId);
         // MarketData is optional - may not exist yet
         if (marketData) {
@@ -250,7 +254,6 @@ export async function POST(request: NextRequest) {
       }
 
       // Get SOL price from price feed API
-      const { getSolPriceUsd } = await import("@/lib/plugin-otc-desk/services/priceFeed");
       solPrice = await getSolPriceUsd();
       console.log("[DealCompletion] Using SOL price from API:", solPrice);
 
@@ -705,7 +708,6 @@ export async function GET(request: NextRequest) {
   console.log("[Deal Completion GET] Filtered deals (active + approved + executed):", deals.length);
 
   // Enrich deals with token metadata - batch fetch to avoid N+1 queries
-  const { TokenDB, ConsignmentDB } = await import("@/services/database");
 
   // Collect unique IDs that need fetching
   const consignmentIdsToFetch = new Set<string>();

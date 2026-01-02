@@ -8,7 +8,7 @@
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Currency } from "@/types";
+import type { Currency } from "../../types";
 import { throwApiError } from "../lib/api-helpers";
 import { consignmentKeys, dealKeys, quoteKeys, walletTokenKeys } from "../queryKeys";
 

@@ -1,7 +1,7 @@
 import { createPublicClient, http, parseAbi } from "viem";
 import { base } from "viem/chains";
-import { getRegistrationHelperForChain } from "@/config/contracts";
-import type { MinimalPublicClient } from "@/lib/viem-utils";
+import { getRegistrationHelperForChain } from "../config/contracts";
+import type { MinimalPublicClient } from "../lib/viem-utils";
 import { TokenRegistryService } from "./tokenRegistry";
 
 // Protected symbols that can only be registered from verified contract addresses

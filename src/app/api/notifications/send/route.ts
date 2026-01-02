@@ -1,10 +1,10 @@
 import { Configuration, NeynarAPIClient } from "@neynar/nodejs-sdk";
 import { type NextRequest, NextResponse } from "next/server";
-import { parseOrThrow } from "@/lib/validation/helpers";
+import { parseOrThrow } from "../../../../lib/validation/helpers";
 import {
   NotificationResponseSchema,
   SendNotificationRequestSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../../types/validation/api-schemas";
 
 let neynarClient: NeynarAPIClient | null = null;
 

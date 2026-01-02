@@ -2,9 +2,9 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { DealCompletion } from "@/components/deal-completion";
-import { PageLoading } from "@/components/ui/loading-spinner";
-import { useExecutedQuote } from "@/hooks/useQuote";
+import { DealCompletion } from "../../../../components/deal-completion";
+import { PageLoading } from "../../../../components/ui/loading-spinner";
+import { useExecutedQuote } from "../../../../hooks/useQuote";
 
 // Force dynamic rendering for this route
 export const dynamic = "force-dynamic";

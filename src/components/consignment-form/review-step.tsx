@@ -3,11 +3,11 @@
 import { AlertCircle, ArrowLeft, Check, Copy } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
-import { useChain, useWalletConnection } from "@/contexts";
-import { usePoolCheck } from "@/hooks/usePoolCheck";
-import { formatAddress, formatTokenAmountFull } from "@/utils/format";
-import { parseTokenId } from "@/utils/token-utils";
-import { Button } from "@/components/button";
+import { useChain, useWalletConnection } from "../../contexts";
+import { usePoolCheck } from "../../hooks/usePoolCheck";
+import { formatAddress, formatTokenAmountFull } from "../../utils/format";
+import { parseTokenId } from "../../utils/token-utils";
+import { Button } from "../button";
 
 interface ReviewStepProps {
   formData: {
@@ -60,7 +60,7 @@ export function ReviewStep({
   // Use React Query for pool checking - automatic caching and deduplication
   const { poolCheck, isCheckingPool } = usePoolCheck(rawTokenAddress, tokenChain);
 
-  // getDisplayAddress uses centralized formatAddress from @/utils/format
+  // getDisplayAddress uses centralized formatAddress from ../../utils/format
   const getDisplayAddress = (addr: string) => (addr ? formatAddress(addr) : "");
 
   const handleCopyToken = async () => {
@@ -100,7 +100,7 @@ export function ReviewStep({
     onNext();
   };
 
-  // formatAmount uses centralized formatTokenAmountFull from @/utils/format
+  // formatAmount uses centralized formatTokenAmountFull from ../../utils/format
   const formatAmount = (amount: string) => {
     const num = parseFloat(amount);
     return Number.isNaN(num) ? "0" : formatTokenAmountFull(num);

@@ -1,10 +1,14 @@
+import { createHash } from "node:crypto";
 import { ChannelType, type Memory, stringToUuid, type UUID } from "@elizaos/core";
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { walletToEntityId } from "@/lib/entityId";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import { CreateRoomRequestSchema, RoomsResponseSchema } from "@/types/validation/api-schemas";
+import { agentRuntime } from "../../../lib/agent-runtime";
+import { walletToEntityId } from "../../../lib/entityId";
+import { parseOrThrow } from "../../../lib/validation/helpers";
+import {
+  CreateRoomRequestSchema,
+  RoomsResponseSchema,
+} from "../../../types/validation/api-schemas";
 
 // GET /api/rooms - Get user's rooms
 export async function GET(request: NextRequest) {
@@ -83,10 +87,8 @@ export async function POST(request: NextRequest) {
   });
 
   // Save initial quote to cache with consistent ID generation
-  const crypto = await import("node:crypto");
   const dayTimestamp = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
-  const hash = crypto
-    .createHash("sha256")
+  const hash = createHash("sha256")
     .update(`${userEntityId}-${dayTimestamp}`)
     .digest("hex")
     .substring(0, 12)

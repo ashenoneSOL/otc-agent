@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
-import { PageFooter } from "@/components/page-footer";
+import { PageFooter } from "../../../components/page-footer";
 
 // Dynamically import the deals component to avoid SSR issues with wagmi hooks
 const MyDealsContent = dynamic(() => import("./MyDealsContent").then((mod) => mod.MyDealsContent), {

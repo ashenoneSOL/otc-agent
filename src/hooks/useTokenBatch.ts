@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import type { Token } from "@/types";
-import { TokenBatchResponseSchema } from "@/types/validation/hook-schemas";
+import { parseOrThrow } from "../lib/validation/helpers";
+import type { Token } from "../types";
+import { TokenBatchResponseSchema } from "../types/validation/hook-schemas";
 import { tokenKeys } from "./queryKeys";
 
 // Token IDs array validation

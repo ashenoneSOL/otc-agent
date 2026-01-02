@@ -13,8 +13,8 @@ import {
   enrichSolanaTokensWithPrices,
   filterDustTokens,
   sortTokensByValue,
-} from "@/lib/balance-fetcher";
-import type { SolanaTokenBalance, TokenBalance } from "@/types/api";
+} from "../../src/lib/balance-fetcher";
+import type { SolanaTokenBalance, TokenBalance } from "../../src/types/api";
 import { expectDefined } from "../test-utils";
 
 describe("balance-fetcher", () => {

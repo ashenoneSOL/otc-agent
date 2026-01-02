@@ -12,7 +12,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import type { NativePrices } from "@/types";
+import type { NativePrices } from "../types";
 import { priceKeys } from "./queryKeys";
 
 /**

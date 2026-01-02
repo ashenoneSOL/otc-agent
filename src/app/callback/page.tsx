@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { OAuthResponse, StoredCredentials } from "@/types";
+import type { OAuthResponse, StoredCredentials } from "../../types";
 
 const STORAGE_KEY = "twitter-oauth-token";
 const OAUTH_REDIRECT_ORIGIN_KEY = "OAUTH_REDIRECT_ORIGIN";

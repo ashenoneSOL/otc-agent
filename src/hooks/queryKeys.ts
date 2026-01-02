@@ -9,8 +9,8 @@
  * Pattern: [domain, scope?, ...params]
  */
 
-import type { Chain } from "@/config/chains";
-import type { ConsignmentsFilters } from "@/types/validation/hook-schemas";
+import type { Chain } from "../config/chains";
+import type { ConsignmentsFilters } from "../types/validation/hook-schemas";
 
 /**
  * Token query keys

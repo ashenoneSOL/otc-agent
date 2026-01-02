@@ -3,15 +3,17 @@ import { AnchorProvider, BN, type Idl, Program } from "@coral-xyz/anchor";
 import { ComputeBudgetProgram, Connection, Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import { type NextRequest, NextResponse } from "next/server";
-import { getSolanaConfig } from "@/config/contracts";
-import { getHeliusRpcUrl, getNetwork } from "@/config/env";
-import idl from "@/contracts/solana-otc.idl.json";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import { MarketDataDB } from "@/services/database";
+import { getSolanaConfig } from "../../../../config/contracts";
+import { getHeliusRpcUrl, getNetwork } from "../../../../config/env";
+import idl from "../../../../contracts/solana-otc.idl.json";
+import { getSolPriceUsd } from "../../../../lib/plugin-otc-desk/services/priceFeed";
+import { validationErrorResponse } from "../../../../lib/validation/helpers";
+import { MarketDataDB, TokenDB } from "../../../../services/database";
 import {
   SolanaUpdatePriceRequestSchema,
   SolanaUpdatePriceResponseSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../../types/validation/api-schemas";
+import { findBestSolanaPool } from "../../../../utils/pool-finder-solana";
 
 // Helper to sync market data database with new price
 async function syncMarketData(tokenMint: string, priceUsd: number): Promise<void> {
@@ -93,7 +95,6 @@ async function fetchTokenPrice(mint: string): Promise<number> {
   }
 
   // Try PumpSwap / Raydium pool price (for pump.fun unbonded tokens)
-  const { findBestSolanaPool } = await import("@/utils/pool-finder-solana");
   const pool = await findBestSolanaPool(mint, "mainnet");
   if (pool?.priceUsd && pool.priceUsd > 0) {
     const tvlStr = pool.tvlUsd ? pool.tvlUsd.toLocaleString() : "unknown";
@@ -104,8 +105,6 @@ async function fetchTokenPrice(mint: string): Promise<number> {
   }
 
   // Try to get price from our database MarketData
-  const { MarketDataDB, TokenDB } = await import("@/services/database");
-
   // Look up token by contract address to get tokenId
   const tokens = await TokenDB.getAllTokens();
   const token = tokens.find((t) => t.chain === "solana" && t.contractAddress === mint);
@@ -237,7 +236,6 @@ async function handlePriceUpdate(tokenMint: string, forceUpdate: boolean): Promi
   } | null = null;
 
   // Try to get cached pool info from database first (faster than searching)
-  const { TokenDB } = await import("@/services/database");
   const tokens = await TokenDB.getAllTokens();
   const token = tokens.find((t) => t.chain === "solana" && t.contractAddress === tokenMint);
 
@@ -262,7 +260,6 @@ async function handlePriceUpdate(tokenMint: string, forceUpdate: boolean): Promi
 
   // If no cached pool, search for one
   if (!pumpSwapPool) {
-    const { findBestSolanaPool } = await import("@/utils/pool-finder-solana");
     const pool = await findBestSolanaPool(tokenMint, "mainnet");
     console.log(
       `[Price Update] Pool finder result:`,
@@ -461,7 +458,6 @@ async function handlePriceUpdate(tokenMint: string, forceUpdate: boolean): Promi
     // Use update_token_price_from_pumpswap (permissionless)
     // pumpSwapPool already validated above - it has all required fields
     // Get current SOL price for the calculation
-    const { getSolPriceUsd } = await import("@/lib/plugin-otc-desk/services/priceFeed");
     const solPrice = await getSolPriceUsd();
     const solPrice8d = Math.floor(solPrice * 1e8);
 

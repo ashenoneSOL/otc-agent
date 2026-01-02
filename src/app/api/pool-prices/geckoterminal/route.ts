@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { PoolPriceProxyErrorResponseSchema } from "@/types/validation/api-schemas";
+import { PoolPriceProxyErrorResponseSchema } from "../../../../types/validation/api-schemas";
 
 /**
  * GET /api/pool-prices/geckoterminal?network=base&token=0x...

@@ -1,6 +1,6 @@
 "use client";
 
-import { useChainReset } from "@/hooks/useChainReset";
+import { useChainReset } from "../hooks/useChainReset";
 
 export function ChainResetMonitor() {
   useChainReset();

@@ -3,15 +3,15 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { type NextRequest, NextResponse } from "next/server";
 import { createPublicClient, erc20Abi, http } from "viem";
 import { base, bsc, mainnet } from "viem/chains";
-import type { Chain } from "@/config/chains";
-import { getSolanaConfig } from "@/config/contracts";
-import { getNetwork } from "@/config/env";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import { TokenDB } from "@/services/database";
+import type { Chain } from "../../../../config/chains";
+import { getSolanaConfig } from "../../../../config/contracts";
+import { getNetwork } from "../../../../config/env";
+import { validationErrorResponse } from "../../../../lib/validation/helpers";
+import { TokenDB } from "../../../../services/database";
 import {
   GetTokenDecimalsQuerySchema,
   TokenDecimalsResponseSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../../types/validation/api-schemas";
 
 /**
  * GET /api/tokens/decimals?address={address}&chain={chain}

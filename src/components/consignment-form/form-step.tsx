@@ -19,9 +19,9 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePoolCheck } from "@/hooks/usePoolCheck";
-import { parseTokenId } from "@/utils/token-utils";
-import { Button } from "@/components/button";
+import { usePoolCheck } from "../../hooks/usePoolCheck";
+import { parseTokenId } from "../../utils/token-utils";
+import { Button } from "../button";
 
 interface FormStepProps {
   formData: {

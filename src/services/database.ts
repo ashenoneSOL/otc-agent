@@ -1,10 +1,12 @@
 // Database service layer using Eliza runtime services
 // With fail-fast Zod validation at all boundaries
 
+import { v4 as uuidv4 } from "uuid";
+import { encodePacked, getAddress, keccak256 } from "viem";
 import { z } from "zod";
-import { agentRuntime } from "@/lib/agent-runtime";
-import type QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
-import { parseOrThrow } from "@/lib/validation/helpers";
+import { agentRuntime } from "../lib/agent-runtime";
+import type QuoteService from "../lib/plugin-otc-desk/services/quoteService";
+import { parseOrThrow } from "../lib/validation/helpers";
 import type {
   Chain,
   ConsignmentDeal,
@@ -14,15 +16,15 @@ import type {
   QuoteStatus,
   Token,
   TokenMarketData,
-} from "@/types";
-import { AddressSchema, BigIntStringSchema, ChainSchema } from "@/types/validation/schemas";
+} from "../types";
+import { AddressSchema, BigIntStringSchema, ChainSchema } from "../types/validation/schemas";
 import {
   ConsignmentDealOutputSchema,
   ConsignmentOutputSchema,
   MarketDataOutputSchema,
   TokenOutputSchema,
-} from "@/types/validation/service-schemas";
-import { isEvmAddress } from "@/utils/address-utils";
+} from "../types/validation/service-schemas";
+import { isEvmAddress } from "../utils/address-utils";
 
 export type {
   PaymentCurrency,
@@ -408,7 +410,6 @@ export class TokenDB {
    * This maps the smart contract's `bytes32 tokenId` to a TokenDB entry.
    */
   static async getTokenByOnChainId(onChainTokenId: string): Promise<Token | null> {
-    const { encodePacked, getAddress, keccak256 } = await import("viem");
     const allTokens = await TokenDB.getAllTokens();
     const normalizedTarget = onChainTokenId.toLowerCase();
 
@@ -558,7 +559,6 @@ export class ConsignmentDB {
     parseOrThrow(ConsignmentCreateInputSchema, data);
 
     const runtime = await agentRuntime.getRuntime();
-    const { v4: uuidv4 } = await import("uuid");
     const consignmentId = uuidv4();
     const normalizedTokenId = normalizeTokenId(data.tokenId);
 
@@ -693,7 +693,6 @@ export class ConsignmentDealDB {
     parseOrThrow(ConsignmentDealCreateInputSchema, data);
 
     const runtime = await agentRuntime.getRuntime();
-    const { v4: uuidv4 } = await import("uuid");
     const dealId = uuidv4();
     const deal: ConsignmentDeal = {
       ...data,

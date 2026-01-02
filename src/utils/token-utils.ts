@@ -5,7 +5,7 @@
  * Examples: "token-base-0x1234...", "token-solana-So11111..."
  */
 
-import type { Chain, ChainFamily } from "@/config/chains";
+import type { Chain, ChainFamily } from "../config/chains";
 
 /** Valid chain identifiers */
 const VALID_CHAINS = new Set<Chain>(["ethereum", "base", "bsc", "solana"]);

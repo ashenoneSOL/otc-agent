@@ -1,13 +1,13 @@
 import type { Metadata, Viewport } from "next";
 
-import { siteConfig } from "@/app/constants";
-import "@/app/globals.css";
 import { IBM_Plex_Mono } from "next/font/google";
-import { ProgressBar } from "@/app/progress-bar";
-import { Toaster } from "@/app/toaster";
-import { Header } from "@/components/header";
-import { Providers } from "@/components/providers";
-import { XShareResume } from "@/components/x-share-resume";
+import { Header } from "../components/header";
+import { Providers } from "../components/providers";
+import { XShareResume } from "../components/x-share-resume";
+import { siteConfig } from "./constants";
+import "./globals.css";
+import { ProgressBar } from "./progress-bar";
+import { Toaster } from "./toaster";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -80,7 +80,7 @@ export const metadata: Metadata = {
   },
 };
 
-import { DeploymentValidator } from "@/components/deployment-validator";
+import { DeploymentValidator } from "../components/deployment-validator";
 
 export default function RootLayout({
   children,

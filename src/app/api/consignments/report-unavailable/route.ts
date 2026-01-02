@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { markConsignmentUnavailable } from "@/lib/solana-consignment-checker";
-import { ConsignmentDB } from "@/services/database";
+import { markConsignmentUnavailable } from "../../../../lib/solana-consignment-checker";
+import { ConsignmentDB } from "../../../../services/database";
 
 /**
  * POST /api/consignments/report-unavailable

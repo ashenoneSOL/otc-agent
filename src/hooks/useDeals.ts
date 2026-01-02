@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import type { DealFromAPI } from "@/types";
-import { DealsResponseSchema } from "@/types/validation/hook-schemas";
-import { AddressSchema } from "@/types/validation/schemas";
+import { parseOrThrow } from "../lib/validation/helpers";
+import type { DealFromAPI } from "../types";
+import { DealsResponseSchema } from "../types/validation/hook-schemas";
+import { AddressSchema } from "../types/validation/schemas";
 import { dealKeys } from "./queryKeys";
 
 // Re-export for consumers
-export type { DealFromAPI, DealsResponse } from "@/types";
+export type { DealFromAPI, DealsResponse } from "../types";
 
 async function fetchDeals(walletAddress: string): Promise<DealFromAPI[]> {
   // Validate wallet address

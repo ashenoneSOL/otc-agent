@@ -15,6 +15,7 @@
 import * as fs from "node:fs";
 import { getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import bs58 from "bs58";
 import { config } from "dotenv";
 import {
   type Address,
@@ -695,7 +696,6 @@ async function testSolana(): Promise<void> {
   if (solanaPrivateKey.startsWith("[")) {
     wallet = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(solanaPrivateKey)));
   } else {
-    const bs58 = await import("bs58").then((m) => m.default);
     wallet = Keypair.fromSecretKey(bs58.decode(solanaPrivateKey));
   }
 

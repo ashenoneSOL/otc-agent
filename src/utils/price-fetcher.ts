@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import type { Chain } from "@/config/chains";
+import type { Chain } from "../config/chains";
 
 // Price sanity threshold: $1 billion - reject obviously manipulated prices
 const MAX_SANE_PRICE_USD = 1_000_000_000;

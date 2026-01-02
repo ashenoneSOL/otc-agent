@@ -16,19 +16,16 @@ import type { Abi, Address } from "viem";
 import { createPublicClient, erc20Abi, formatUnits, http } from "viem";
 import { base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "viem/chains";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
-import { Button } from "@/components/button";
-import { Dialog } from "@/components/dialog";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import type { ChainConfig } from "@/config/chains";
-import { SUPPORTED_CHAINS } from "@/config/chains";
-import { getCurrentNetwork, getSolanaConfig, getSolanaDesk } from "@/config/contracts";
-import { useChain, useWalletActions, useWalletConnection } from "@/contexts";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
-import { useOTC } from "@/hooks/contracts/useOTC";
-import { useNativePrices } from "@/hooks/useNativePrices";
-import { useSolanaPaymentBalance } from "@/hooks/useSolanaBalance";
-import { useTransactionErrorHandler } from "@/hooks/useTransactionErrorHandler";
-import { safeReadContract } from "@/lib/viem-utils";
+import type { ChainConfig } from "../config/chains";
+import { SUPPORTED_CHAINS } from "../config/chains";
+import { getCurrentNetwork, getSolanaConfig, getSolanaDesk } from "../config/contracts";
+import { useChain, useWalletActions, useWalletConnection } from "../contexts";
+import otcArtifact from "../contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { useOTC } from "../hooks/contracts/useOTC";
+import { useNativePrices } from "../hooks/useNativePrices";
+import { useSolanaPaymentBalance } from "../hooks/useSolanaBalance";
+import { useTransactionErrorHandler } from "../hooks/useTransactionErrorHandler";
+import { safeReadContract } from "../lib/viem-utils";
 import type {
   Currency,
   ModalAction,
@@ -36,16 +33,19 @@ import type {
   QuoteChain,
   TokenMetadata,
   TransactionError,
-} from "@/types";
-import { getExplorerTxUrl } from "@/utils/format";
+} from "../types";
+import { getExplorerTxUrl } from "../utils/format";
 // Shared Solana OTC utilities
 import {
   createSolanaConnection,
   deriveTokenRegistryPda,
   fetchSolanaIdl,
   waitForSolanaTx,
-} from "@/utils/solana-otc";
-import type { OTCQuote } from "@/utils/xml-parser";
+} from "../utils/solana-otc";
+import type { OTCQuote } from "../utils/xml-parser";
+import { Button } from "./button";
+import { Dialog } from "./dialog";
+import { LoadingSpinner } from "./ui/loading-spinner";
 
 interface AcceptQuoteModalProps {
   isOpen: boolean;
@@ -103,7 +103,7 @@ function setContractExists(key: string, exists: boolean): void {
   contractExistsCache.set(key, { exists, cachedAt: Date.now() });
 }
 
-// Types imported from @/types/shared
+// Types imported from ../types/shared
 
 function modalReducer(state: ModalState, action: ModalAction): ModalState {
   switch (action.type) {
@@ -324,7 +324,7 @@ export function AcceptQuoteModal({
     return isMainnet ? base : baseSepolia;
   }, [isLocalRpc, rpcUrl, isMainnet, targetEvmChain, isSolanaToken]);
 
-  // getExplorerUrl uses centralized getExplorerTxUrl from @/utils/format
+  // getExplorerUrl uses centralized getExplorerTxUrl from ../utils/format
   const getExplorerUrl = useCallback(
     (txHash: string) => {
       if (isSolanaToken) {

@@ -4,8 +4,8 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAccount, useDisconnect, usePublicClient } from "wagmi";
-import type { ChainResetState } from "@/types";
-import { clearWalletCachesAndReload } from "@/utils/wallet-utils";
+import type { ChainResetState } from "../types";
+import { clearWalletCachesAndReload } from "../utils/wallet-utils";
 
 export function useChainReset() {
   const [mounted, setMounted] = useState(false);

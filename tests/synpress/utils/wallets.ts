@@ -1,4 +1,4 @@
-import type { EvmWalletConfig, SolanaWalletConfig } from "@/types";
+import type { EvmWalletConfig, SolanaWalletConfig } from "../../../src/types";
 
 export type { EvmWalletConfig, SolanaWalletConfig };
 

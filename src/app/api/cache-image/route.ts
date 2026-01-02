@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { type HeadBlobResult, head, put } from "@vercel/blob";
 import { type NextRequest, NextResponse } from "next/server";
-import { CacheImageResponseSchema } from "@/types/validation/api-schemas";
+import { CacheImageResponseSchema } from "../../../types/validation/api-schemas";
 
 /**
  * Cache external images to Vercel Blob storage

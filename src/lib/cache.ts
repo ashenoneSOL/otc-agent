@@ -1,7 +1,7 @@
 import { revalidateTag, unstable_cache } from "next/cache";
-import { ConsignmentDB, MarketDataDB, TokenDB } from "@/services/database";
-import type { Chain, Token } from "@/types";
-import { checksumAddress } from "@/utils/address-utils";
+import { ConsignmentDB, MarketDataDB, TokenDB } from "../services/database";
+import type { Chain, Token } from "../types";
+import { checksumAddress } from "../utils/address-utils";
 
 /**
  * Chain config for logo sources

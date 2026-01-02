@@ -11,7 +11,7 @@
  * - FAIL-FAST: SOL price fetching throws if unavailable (no hardcoded fallbacks)
  */
 import { Connection, PublicKey } from "@solana/web3.js";
-import { getCoingeckoApiKey, getHeliusRpcUrl, getNetwork } from "@/config/env";
+import { getCoingeckoApiKey, getHeliusRpcUrl, getNetwork } from "../config/env";
 import { getCached, setCache } from "./retry-cache";
 import { sleep } from "./tx-helpers";
 

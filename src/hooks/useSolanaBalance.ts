@@ -12,8 +12,8 @@
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { type Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { useQuery } from "@tanstack/react-query";
-import { getSolanaConfig } from "@/config/contracts";
-import { createSolanaConnection } from "@/utils/solana-otc";
+import { getSolanaConfig } from "../config/contracts";
+import { createSolanaConnection } from "../utils/solana-otc";
 import { walletTokenKeys } from "./queryKeys";
 
 /**

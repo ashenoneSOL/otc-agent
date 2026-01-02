@@ -8,7 +8,7 @@
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { OTCConsignment } from "@/types";
+import type { OTCConsignment } from "../../types";
 import { throwApiError } from "../lib/api-helpers";
 import { consignmentKeys, walletTokenKeys } from "../queryKeys";
 

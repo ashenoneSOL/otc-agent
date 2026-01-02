@@ -1,16 +1,17 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { type NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, parseAbi } from "viem";
+import { base, bsc, mainnet } from "viem/chains";
 import {
   getEvmConfig,
   getRegistrationHelperForChain,
   getSolanaProgramId,
-} from "@/config/contracts";
-import { getHeliusRpcUrl, getNetwork } from "@/config/env";
-import type { MinimalPublicClient } from "@/lib/viem-utils";
-import { TokenDB } from "@/services/database";
-import { TokenRegistryService } from "@/services/tokenRegistry";
-import { fetchLogoParallel } from "@/utils/logo-fetcher";
+} from "../../../../config/contracts";
+import { getHeliusRpcUrl, getNetwork } from "../../../../config/env";
+import type { MinimalPublicClient } from "../../../../lib/viem-utils";
+import { TokenDB } from "../../../../services/database";
+import { TokenRegistryService } from "../../../../services/tokenRegistry";
+import { fetchLogoParallel } from "../../../../utils/logo-fetcher";
 
 // Type for parsed Solana token registration
 interface SolanaParsedRegistration {
@@ -18,8 +19,11 @@ interface SolanaParsedRegistration {
   poolAddress: string;
 }
 
-import { parseOrThrow } from "@/lib/validation/helpers";
-import { TokenSyncRequestSchema, TokenSyncResponseSchema } from "@/types/validation/api-schemas";
+import { parseOrThrow } from "../../../../lib/validation/helpers";
+import {
+  TokenSyncRequestSchema,
+  TokenSyncResponseSchema,
+} from "../../../../types/validation/api-schemas";
 
 // register_token instruction discriminator from IDL
 const REGISTER_TOKEN_DISCRIMINATOR = Buffer.from([32, 146, 36, 240, 80, 183, 36, 84]);
@@ -63,9 +67,6 @@ async function syncEvmToken(
   blockNumber: string | undefined,
   chain: string,
 ) {
-  // Import chains dynamically to handle Ethereum, Base and BSC
-  const { mainnet, base, bsc } = await import("viem/chains");
-
   const evmConfig = getEvmConfig();
   // FAIL-FAST: EVM chainId must be configured
   if (evmConfig.chainId === undefined) {

@@ -4,15 +4,15 @@ import * as anchor from "@coral-xyz/anchor";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { type NextRequest, NextResponse } from "next/server";
-import { getSolanaConfig } from "@/config/contracts";
-import { getHeliusRpcUrl, getNetwork } from "@/config/env";
-import { validationErrorResponse } from "@/lib/validation/helpers";
+import { getSolanaConfig } from "../../../../config/contracts";
+import { getHeliusRpcUrl, getNetwork } from "../../../../config/env";
+import { validationErrorResponse } from "../../../../lib/validation/helpers";
 import {
   SolanaClaimRequestSchema,
   SolanaClaimResponseSchema,
-} from "@/types/validation/api-schemas";
-import { createAnchorWallet, loadDeskKeypair } from "@/utils/solana-keypair";
-import { getTokenProgramId } from "@/utils/solana-otc";
+} from "../../../../types/validation/api-schemas";
+import { createAnchorWallet, loadDeskKeypair } from "../../../../utils/solana-keypair";
+import { getTokenProgramId } from "../../../../utils/solana-otc";
 
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;

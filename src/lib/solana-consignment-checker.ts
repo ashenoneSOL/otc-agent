@@ -7,8 +7,8 @@
 
 import * as anchor from "@coral-xyz/anchor";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { SUPPORTED_CHAINS } from "@/config/chains";
-import idl from "@/contracts/solana-otc.idl.json";
+import { SUPPORTED_CHAINS } from "../config/chains";
+import idl from "../contracts/solana-otc.idl.json";
 
 // Cache TTL for unavailable consignments (24 hours)
 const UNAVAILABLE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;

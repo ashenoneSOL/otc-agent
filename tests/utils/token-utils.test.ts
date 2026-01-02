@@ -17,7 +17,7 @@ import {
   isSolanaToken,
   isValidChain,
   parseTokenId,
-} from "@/utils/token-utils";
+} from "../../src/utils/token-utils";
 
 // =============================================================================
 // VALID INPUTS - HAPPY PATH

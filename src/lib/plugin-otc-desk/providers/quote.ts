@@ -1,8 +1,10 @@
+import { createHash, createHmac } from "node:crypto";
 import type { IAgentRuntime, Memory, Provider, ProviderResult } from "@elizaos/core";
-import type QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
-import { formatTokenAmount } from "@/utils/format";
+import { v4 as uuidv4 } from "uuid";
+import { formatTokenAmount } from "../../../utils/format";
 import { agentRuntime } from "../../agent-runtime";
 import { walletToEntityId } from "../../entityId";
+import type QuoteService from "../services/quoteService";
 import type { PaymentCurrency, QuoteMemory } from "../types";
 
 export const quoteProvider: Provider = {
@@ -91,7 +93,6 @@ You'll automatically receive your tokens when the lockup period ends.`.trim(),
 };
 
 export async function getUserQuote(walletAddress: string): Promise<QuoteMemory | null> {
-  const { agentRuntime } = await import("../../agent-runtime");
   const runtime = await agentRuntime.getRuntime();
 
   // Use QuoteService to get quote (it has the correct ID generation logic)
@@ -145,10 +146,8 @@ export async function setUserQuote(
   const runtime = await agentRuntime.getRuntime();
 
   // Generate consistent quote ID using the same method as QuoteService
-  const crypto = await import("node:crypto");
   const dayTimestamp = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
-  const hash = crypto
-    .createHash("sha256")
+  const hash = createHash("sha256")
     .update(`${entityId}-${dayTimestamp}`)
     .digest("hex")
     .substring(0, 12)
@@ -172,10 +171,10 @@ export async function setUserQuote(
     lockupMonths: quote.lockupMonths,
   };
   const payload = JSON.stringify(signatureData);
-  const signature = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  const signature = createHmac("sha256", secret).update(payload).digest("hex");
 
   const quoteData: QuoteMemory = {
-    id: (await import("uuid")).v4(),
+    id: uuidv4(),
     quoteId,
     entityId,
     beneficiary: normalized,

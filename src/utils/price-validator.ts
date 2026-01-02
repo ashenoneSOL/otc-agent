@@ -1,4 +1,4 @@
-import type { Chain } from "@/config/chains";
+import type { Chain } from "../config/chains";
 import { fetchJsonWithRetryAndCache } from "./retry-cache";
 
 interface PriceValidationResult {

@@ -2,12 +2,12 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { type NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, parseAbi } from "viem";
 import { base } from "viem/chains";
-import { getRegistrationHelperForChain, getSolanaProgramId } from "@/config/contracts";
-import { getHeliusRpcUrl, getNetwork } from "@/config/env";
-import type { MinimalPublicClient } from "@/lib/viem-utils";
-import { TokenDB } from "@/services/database";
-import { TokenRegistryService } from "@/services/tokenRegistry";
-import { CronPollTokenRegistrationsResponseSchema } from "@/types/validation/api-schemas";
+import { getRegistrationHelperForChain, getSolanaProgramId } from "../../../../config/contracts";
+import { getHeliusRpcUrl, getNetwork } from "../../../../config/env";
+import type { MinimalPublicClient } from "../../../../lib/viem-utils";
+import { TokenDB } from "../../../../services/database";
+import { TokenRegistryService } from "../../../../services/tokenRegistry";
+import { CronPollTokenRegistrationsResponseSchema } from "../../../../types/validation/api-schemas";
 
 // register_token instruction discriminator from IDL
 const REGISTER_TOKEN_DISCRIMINATOR = Buffer.from([32, 146, 36, 240, 80, 183, 36, 84]);

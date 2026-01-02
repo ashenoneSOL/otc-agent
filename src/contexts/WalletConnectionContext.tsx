@@ -10,7 +10,7 @@
 
 import type { User as PrivyUser } from "@privy-io/react-auth";
 import { createContext, useContext } from "react";
-import type { SolanaWalletAdapter } from "@/types";
+import type { SolanaWalletAdapter } from "../types";
 
 /**
  * Read-only wallet connection state

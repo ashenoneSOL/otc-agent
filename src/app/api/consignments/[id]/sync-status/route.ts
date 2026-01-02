@@ -2,8 +2,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import {
   checkSolanaConsignmentStatus,
   markConsignmentUnavailable,
-} from "@/lib/solana-consignment-checker";
-import { ConsignmentDB } from "@/services/database";
+} from "../../../../../lib/solana-consignment-checker";
+import { ConsignmentDB } from "../../../../../services/database";
 
 /**
  * POST /api/consignments/[id]/sync-status

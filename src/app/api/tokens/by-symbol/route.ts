@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getCachedMarketData, getCachedTokenBySymbol } from "@/lib/cache";
-import { validationErrorResponse } from "@/lib/validation/helpers";
+import { getCachedMarketData, getCachedTokenBySymbol } from "../../../../lib/cache";
+import { validationErrorResponse } from "../../../../lib/validation/helpers";
 import {
   GetTokenBySymbolQuerySchema,
   TokenBySymbolResponseSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../../types/validation/api-schemas";
 
 /**
  * GET /api/tokens/by-symbol?symbol=ELIZA&chain=base

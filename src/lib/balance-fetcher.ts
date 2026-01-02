@@ -5,9 +5,9 @@
  * Used by EVM and Solana balance APIs.
  */
 
-import type { Chain } from "@/config/chains";
-import type { SolanaTokenBalance, TokenBalance } from "@/types/api";
-import { fetchTokenPrices } from "@/utils/price-fetcher";
+import type { Chain } from "../config/chains";
+import type { SolanaTokenBalance, TokenBalance } from "../types/api";
+import { fetchTokenPrices } from "../utils/price-fetcher";
 
 /**
  * Filter out dust tokens below minimum thresholds

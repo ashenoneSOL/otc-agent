@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import fs from "node:fs";
+import { config } from "dotenv";
 
 /**
  * Token Seeding Script - LOCAL DEVELOPMENT ONLY
@@ -14,11 +15,9 @@ import fs from "node:fs";
  */
 
 async function seedTokens() {
-  const dotenv = await import("dotenv");
-
   // Load .env.local if it exists
   if (fs.existsSync(".env.local")) {
-    dotenv.config({ path: ".env.local" });
+    config({ path: ".env.local" });
   }
 
   // === SAFETY CHECK 1: Skip if SKIP_SEED is set ===

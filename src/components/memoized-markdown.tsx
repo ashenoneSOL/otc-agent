@@ -1,7 +1,7 @@
 import { Lexer } from "marked";
 import dynamic from "next/dynamic";
 import { type ComponentProps, memo, useMemo } from "react";
-import type { MarkdownBlockProps, MemoizedMarkdownProps } from "@/types";
+import type { MarkdownBlockProps, MemoizedMarkdownProps } from "../types";
 
 const Markdown = dynamic(() => import("markdown-to-jsx"), {
   ssr: true,

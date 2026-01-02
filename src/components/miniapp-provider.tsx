@@ -2,8 +2,8 @@
 
 import miniappSdk from "@farcaster/miniapp-sdk";
 import { useEffect, useRef, useState } from "react";
-import { sendWelcomeNotification } from "@/lib/notifications";
-import { useRenderTracker } from "@/utils/render-tracker";
+import { sendWelcomeNotification } from "../lib/notifications";
+import { useRenderTracker } from "../utils/render-tracker";
 
 export function MiniappProvider({ children }: { children: React.ReactNode }) {
   useRenderTracker("MiniappProvider");

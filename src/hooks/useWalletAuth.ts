@@ -11,8 +11,8 @@ import { useWallets } from "@privy-io/react-auth";
 import bs58 from "bs58";
 import { useCallback, useMemo } from "react";
 import { useAccount, useSignMessage } from "wagmi";
-import { useChain, useWalletConnection } from "@/contexts";
-import type { WalletAuthHeaders } from "@/hooks/mutations/useConsignmentMutations";
+import { useChain, useWalletConnection } from "../contexts";
+import type { WalletAuthHeaders } from "./mutations/useConsignmentMutations";
 
 const AUTH_MESSAGE_PREFIX = "Authorize OTC action at ";
 

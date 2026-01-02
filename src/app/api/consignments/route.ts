@@ -1,25 +1,25 @@
 import { type NextRequest, NextResponse } from "next/server";
-import type { Chain } from "@/config/chains";
+import type { Chain } from "../../../config/chains";
 import {
   getCachedConsignments,
   getCachedToken,
   invalidateConsignmentCache,
   invalidateTokenCache,
-} from "@/lib/cache";
-import { validateCSRF } from "@/lib/csrf";
-import { batchCheckSolanaConsignments } from "@/lib/solana-consignment-checker";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import { getAuthHeaders, verifyWalletOwnership } from "@/lib/wallet-auth";
-import { ConsignmentService } from "@/services/consignmentService";
-import { ConsignmentDB, TokenDB } from "@/services/database";
-import type { OTCConsignment } from "@/types";
+} from "../../../lib/cache";
+import { validateCSRF } from "../../../lib/csrf";
+import { batchCheckSolanaConsignments } from "../../../lib/solana-consignment-checker";
+import { validationErrorResponse } from "../../../lib/validation/helpers";
+import { getAuthHeaders, verifyWalletOwnership } from "../../../lib/wallet-auth";
+import { ConsignmentService } from "../../../services/consignmentService";
+import { ConsignmentDB, TokenDB } from "../../../services/database";
+import type { OTCConsignment } from "../../../types";
 import {
   ConsignmentsResponseSchema,
   CreateConsignmentRequestSchema,
   CreateConsignmentResponseSchema,
   GetConsignmentsQuerySchema,
-} from "@/types/validation/api-schemas";
-import { sanitizeConsignmentForBuyer } from "@/utils/consignment-sanitizer";
+} from "../../../types/validation/api-schemas";
+import { sanitizeConsignmentForBuyer } from "../../../utils/consignment-sanitizer";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

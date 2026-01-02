@@ -18,7 +18,7 @@ import {
   fetchNativePrices,
   fetchTokenPrices,
   NATIVE_TOKEN_IDS,
-} from "@/utils/price-fetcher";
+} from "../../src/utils/price-fetcher";
 
 // Set default timeout for all tests (external API calls can be slow)
 setDefaultTimeout(30_000);

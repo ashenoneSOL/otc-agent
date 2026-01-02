@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { NativePricesResponseSchema } from "@/types/validation/api-schemas";
-import { fetchNativePrices } from "@/utils/price-fetcher";
+import { NativePricesResponseSchema } from "../../../types/validation/api-schemas";
+import { fetchNativePrices } from "../../../utils/price-fetcher";
 
 interface PriceData {
   price: number;

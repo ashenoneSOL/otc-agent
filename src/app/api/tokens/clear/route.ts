@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { ClearTokensResponseSchema } from "@/types/validation/api-schemas";
+import { agentRuntime } from "../../../../lib/agent-runtime";
+import { ClearTokensResponseSchema } from "../../../../types/validation/api-schemas";
 
 /**
  * Clear all tokens from the database (dev utility)

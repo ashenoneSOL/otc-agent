@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { resumeFreshAuth } from "@/utils/x-share";
+import { resumeFreshAuth } from "../utils/x-share";
 
 export function XShareResume() {
   useEffect(() => {

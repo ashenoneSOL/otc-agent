@@ -17,7 +17,7 @@ import {
   quoteKeys,
   tokenKeys,
   walletTokenKeys,
-} from "@/hooks/queryKeys";
+} from "../../src/hooks/queryKeys";
 
 describe("queryKeys", () => {
   describe("tokenKeys", () => {

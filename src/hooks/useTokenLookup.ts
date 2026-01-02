@@ -8,8 +8,8 @@
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Chain } from "@/config/chains";
-import type { TokenInfo } from "@/types/api";
+import type { Chain } from "../config/chains";
+import type { TokenInfo } from "../types/api";
 import { tokenKeys } from "./queryKeys";
 
 /**

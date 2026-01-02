@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { agentRuntime } from "@/lib/agent-runtime";
-import type { OTCConsignment, Token } from "@/types";
+import { agentRuntime } from "../../../../lib/agent-runtime";
+import type { OTCConsignment, Token } from "../../../../types";
 
 /**
  * Check if a token exists in the cache without throwing.

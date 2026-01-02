@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import type { Token, TokenMarketData } from "@/services/database";
-import { formatAddress, formatMarketCap, formatPrice } from "@/utils/format";
+import type { Token, TokenMarketData } from "../services/database";
+import { formatAddress, formatMarketCap, formatPrice } from "../utils/format";
 
 interface TokenHeaderProps {
   token: Token;
@@ -13,7 +13,7 @@ export function TokenHeader({ token, marketData }: TokenHeaderProps) {
   const priceChange = marketData?.priceChange24h ?? 0;
   const priceChangeColor = priceChange >= 0 ? "text-brand-500" : "text-red-600";
 
-  // formatAddress, formatMarketCap, formatPrice are imported from @/utils/format
+  // formatAddress, formatMarketCap, formatPrice are imported from ../utils/format
 
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">

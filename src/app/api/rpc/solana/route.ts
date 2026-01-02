@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getHeliusApiKey } from "@/config/env";
+import { getHeliusApiKey } from "../../../../config/env";
 import {
   RpcProxyErrorResponseSchema,
   SolanaRpcHealthResponseSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../../types/validation/api-schemas";
 
 // Allowed Solana RPC methods - only read operations needed by the frontend
 const ALLOWED_SOLANA_RPC_METHODS = [

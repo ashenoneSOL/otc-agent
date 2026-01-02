@@ -27,7 +27,7 @@ let withRetryAndCache: <T>(
 // Helper to clear and reload the module
 async function reloadModule(): Promise<void> {
   // Clear any cached module
-  const modulePath = "@/utils/retry-cache";
+  const modulePath = "../../src/utils/retry-cache";
   // Dynamic import for fresh module state
   const mod = await import(modulePath);
   getCached = mod.getCached;

@@ -8,8 +8,8 @@ import {
   mainnet,
   sepolia,
 } from "viem/chains";
-import { getEvmConfig, getNetwork } from "@/config/contracts";
-import { getAppUrl, LOCAL_DEFAULTS } from "@/config/env";
+import { getEvmConfig, getNetwork } from "../config/contracts";
+import { getAppUrl, LOCAL_DEFAULTS } from "../config/env";
 
 // Anvil chain with correct chain ID (31337)
 const anvil: Chain = {

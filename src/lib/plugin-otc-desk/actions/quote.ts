@@ -9,8 +9,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ConsignmentService } from "@/services/consignmentService";
-import { MarketDataDB, type OTCConsignment, TokenDB } from "@/services/database";
+import { ConsignmentService } from "../../../services/consignmentService";
+import { MarketDataDB, type OTCConsignment, TokenDB } from "../../../services/database";
 import { deleteUserQuote, getUserQuote, setUserQuote } from "../providers/quote";
 import { getBnbPriceUsd, getEthPriceUsd, getSolPriceUsd } from "../services/priceFeed";
 import type { PaymentCurrency, QuoteMemory } from "../types";

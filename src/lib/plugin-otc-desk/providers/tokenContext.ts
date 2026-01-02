@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult } from "@elizaos/core";
-import { ConsignmentDB, TokenDB } from "@/services/database";
+import { ConsignmentDB, TokenDB } from "../../../services/database";
 
 export const tokenContextProvider: Provider = {
   name: "TOKEN_CONTEXT",

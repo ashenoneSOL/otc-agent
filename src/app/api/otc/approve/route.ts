@@ -1,10 +1,16 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type {
-  PublicKey as SolanaPublicKey,
-  Transaction,
-  VersionedTransaction,
+import * as anchor from "@coral-xyz/anchor";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  type PublicKey as SolanaPublicKey,
+  type Transaction,
+  type VersionedTransaction,
 } from "@solana/web3.js";
+import bs58 from "bs58";
 import { type NextRequest, NextResponse } from "next/server";
 import {
   type Abi,
@@ -12,26 +18,36 @@ import {
   type Address,
   createPublicClient,
   createWalletClient,
+  encodePacked,
+  getAddress,
   http,
+  keccak256,
   type Chain as ViemChain,
 } from "viem";
 import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
-import { getOtcAddress, getSolanaConfig } from "@/config/contracts";
-import { getAlchemyApiKey, getEvmPrivateKey, getHeliusRpcUrl, getNetwork } from "@/config/env";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { validateCSRF } from "@/lib/csrf";
-import { getChain, getViemChainForType } from "@/lib/getChain";
-import { type ParsedOffer, parseOfferStruct, type RawOfferData } from "@/lib/otc-helpers";
-import type { QuoteService } from "@/lib/plugin-otc-desk/services/quoteService";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import { safeReadContract } from "@/lib/viem-utils";
-import type { QuoteMemory } from "@/types";
+import { getOtcAddress, getSolanaConfig } from "../../../../config/contracts";
+import {
+  getAlchemyApiKey,
+  getEvmPrivateKey,
+  getHeliusRpcUrl,
+  getNetwork,
+} from "../../../../config/env";
+import otcArtifact from "../../../../contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { agentRuntime } from "../../../../lib/agent-runtime";
+import { validateCSRF } from "../../../../lib/csrf";
+import { getChain, getViemChainForType } from "../../../../lib/getChain";
+import { type ParsedOffer, parseOfferStruct, type RawOfferData } from "../../../../lib/otc-helpers";
+import type { QuoteService } from "../../../../lib/plugin-otc-desk/services/quoteService";
+import { validationErrorResponse } from "../../../../lib/validation/helpers";
+import { safeReadContract } from "../../../../lib/viem-utils";
+import { QuoteDB, TokenDB } from "../../../../services/database";
+import type { QuoteMemory } from "../../../../types";
 import {
   ApproveOfferRequestSchema,
   ApproveOfferResponseSchema,
-} from "@/types/validation/api-schemas";
-import { fetchJupiterPrices } from "@/utils/price-fetcher";
+} from "../../../../types/validation/api-schemas";
+import { fetchJupiterPrices } from "../../../../utils/price-fetcher";
+import { checkPriceDivergence } from "../../../../utils/price-validator";
 
 /**
  * Minimal wallet client interface for contract writes
@@ -203,10 +219,6 @@ async function handleApproval(request: NextRequest) {
 
     console.log("[Approve API] Processing Solana approval for offer:", offerAddress);
 
-    // Import Anchor and Solana libs dynamically
-    const anchor = await import("@coral-xyz/anchor");
-    const { Connection, PublicKey, Keypair } = await import("@solana/web3.js");
-
     const solanaConfig = getSolanaConfig();
     const network = getNetwork();
     const SOLANA_RPC = network === "local" ? "http://127.0.0.1:8899" : getHeliusRpcUrl();
@@ -222,13 +234,12 @@ async function handleApproval(request: NextRequest) {
     // Load owner/approver keypair from environment or fallback to id.json
     const idlPath = path.join(process.cwd(), "solana/otc-program/target/idl/otc.json");
     const idl = JSON.parse(await fs.readFile(idlPath, "utf8"));
-    const bs58 = await import("bs58");
 
     let approverKeypair: InstanceType<typeof Keypair>;
     const solanaPrivateKey = process.env.SOLANA_MAINNET_PRIVATE_KEY;
     if (solanaPrivateKey) {
       // Use base58-encoded private key from environment
-      const secretKey = bs58.default.decode(solanaPrivateKey);
+      const secretKey = bs58.decode(solanaPrivateKey);
       approverKeypair = Keypair.fromSecretKey(secretKey);
       console.log(
         `[Solana Approve] Using approver from SOLANA_MAINNET_PRIVATE_KEY: ${approverKeypair.publicKey.toBase58()}`,
@@ -310,7 +321,6 @@ async function handleApproval(request: NextRequest) {
     // Auto-fulfill (backend pays)
     console.log("[Approve API] Auto-fulfilling Solana offer...");
 
-    const { getAssociatedTokenAddress } = await import("@solana/spl-token");
     type DeskAccountData = {
       usdcMint: SolanaPublicKey;
       agent: SolanaPublicKey;
@@ -325,7 +335,7 @@ async function handleApproval(request: NextRequest) {
     let deskKeypair: InstanceType<typeof Keypair>;
     const deskPrivateKey = process.env.SOLANA_DESK_PRIVATE_KEY;
     if (deskPrivateKey) {
-      const secretKey = bs58.default.decode(deskPrivateKey);
+      const secretKey = bs58.decode(deskPrivateKey);
       deskKeypair = Keypair.fromSecretKey(secretKey);
       console.log(`[Approve API] Loaded desk keypair: ${deskKeypair.publicKey.toBase58()}`);
     } else {
@@ -742,9 +752,6 @@ async function handleApproval(request: NextRequest) {
   }
 
   // FAIL-FAST: Price validation must succeed
-  const { checkPriceDivergence } = await import("@/utils/price-validator");
-  const { TokenDB, QuoteDB } = await import("@/services/database");
-
   // Get token info from the offer
   // offer.priceUsdPerToken is in 8 decimals (Chainlink format)
   const offerPriceUsd = Number(offer.priceUsdPerToken) / 1e8;
@@ -773,7 +780,6 @@ async function handleApproval(request: NextRequest) {
       });
     } else {
       console.log("[Approve API] Token NOT found by on-chain tokenId. Available tokens:");
-      const { encodePacked, getAddress, keccak256 } = await import("viem");
       for (const t of allTokens.slice(0, 10)) {
         if (t.chain !== "solana" && t.contractAddress) {
           try {

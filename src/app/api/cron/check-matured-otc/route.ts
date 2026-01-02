@@ -1,11 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { type Abi, type Address, createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { getOtcAddress } from "@/config/contracts";
-import otcArtifact from "@/contracts/artifacts/contracts/OTC.sol/OTC.json";
-import { getChain, getRpcUrl } from "@/lib/getChain";
-import type { RawOfferData } from "@/lib/otc-helpers";
-import { CronCheckMaturedOtcResponseSchema } from "@/types/validation/api-schemas";
+import { getOtcAddress } from "../../../../config/contracts";
+import otcArtifact from "../../../../contracts/artifacts/contracts/OTC.sol/OTC.json";
+import { getChain, getRpcUrl } from "../../../../lib/getChain";
+import type { RawOfferData } from "../../../../lib/otc-helpers";
+import { safeReadContract } from "../../../../lib/viem-utils";
+import { CronCheckMaturedOtcResponseSchema } from "../../../../types/validation/api-schemas";
 
 // This should be called daily via a cron job (e.g., Vercel Cron or external scheduler)
 // It checks for matured OTC and claims them on behalf of users
@@ -51,7 +52,6 @@ export async function GET(request: NextRequest) {
   const abi = otcArtifact.abi as Abi;
 
   // Enumerate all offers via nextOfferId
-  const { safeReadContract } = await import("@/lib/viem-utils");
   const nextOfferId = await safeReadContract<bigint>(publicClient, {
     address: OTC_ADDRESS,
     abi,

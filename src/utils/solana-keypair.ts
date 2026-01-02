@@ -108,7 +108,7 @@ export class KeypairWallet implements Wallet {
 /**
  * Wallet interface for Anchor (matches @coral-xyz/anchor's Wallet type)
  *
- * NOTE: This is a utility-specific type. For shared types, use AnchorWallet from @/types
+ * NOTE: This is a utility-specific type. For shared types, use AnchorWallet from ../types
  * which is compatible with the shared SolanaTransaction interface.
  */
 export interface AnchorWallet {

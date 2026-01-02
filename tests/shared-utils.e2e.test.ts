@@ -8,14 +8,14 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { isEvmAddress, isSolanaAddress, normalizeAddress } from "@/utils/address-utils";
+import { isEvmAddress, isSolanaAddress, normalizeAddress } from "../src/utils/address-utils";
 import {
   filterActiveOffers,
   type OfferWithMetadata,
   sortOffersByDate,
   transformEvmDeal,
   transformSolanaDeal,
-} from "@/utils/deal-transforms";
+} from "../src/utils/deal-transforms";
 import {
   formatAddress,
   formatDate,
@@ -30,7 +30,7 @@ import {
   formatUsd,
   getLockupLabel,
   isMatured,
-} from "@/utils/format";
+} from "../src/utils/format";
 import { expectDefined, expectEqual } from "./test-utils";
 
 // ==========================================================================

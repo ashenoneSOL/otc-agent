@@ -3,6 +3,8 @@
  * For multi-token/ERC20 support, use MarketDataService or price-fetcher utils
  */
 
+import { agentRuntime } from "../../agent-runtime";
+
 interface PriceCache {
   price: number;
   timestamp: number;
@@ -21,7 +23,6 @@ const COINGECKO_IDS: Record<string, string> = {
  * Get cached price from runtime storage
  */
 async function getCachedPrice(key: string): Promise<PriceCache | null> {
-  const { agentRuntime } = await import("../../agent-runtime");
   const runtime = await agentRuntime.getRuntime();
   return (await runtime.getCache<PriceCache>(`price:${key}`)) || null;
 }
@@ -30,7 +31,6 @@ async function getCachedPrice(key: string): Promise<PriceCache | null> {
  * Set cached price in runtime storage
  */
 async function setCachedPrice(key: string, value: PriceCache): Promise<void> {
-  const { agentRuntime } = await import("../../agent-runtime");
   const runtime = await agentRuntime.getRuntime();
   await runtime.setCache(`price:${key}`, value);
 }

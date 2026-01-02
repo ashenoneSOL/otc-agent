@@ -9,9 +9,9 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import type { DealQuote } from "@/components/deal-completion";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import { DealQuoteSchema } from "@/types/validation/hook-schemas";
+import type { DealQuote } from "../components/deal-completion";
+import { parseOrThrow } from "../lib/validation/helpers";
+import { DealQuoteSchema } from "../types/validation/hook-schemas";
 import { quoteKeys } from "./queryKeys";
 
 // API response schema for executed quote endpoint

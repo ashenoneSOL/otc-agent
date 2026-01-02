@@ -1,7 +1,7 @@
 // Entity ID utilities using Eliza's stringToUuid
 
 import { stringToUuid } from "@elizaos/core";
-import { isSolanaAddress } from "@/utils/address-utils";
+import { isSolanaAddress } from "../utils/address-utils";
 
 /**
  * Convert wallet address to deterministic UUID entity ID

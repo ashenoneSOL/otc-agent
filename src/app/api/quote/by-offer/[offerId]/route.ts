@@ -1,11 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { agentRuntime } from "@/lib/agent-runtime";
-import type QuoteService from "@/lib/plugin-otc-desk/services/quoteService";
-import { validateRouteParams } from "@/lib/validation/helpers";
+import { agentRuntime } from "../../../../../lib/agent-runtime";
+import type QuoteService from "../../../../../lib/plugin-otc-desk/services/quoteService";
+import { validateRouteParams } from "../../../../../lib/validation/helpers";
 import {
   GetQuoteByOfferParamsSchema,
   QuoteByOfferErrorResponseSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../../../types/validation/api-schemas";
 
 export async function GET(
   request: NextRequest,

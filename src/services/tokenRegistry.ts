@@ -1,6 +1,6 @@
-import type { Chain } from "@/config/chains";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import { RegisterTokenInputSchema } from "@/types/validation/service-schemas";
+import type { Chain } from "../config/chains";
+import { parseOrThrow } from "../lib/validation/helpers";
+import { RegisterTokenInputSchema } from "../types/validation/service-schemas";
 import { MarketDataDB, type Token, TokenDB, type TokenMarketData } from "./database";
 
 export class TokenRegistryService {

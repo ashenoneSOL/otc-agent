@@ -32,8 +32,9 @@ import {
   Transaction,
   type VersionedTransaction,
 } from "@solana/web3.js";
-import { SUPPORTED_CHAINS } from "@/config/chains";
-import { waitForSolanaTx } from "@/utils/tx-helpers";
+import { SUPPORTED_CHAINS } from "../config/chains";
+import { findBestSolanaPool } from "./pool-finder-solana";
+import { waitForSolanaTx } from "./tx-helpers";
 
 // Re-export waitForSolanaTx for convenience
 export { waitForSolanaTx };
@@ -99,7 +100,7 @@ export function createSolanaConnection(
  * Wallet adapter interface for signing
  *
  * NOTE: This is a utility-specific type that uses Transaction | VersionedTransaction
- * directly for Anchor compatibility. For UI components, use SolanaWalletAdapter from @/types
+ * directly for Anchor compatibility. For UI components, use SolanaWalletAdapter from ../types
  * which uses the more generic SolanaTransaction interface.
  */
 export interface SolanaWalletAdapter {
@@ -190,7 +191,6 @@ export async function ensureTokenRegistered(
   let poolAddress = PublicKey.default;
   let poolType = 0; // 0=None, 1=Raydium, 2=Orca, 3=PumpSwap
 
-  const { findBestSolanaPool } = await import("@/utils/pool-finder-solana");
   const pool = await findBestSolanaPool(tokenMint.toBase58(), "mainnet");
   if (pool) {
     poolAddress = new PublicKey(pool.address);

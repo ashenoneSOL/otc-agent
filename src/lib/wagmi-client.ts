@@ -3,7 +3,7 @@ import type { Config } from "wagmi";
 import { createConfig, http } from "wagmi";
 import { base, baseSepolia, bsc, bscTestnet, foundry, mainnet, sepolia } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
-import { getAppUrl, getNetwork, LOCAL_DEFAULTS } from "@/config/env";
+import { getAppUrl, getNetwork, LOCAL_DEFAULTS } from "../config/env";
 
 // Get absolute URL for proxy routes (needed for wagmi HTTP transport)
 function getProxyUrl(path: string): string {

@@ -1,8 +1,8 @@
 // Shared types for OTC Desk plugin - export for external use only
 // Import Zod-validated types as source of truth
 
-import type { Chain } from "@/config/chains";
-import type { ChainFamily, PaymentCurrency, QuoteStatus } from "@/types/validation/schemas";
+import type { Chain } from "../../config/chains";
+import type { ChainFamily, PaymentCurrency, QuoteStatus } from "../../types/validation/schemas";
 
 // Re-export Zod-validated types for external use
 export type { QuoteStatus, PaymentCurrency };

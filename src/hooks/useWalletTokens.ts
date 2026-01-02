@@ -1,16 +1,16 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Chain } from "@/config/chains";
-import { parseOrThrow } from "@/lib/validation/helpers";
-import type { WalletToken } from "@/types";
+import type { Chain } from "../config/chains";
+import { parseOrThrow } from "../lib/validation/helpers";
+import type { WalletToken } from "../types";
 import {
   EvmBalancesResponseSchema,
   SolanaBalancesResponseSchema,
-} from "@/types/validation/hook-schemas";
-import { AddressSchema, ChainSchema } from "@/types/validation/schemas";
+} from "../types/validation/hook-schemas";
+import { AddressSchema, ChainSchema } from "../types/validation/schemas";
 import { walletTokenKeys } from "./queryKeys";
 
 // Re-export for consumers
-export type { WalletToken } from "@/types";
+export type { WalletToken } from "../types";
 
 interface EvmBalanceToken {
   contractAddress: string;

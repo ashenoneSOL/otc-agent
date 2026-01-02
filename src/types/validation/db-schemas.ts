@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import type { QuoteMemory } from "@/lib/plugin-otc-desk/types";
+import type { QuoteMemory } from "../../lib/plugin-otc-desk/types";
 import type {
   ConsignmentDeal,
   OTCConsignment,

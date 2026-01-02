@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { validateRouteParams } from "@/lib/validation/helpers";
-import { QuoteDB } from "@/services/database";
-import type { QuoteMemory } from "@/types";
+import { agentRuntime } from "../../../../../lib/agent-runtime";
+import { validateRouteParams } from "../../../../../lib/validation/helpers";
+import { QuoteDB } from "../../../../../services/database";
+import type { QuoteMemory } from "../../../../../types";
 import {
   ExecutedQuoteResponseSchema,
   GetExecutedQuoteParamsSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../../../types/validation/api-schemas";
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await agentRuntime.getRuntime();

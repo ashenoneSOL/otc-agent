@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { findBestSolanaPool, type SolanaPoolInfo } from "@/utils/pool-finder-solana";
+import { findBestSolanaPool, type SolanaPoolInfo } from "../../../../utils/pool-finder-solana";
 
 interface FindPoolRequest {
   tokenMint: string;

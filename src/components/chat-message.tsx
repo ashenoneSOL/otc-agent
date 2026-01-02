@@ -7,12 +7,11 @@ import {
 import clsx from "clsx";
 import Image from "next/image";
 import { memo, useState } from "react";
-
-import { MemoizedMarkdown } from "@/components/memoized-markdown";
-import { WalletAvatar } from "@/components/wallet-avatar";
-import type { MarkdownOptions } from "@/types";
-import type { Citation } from "@/types/chat";
-import type { ChatMessage as ChatMessageType } from "@/types/chat-message";
+import type { MarkdownOptions } from "../types";
+import type { Citation } from "../types/chat";
+import type { ChatMessage as ChatMessageType } from "../types/chat-message";
+import { MemoizedMarkdown } from "./memoized-markdown";
+import { WalletAvatar } from "./wallet-avatar";
 
 // Define constants if needed, or use literals directly
 const USER_NAME = "User";

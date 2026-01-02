@@ -4,8 +4,8 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
-import Card from "@/components/card";
-import { Dialog } from "@/components/dialog";
+import Card from "./card";
+import { Dialog } from "./dialog";
 
 interface WelcomeModalProps {
   isOpen: boolean;

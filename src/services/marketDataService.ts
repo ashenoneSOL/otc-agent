@@ -1,11 +1,12 @@
 import { z } from "zod";
-import type { Chain } from "@/config/chains";
-import { getBirdeyeApiKey, getCoingeckoApiKey } from "@/config/env";
-import { parseOrThrow } from "@/lib/validation/helpers";
+import type { Chain } from "../config/chains";
+import { getSolanaConfig } from "../config/contracts";
+import { getBirdeyeApiKey, getCoingeckoApiKey } from "../config/env";
+import { parseOrThrow } from "../lib/validation/helpers";
 import {
   FetchMarketDataInputSchema,
   FetchTokenPriceInputSchema,
-} from "@/types/validation/service-schemas";
+} from "../types/validation/service-schemas";
 import { MarketDataDB, type TokenMarketData } from "./database";
 
 // Price sanity threshold: $1 billion - reject obviously manipulated prices
@@ -123,7 +124,6 @@ export class MarketDataService {
   private async fetchSolanaData(tokenAddress: string): Promise<TokenMarketData> {
     // Solana addresses are Base58 encoded and case-sensitive - preserve original case
     if (!this.birdeyeApiKey) {
-      const { getSolanaConfig } = await import("@/config/contracts");
       const solanaRpc = getSolanaConfig().rpc;
       const isLocalnet = solanaRpc.includes("127.0.0.1") || solanaRpc.includes("localhost");
 

@@ -4,8 +4,8 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAccount, useDisconnect } from "wagmi";
-import type { TransactionError } from "@/types";
-import { clearWalletCachesAndReload } from "@/utils/wallet-utils";
+import type { TransactionError } from "../types";
+import { clearWalletCachesAndReload } from "../utils/wallet-utils";
 
 export function useTransactionErrorHandler() {
   const [mounted, setMounted] = useState(false);

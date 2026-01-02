@@ -4,7 +4,7 @@
  */
 
 import type { Address } from "viem";
-import type { Chain } from "@/config/chains";
+import type { Chain } from "../config/chains";
 
 // Re-export from plugin types (these use Zod types internally)
 export type {
@@ -12,14 +12,7 @@ export type {
   EntitySourceMetadata,
   QuoteMemory,
   UserQuoteStats,
-} from "@/lib/plugin-otc-desk/types";
-// Re-export Zod-validated types for status/currency (validation schemas)
-export type {
-  ConsignmentStatus,
-  DealStatus,
-  PaymentCurrency,
-  QuoteStatus,
-} from "@/types/validation/schemas";
+} from "../lib/plugin-otc-desk/types";
 // Re-export API types (consolidated from API routes)
 export type {
   BulkMetadataCache,
@@ -41,7 +34,6 @@ export type {
 export type { ChatStreamData, Citation } from "./chat";
 // Re-export from specific type files
 export type { ChatMessage } from "./chat-message";
-
 // Re-export shared types (consolidated duplicates)
 export type {
   AnchorConsignmentAccountAccessor,
@@ -121,13 +113,20 @@ export type {
   WalletSigner,
   XCredentials,
 } from "./shared";
+// Re-export Zod-validated types for status/currency (validation schemas)
+export type {
+  ConsignmentStatus,
+  DealStatus,
+  PaymentCurrency,
+  QuoteStatus,
+} from "./validation/schemas";
 
 //==============================================================================
 // CHAIN TYPES
 //==============================================================================
 
 // Chain types from config/chains.ts (source of truth)
-export type { Chain, ChainConfig, ChainFamily } from "@/config/chains";
+export type { Chain, ChainConfig, ChainFamily } from "../config/chains";
 export {
   getChainConfig,
   getChainFromId,
@@ -135,9 +134,9 @@ export {
   isEVMChain,
   isSolanaChain,
   SUPPORTED_CHAINS,
-} from "@/config/chains";
+} from "../config/chains";
 // NetworkType from config/contracts.ts (source of truth)
-export type { NetworkType } from "@/config/contracts";
+export type { NetworkType } from "../config/contracts";
 // EVMChain re-exported from validation schemas (single source of truth)
 export type { EVMChain } from "./validation/schemas";
 

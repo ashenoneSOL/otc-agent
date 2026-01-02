@@ -1,7 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getAlchemyApiKey } from "@/config/env";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import { RpcProxyErrorResponseSchema, RpcRequestSchema } from "@/types/validation/api-schemas";
+import { getAlchemyApiKey } from "../../../../config/env";
+import { validationErrorResponse } from "../../../../lib/validation/helpers";
+import {
+  RpcProxyErrorResponseSchema,
+  RpcRequestSchema,
+} from "../../../../types/validation/api-schemas";
 
 // Allowed EVM RPC methods - only read operations needed by the frontend
 const ALLOWED_EVM_RPC_METHODS = [

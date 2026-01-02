@@ -3,8 +3,8 @@
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
 import { ConnectionProvider } from "@solana/wallet-adapter-react";
 import { useEffect, useMemo, useRef } from "react";
-import { SUPPORTED_CHAINS } from "@/config/chains";
-import { useRenderTracker } from "@/utils/render-tracker";
+import { SUPPORTED_CHAINS } from "../config/chains";
+import { useRenderTracker } from "../utils/render-tracker";
 
 /**
  * Get Solana network from unified chain config

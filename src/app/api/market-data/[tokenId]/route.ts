@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getSolanaConfig } from "@/config/contracts";
-import { getNetwork } from "@/config/env";
-import { validationErrorResponse } from "@/lib/validation/helpers";
-import { MarketDataDB, TokenDB } from "@/services/database";
-import { MarketDataService } from "@/services/marketDataService";
+import { getSolanaConfig } from "../../../../config/contracts";
+import { getNetwork } from "../../../../config/env";
+import { validationErrorResponse } from "../../../../lib/validation/helpers";
+import { MarketDataDB, TokenDB } from "../../../../services/database";
+import { MarketDataService } from "../../../../services/marketDataService";
 import {
   GetMarketDataParamsSchema,
   MarketDataResponseSchema,
-} from "@/types/validation/api-schemas";
+} from "../../../../types/validation/api-schemas";
 
 // Check if we're in local development mode (no external API calls needed)
 function isLocalDevelopment(chain: string, contractAddress: string): boolean {

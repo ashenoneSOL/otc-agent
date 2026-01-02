@@ -10,7 +10,7 @@ import {
 } from "@synthetixio/synpress-cache";
 import { getExtensionId, unlockForFixture } from "@synthetixio/synpress-metamask/playwright";
 import fs from "fs-extra";
-import type { MetaMaskFixtures } from "@/types";
+import type { MetaMaskFixtures } from "../../../src/types";
 
 async function persistLocalStorage(
   origins: {

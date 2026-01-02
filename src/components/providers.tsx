@@ -6,13 +6,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
 import { WagmiProvider } from "wagmi";
-import { ChainResetMonitor } from "@/components/chain-reset-monitor";
-import { FarcasterSolanaWrapper } from "@/components/farcaster-solana-provider";
-import { MiniappProvider } from "@/components/miniapp-provider";
-import { MultiWalletProvider } from "@/components/multiwallet";
-import { SolanaWalletProvider } from "@/components/solana-wallet-provider";
-import { chains, config } from "@/lib/wagmi-client";
-import { useRenderTracker } from "@/utils/render-tracker";
+import { chains, config } from "../lib/wagmi-client";
+import { useRenderTracker } from "../utils/render-tracker";
+import { ChainResetMonitor } from "./chain-reset-monitor";
+import { FarcasterSolanaWrapper } from "./farcaster-solana-provider";
+import { MiniappProvider } from "./miniapp-provider";
+import { MultiWalletProvider } from "./multiwallet";
+import { SolanaWalletProvider } from "./solana-wallet-provider";
 
 // Theme colors for external library configs (Privy)
 const COINBASE_BLUE = "#0052ff" as `#${string}`;

@@ -1,11 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { SUPPORTED_CHAINS } from "@/config/chains";
-import { agentRuntime } from "@/lib/agent-runtime";
-import { getCachedMarketData, getCachedTokens, invalidateTokenCache } from "@/lib/cache";
-import { parseOrThrow, validateQueryParams } from "@/lib/validation/helpers";
-import { type Chain, MarketDataDB, TokenDB } from "@/services/database";
-import { MarketDataService } from "@/services/marketDataService";
-import { TokenRegistryService } from "@/services/tokenRegistry";
+import { SUPPORTED_CHAINS } from "../../../config/chains";
+import { agentRuntime } from "../../../lib/agent-runtime";
+import { getCachedMarketData, getCachedTokens, invalidateTokenCache } from "../../../lib/cache";
+import { parseOrThrow, validateQueryParams } from "../../../lib/validation/helpers";
+import { type Chain, MarketDataDB, TokenDB } from "../../../services/database";
+import { MarketDataService } from "../../../services/marketDataService";
+import { TokenRegistryService } from "../../../services/tokenRegistry";
 import {
   CreateTokenRequestSchema,
   CreateTokenResponseSchema,
@@ -14,8 +14,8 @@ import {
   TokensResponseSchema,
   UpdateTokenRequestSchema,
   UpdateTokenResponseSchema,
-} from "@/types/validation/api-schemas";
-import { isContractAddress } from "@/utils/address-utils";
+} from "../../../types/validation/api-schemas";
+import { isContractAddress } from "../../../utils/address-utils";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

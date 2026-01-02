@@ -6,7 +6,7 @@
  * Zod schemas in db-schemas.ts to maintain a single source of truth.
  */
 
-import type { QuoteMemory } from "@/lib/plugin-otc-desk/types";
+import type { QuoteMemory } from "../lib/plugin-otc-desk/types";
 import type { SolanaTokenBalance, TokenBalance } from "./validation/db-schemas";
 
 // Re-export balance types for consumers

@@ -25,4 +25,4 @@ export async function sendWelcomeNotification(fid: number): Promise<boolean> {
 export {
   useSendNotification,
   useWelcomeNotification,
-} from "@/hooks/useNotification";
+} from "../hooks/useNotification";

@@ -3,13 +3,11 @@
  * https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation
  */
 
+import { isProduction, logEnvironmentConfig, validateProductionSecrets } from "./config/env";
+
 export async function register() {
   // Only validate on server-side
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { validateProductionSecrets, logEnvironmentConfig, isProduction } = await import(
-      "@/config/env"
-    );
-
     // Log environment configuration (no secrets)
     logEnvironmentConfig();
 
