@@ -80,7 +80,7 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "postinstall": "[ -d solana/otc-program ] && cd solana/otc-program && bun install || true",
+    "postinstall": "[ -d solana/otc-program ] && cd solana/otc-program && bun install --ignore-scripts || true",
     "dev": "./scripts/dev.sh",
     "start": "next start -p 4444",
     "build": "./scripts/build.sh",
