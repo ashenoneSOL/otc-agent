@@ -18,9 +18,13 @@ const nextConfig: NextConfig = {
   experimental: {
     inlineCss: true,
   },
-  // Empty turbopack config allows Next.js 16 to use turbopack by default
-  // while keeping webpack config as fallback
-  turbopack: {},
+  // Turbopack config with resolve aliases (doesn't inherit from webpack)
+  turbopack: {
+    resolveAlias: {
+      '@/*': ['./src/*'],
+    },
+    resolveExtensions: ['.tsx', '.ts', '.jsx', '.js', '.json'],
+  },
   // Skip image optimization for external images - they come from too many sources
   // Vercel Blob caching handles performance for Solana token logos
   images: {
