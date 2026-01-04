@@ -1,10 +1,10 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { type NextRequest, NextResponse } from "next/server";
-import { createPublicClient, http, parseAbi } from "viem";
+import { type PublicClient, createPublicClient, http, parseAbi } from "viem";
 import { base } from "viem/chains";
 import { getRegistrationHelperForChain, getSolanaProgramId } from "../../../../config/contracts";
 import { getHeliusRpcUrl, getNetwork } from "../../../../config/env";
-import type { MinimalPublicClient } from "../../../../lib/viem-utils";
+import { type MinimalPublicClient, getLogsChunked } from "../../../../lib/viem-utils";
 import { TokenDB } from "../../../../services/database";
 import { TokenRegistryService } from "../../../../services/tokenRegistry";
 import { CronPollTokenRegistrationsResponseSchema } from "../../../../types/validation/api-schemas";
@@ -74,9 +74,9 @@ async function pollBaseRegistrations() {
     return { processed: 0, message: "Already up to date" };
   }
 
-  console.log(`[Cron Base] Fetching events from block ${startBlock} to ${latestBlock}`);
+  console.log(`[Cron Base] Fetching events from block ${startBlock} to ${latestBlock} (chunked)`);
 
-  const logs = await client.getLogs({
+  const logs = await getLogsChunked(client as PublicClient, {
     address: registrationHelperAddress as `0x${string}`,
     event: {
       type: "event",

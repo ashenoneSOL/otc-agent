@@ -1,7 +1,7 @@
-import { createPublicClient, http, parseAbi } from "viem";
+import { type PublicClient, createPublicClient, http, parseAbi } from "viem";
 import { base } from "viem/chains";
 import { getRegistrationHelperForChain } from "../config/contracts";
-import type { MinimalPublicClient } from "../lib/viem-utils";
+import { type MinimalPublicClient, getLogsChunked } from "../lib/viem-utils";
 import { TokenRegistryService } from "./tokenRegistry";
 
 // Protected symbols that can only be registered from verified contract addresses
@@ -226,9 +226,9 @@ export async function backfillBaseEvents(fromBlock?: bigint) {
   const latestBlock = await client.getBlockNumber();
   const startBlock = fromBlock || latestBlock - BigInt(10000); // Last ~10k blocks
 
-  console.log(`[Base Backfill] Fetching events from block ${startBlock} to ${latestBlock}`);
+  console.log(`[Base Backfill] Fetching events from block ${startBlock} to ${latestBlock} (chunked)`);
 
-  const logs = await client.getLogs({
+  const logs = await getLogsChunked(client as PublicClient, {
     address: registrationHelperAddress as `0x${string}`,
     event: {
       type: "event",

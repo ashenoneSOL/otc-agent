@@ -221,3 +221,71 @@ export async function readERC20Balance(
     args: [account],
   });
 }
+
+/**
+ * Maximum block range for eth_getLogs on Alchemy free tier
+ */
+const ALCHEMY_FREE_TIER_BLOCK_LIMIT = 10n;
+
+/**
+ * Parameters for chunked getLogs
+ */
+interface GetLogsChunkedParams<TAbiEvent extends AbiEvent> {
+  address: Address;
+  event: TAbiEvent;
+  fromBlock: bigint;
+  toBlock: bigint;
+  chunkSize?: bigint;
+}
+
+/**
+ * Fetch logs in chunks to work around Alchemy free tier block range limits.
+ * Alchemy free tier only allows 10 blocks per eth_getLogs request.
+ *
+ * @example
+ * ```ts
+ * const logs = await getLogsChunked(client, {
+ *   address: contractAddress,
+ *   event: tokenRegisteredEvent,
+ *   fromBlock: startBlock,
+ *   toBlock: latestBlock,
+ * });
+ * ```
+ */
+export async function getLogsChunked<TAbiEvent extends AbiEvent>(
+  client: PublicClient,
+  params: GetLogsChunkedParams<TAbiEvent>,
+): Promise<Log[]> {
+  const { address, event, fromBlock, toBlock, chunkSize = ALCHEMY_FREE_TIER_BLOCK_LIMIT } = params;
+
+  // If range fits in one request, just make it
+  if (toBlock - fromBlock <= chunkSize) {
+    return client.getLogs({
+      address,
+      event,
+      fromBlock,
+      toBlock,
+    });
+  }
+
+  // Otherwise, chunk the requests
+  const allLogs: Log[] = [];
+  let currentFrom = fromBlock;
+
+  while (currentFrom <= toBlock) {
+    const currentTo =
+      currentFrom + chunkSize > toBlock ? toBlock : currentFrom + chunkSize - 1n;
+
+    const logs = await client.getLogs({
+      address,
+      event,
+      fromBlock: currentFrom,
+      toBlock: currentTo,
+    });
+
+    allLogs.push(...logs);
+    currentFrom = currentTo + 1n;
+  }
+
+  return allLogs;
+}
