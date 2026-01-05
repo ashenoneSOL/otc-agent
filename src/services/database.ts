@@ -6,30 +6,9 @@ import { encodePacked, getAddress, keccak256 } from "viem";
 import { z } from "zod";
 import type QuoteService from "../lib/plugin-otc-desk/services/quoteService";
 
-// Lazy getter to avoid circular dependency at module load time
-// Using a minimal interface to avoid type import dependency
-interface AgentRuntimeManager {
-  getRuntime(): Promise<{
-    getCache<T>(key: string): Promise<T | null>;
-    setCache<T>(key: string, value: T): Promise<void>;
-    deleteCache(key: string): Promise<void>;
-    getService<T>(name: string): T | null;
-  }>;
-}
-let _agentRuntime: AgentRuntimeManager | null = null;
-
-// Use indirect path to prevent static analysis from detecting circular dependency
-const AGENT_RUNTIME_PATH = "../lib/agent-runtime";
-async function getAgentRuntime(): Promise<AgentRuntimeManager> {
-  if (!_agentRuntime) {
-    // Dynamic import with variable path breaks static analysis detection
-    const mod = (await import(/* webpackIgnore: true */ AGENT_RUNTIME_PATH)) as {
-      agentRuntime: AgentRuntimeManager;
-    };
-    _agentRuntime = mod.agentRuntime;
-  }
-  return _agentRuntime;
-}
+// Import agent runtime directly - the circular dependency is resolved at runtime
+// since agentRuntime is a class with lazy initialization
+import { agentRuntime } from "../lib/agent-runtime";
 import { parseOrThrow } from "../lib/validation/helpers";
 import type {
   Chain,
@@ -148,7 +127,6 @@ export class QuoteDB {
     // FAIL-FAST: Validate input at boundary
     parseOrThrow(QuoteCreateInputSchema, data);
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const service = runtime.getService<QuoteService>("QuoteService");
     if (!service) throw new Error("QuoteService not registered");
@@ -156,7 +134,6 @@ export class QuoteDB {
   }
 
   static async getActiveQuotes(): Promise<Quote[]> {
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const service = runtime.getService<QuoteService>("QuoteService");
     if (!service) throw new Error("QuoteService not registered");
@@ -167,7 +144,6 @@ export class QuoteDB {
     // FAIL-FAST: Validate address format
     parseOrThrow(AddressSchema, beneficiary);
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const service = runtime.getService<QuoteService>("QuoteService");
     if (!service) throw new Error("QuoteService not registered");
@@ -180,7 +156,6 @@ export class QuoteDB {
       throw new Error("getQuoteByQuoteId: quoteId is required");
     }
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const service = runtime.getService<QuoteService>("QuoteService");
     if (!service) throw new Error("QuoteService not registered");
@@ -201,7 +176,6 @@ export class QuoteDB {
     // FAIL-FAST: Validate inputs
     parseOrThrow(QuoteStatusUpdateInputSchema, { quoteId, status, data });
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const service = runtime.getService<QuoteService>("QuoteService");
     if (!service) throw new Error("QuoteService not registered");
@@ -228,7 +202,6 @@ export class QuoteDB {
     // FAIL-FAST: Validate inputs
     parseOrThrow(QuoteExecutionUpdateInputSchema, { quoteId, data });
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const service = runtime.getService<QuoteService>("QuoteService");
     if (!service) throw new Error("QuoteService not registered");
@@ -242,7 +215,6 @@ export class QuoteDB {
     }
     parseOrThrow(AddressSchema, beneficiary);
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const service = runtime.getService<QuoteService>("QuoteService");
     if (!service) throw new Error("QuoteService not registered");
@@ -258,7 +230,6 @@ export class QuoteDB {
       throw new Error("getUserQuoteHistory: limit must be a positive integer");
     }
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const service = runtime.getService<QuoteService>("QuoteService");
     if (!service) throw new Error("QuoteService not registered");
@@ -271,7 +242,6 @@ export class QuoteDB {
       throw new Error("verifyQuoteSignature: quote with quoteId is required");
     }
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const service = runtime.getService<QuoteService>("QuoteService");
     if (!service) throw new Error("QuoteService not registered");
@@ -327,7 +297,6 @@ export class TokenDB {
     // FAIL-FAST: Validate input with Zod schema
     parseOrThrow(TokenCreateInputSchema, data);
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     // EVM addresses are case-insensitive, so lowercase for consistent ID
     // Solana addresses are Base58 encoded and case-sensitive, preserve case
@@ -400,7 +369,6 @@ export class TokenDB {
       throw new Error(`getToken: invalid tokenId format: ${tokenId}`);
     }
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const normalizedId = normalizeTokenId(tokenId);
     const token = await runtime.getCache<Token>(`token:${normalizedId}`);
@@ -417,7 +385,6 @@ export class TokenDB {
       parseOrThrow(ChainSchema, filters.chain);
     }
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const allTokenIds = (await runtime.getCache<string[]>("all_tokens")) ?? [];
     const tokens = await Promise.all(
@@ -431,7 +398,6 @@ export class TokenDB {
   }
 
   static async updateToken(tokenId: string, updates: Partial<Token>): Promise<Token> {
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const normalizedId = normalizeTokenId(tokenId);
     const token = await runtime.getCache<Token>(`token:${normalizedId}`);
@@ -523,7 +489,6 @@ export class MarketDataDB {
     // FAIL-FAST: Validate input
     parseOrThrow(MarketDataInputSchema, data);
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const normalizedId = normalizeTokenId(data.tokenId);
     await runtime.setCache(`market_data:${normalizedId}`, {
@@ -538,7 +503,6 @@ export class MarketDataDB {
       throw new Error("getMarketData: tokenId is required");
     }
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const normalizedId = normalizeTokenId(tokenId);
     const data = await runtime.getCache<TokenMarketData>(`market_data:${normalizedId}`);
@@ -597,7 +561,6 @@ export class ConsignmentDB {
     // FAIL-FAST: Validate input with Zod schema
     parseOrThrow(ConsignmentCreateInputSchema, data);
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const consignmentId = uuidv4();
     const normalizedTokenId = normalizeTokenId(data.tokenId);
@@ -640,7 +603,6 @@ export class ConsignmentDB {
       throw new Error("getConsignment: consignmentId is required");
     }
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const consignment = await runtime.getCache<OTCConsignment>(`consignment:${consignmentId}`);
     if (!consignment) throw new Error(`Consignment ${consignmentId} not found`);
@@ -654,7 +616,6 @@ export class ConsignmentDB {
     consignmentId: string,
     updates: Partial<OTCConsignment>,
   ): Promise<OTCConsignment> {
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const consignment = await runtime.getCache<OTCConsignment>(`consignment:${consignmentId}`);
     if (!consignment) throw new Error(`Consignment ${consignmentId} not found`);
@@ -664,7 +625,6 @@ export class ConsignmentDB {
   }
 
   static async getConsignmentsByToken(tokenId: string): Promise<OTCConsignment[]> {
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const normalizedId = normalizeTokenId(tokenId);
     const consignmentIds =
@@ -679,7 +639,6 @@ export class ConsignmentDB {
     consignerAddress: string,
     includeWithdrawn = false,
   ): Promise<OTCConsignment[]> {
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const consignmentIds =
       (await runtime.getCache<string[]>(`consigner_consignments:${consignerAddress}`)) || [];
@@ -696,7 +655,6 @@ export class ConsignmentDB {
     tokenId?: string;
     isNegotiable?: boolean;
   }): Promise<OTCConsignment[]> {
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const allConsignmentIds = (await runtime.getCache<string[]>("all_consignments")) || [];
     const consignments = await Promise.all(
@@ -737,7 +695,6 @@ export class ConsignmentDealDB {
     // FAIL-FAST: Validate input
     parseOrThrow(ConsignmentDealCreateInputSchema, data);
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const dealId = uuidv4();
     const deal: ConsignmentDeal = {
@@ -761,7 +718,6 @@ export class ConsignmentDealDB {
       throw new Error("getDealsByConsignment: consignmentId is required");
     }
 
-    const agentRuntime = await getAgentRuntime();
     const runtime = await agentRuntime.getRuntime();
     const dealIds = (await runtime.getCache<string[]>(`consignment_deals:${consignmentId}`)) || [];
     const deals = await Promise.all(
