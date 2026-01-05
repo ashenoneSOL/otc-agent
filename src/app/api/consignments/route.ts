@@ -22,35 +22,36 @@ import {
 import { sanitizeConsignmentForBuyer } from "../../../utils/consignment-sanitizer";
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
+  try {
+    const { searchParams } = new URL(request.url);
 
-  // Build params object that properly handles repeated query params (arrays)
-  const params: Record<string, string | string[]> = {};
-  for (const [key, value] of searchParams.entries()) {
-    const existing = params[key];
-    if (existing !== undefined) {
-      // Multiple values - convert to array
-      params[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
-    } else {
-      params[key] = value;
+    // Build params object that properly handles repeated query params (arrays)
+    const params: Record<string, string | string[]> = {};
+    for (const [key, value] of searchParams.entries()) {
+      const existing = params[key];
+      if (existing !== undefined) {
+        // Multiple values - convert to array
+        params[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
+      } else {
+        params[key] = value;
+      }
     }
-  }
 
-  // Validate query params - return 400 on invalid params
-  const parseResult = GetConsignmentsQuerySchema.safeParse(params);
-  if (!parseResult.success) {
-    return validationErrorResponse(parseResult.error, 400);
-  }
-  const query = parseResult.data;
+    // Validate query params - return 400 on invalid params
+    const parseResult = GetConsignmentsQuerySchema.safeParse(params);
+    if (!parseResult.success) {
+      return validationErrorResponse(parseResult.error, 400);
+    }
+    const query = parseResult.data;
 
-  const {
-    tokenId,
-    chains,
-    negotiableTypes,
-    isFractionalized,
-    consigner: consignerAddress,
-    requester: requesterAddress,
-  } = query;
+    const {
+      tokenId,
+      chains,
+      negotiableTypes,
+      isFractionalized,
+      consigner: consignerAddress,
+      requester: requesterAddress,
+    } = query;
 
   // For user-specific requests, bypass cache (private data)
   // For public requests, use serverless-optimized cache
@@ -267,16 +268,35 @@ export async function GET(request: NextRequest) {
     : "public, s-maxage=60, stale-while-revalidate=300";
 
   const response = {
-    success: true as const,
-    consignments: responseConsignments,
-  };
-  const validatedResponse = ConsignmentsResponseSchema.parse(response);
+      success: true as const,
+      consignments: responseConsignments,
+    };
+    const validatedResponse = ConsignmentsResponseSchema.parse(response);
 
-  return NextResponse.json(validatedResponse, {
-    headers: {
-      "Cache-Control": cacheControl,
-    },
-  });
+    return NextResponse.json(validatedResponse, {
+      headers: {
+        "Cache-Control": cacheControl,
+      },
+    });
+  } catch (error) {
+    // FAIL-FAST: Log error details for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error("[Consignments API] GET error:", errorMessage);
+    if (errorStack) console.error("[Consignments API] Stack:", errorStack);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: errorMessage,
+        // Include stack in development only
+        ...(process.env.NODE_ENV === "development" && errorStack
+          ? { stack: errorStack }
+          : {}),
+      },
+      { status: 500 },
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {

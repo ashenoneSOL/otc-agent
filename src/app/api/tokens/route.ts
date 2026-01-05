@@ -18,74 +18,94 @@ import {
 import { isContractAddress } from "../../../utils/address-utils";
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const query = validateQueryParams(GetTokensQuerySchema, searchParams);
+  try {
+    const { searchParams } = new URL(request.url);
+    const query = validateQueryParams(GetTokensQuerySchema, searchParams);
 
-  const { chain, symbol, address, minMarketCap, maxMarketCap, isActive } = query;
+    const { chain, symbol, address, minMarketCap, maxMarketCap, isActive } = query;
 
-  // Use serverless-optimized cache for token list
-  const filters: { chain?: Chain; isActive?: boolean } = {};
-  if (chain) filters.chain = chain;
-  if (isActive !== undefined) filters.isActive = isActive;
+    // Use serverless-optimized cache for token list
+    const filters: { chain?: Chain; isActive?: boolean } = {};
+    if (chain) filters.chain = chain;
+    if (isActive !== undefined) filters.isActive = isActive;
 
-  let tokens = await getCachedTokens(filters);
+    let tokens = await getCachedTokens(filters);
 
-  // Filter by symbol or address if provided
-  if (symbol) {
-    tokens = tokens.filter((t) => t.symbol.toLowerCase() === symbol.toLowerCase());
-  }
-  if (address) {
-    tokens = tokens.filter((t) => {
-      if (t.chain === "solana") {
-        return t.contractAddress === address;
+    // Filter by symbol or address if provided
+    if (symbol) {
+      tokens = tokens.filter((t) => t.symbol.toLowerCase() === symbol.toLowerCase());
+    }
+    if (address) {
+      tokens = tokens.filter((t) => {
+        if (t.chain === "solana") {
+          return t.contractAddress === address;
+        }
+        return t.contractAddress.toLowerCase() === address.toLowerCase();
+      });
+    }
+
+    // Apply market cap filters if provided
+    if (minMarketCap || maxMarketCap) {
+      const service = new TokenRegistryService();
+      tokens = await service.getAllTokens({
+        ...filters,
+        minMarketCap: minMarketCap ? Number(minMarketCap) : undefined,
+        maxMarketCap: maxMarketCap ? Number(maxMarketCap) : undefined,
+      });
+    }
+
+    // Filter out tokens with invalid chain values or contract addresses
+    const validTokens = tokens.filter((token) => {
+      // Filter out tokens with invalid chain (must be in SUPPORTED_CHAINS)
+      if (!(token.chain in SUPPORTED_CHAINS)) {
+        return false;
       }
-      return t.contractAddress.toLowerCase() === address.toLowerCase();
+      // Filter out tokens with invalid contract addresses
+      if (!isContractAddress(token.contractAddress)) {
+        return false;
+      }
+      return true;
     });
-  }
 
-  // Apply market cap filters if provided
-  if (minMarketCap || maxMarketCap) {
-    const service = new TokenRegistryService();
-    tokens = await service.getAllTokens({
-      ...filters,
-      minMarketCap: minMarketCap ? Number(minMarketCap) : undefined,
-      maxMarketCap: maxMarketCap ? Number(maxMarketCap) : undefined,
+    // Batch fetch market data with cache
+    const tokensWithMarketData = await Promise.all(
+      validTokens.map(async (token) => {
+        const marketData = await getCachedMarketData(token.id);
+        return {
+          ...token,
+          marketData,
+        };
+      }),
+    );
+
+    const response = { success: true as const, tokens: tokensWithMarketData };
+    const validatedResponse = TokensResponseSchema.parse(response);
+
+    // Cache for 5 minutes - token metadata rarely changes
+    return NextResponse.json(validatedResponse, {
+      headers: {
+        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+      },
     });
+  } catch (error) {
+    // FAIL-FAST: Log error details for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error("[Tokens API] GET error:", errorMessage);
+    if (errorStack) console.error("[Tokens API] Stack:", errorStack);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: errorMessage,
+        // Include stack in development only
+        ...(process.env.NODE_ENV === "development" && errorStack
+          ? { stack: errorStack }
+          : {}),
+      },
+      { status: 500 },
+    );
   }
-
-  // Filter out tokens with invalid chain values or contract addresses
-  const validTokens = tokens.filter((token) => {
-    // Filter out tokens with invalid chain (must be in SUPPORTED_CHAINS)
-    if (!(token.chain in SUPPORTED_CHAINS)) {
-      return false;
-    }
-    // Filter out tokens with invalid contract addresses
-    if (!isContractAddress(token.contractAddress)) {
-      return false;
-    }
-    return true;
-  });
-
-  // Batch fetch market data with cache
-  const tokensWithMarketData = await Promise.all(
-    validTokens.map(async (token) => {
-      const marketData = await getCachedMarketData(token.id);
-      return {
-        ...token,
-        marketData,
-      };
-    }),
-  );
-
-  const response = { success: true as const, tokens: tokensWithMarketData };
-  const validatedResponse = TokensResponseSchema.parse(response);
-
-  // Cache for 5 minutes - token metadata rarely changes
-  return NextResponse.json(validatedResponse, {
-    headers: {
-      "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
-    },
-  });
 }
 
 export async function POST(request: NextRequest) {

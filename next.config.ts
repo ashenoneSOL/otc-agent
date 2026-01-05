@@ -7,9 +7,8 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
-  },
+  // IMPORTANT: Don't remove console in production - errors need to be logged
+  // compiler: { removeConsole: false },
   // Explicitly set workspace root to prevent lockfile detection warnings
   outputFileTracingRoot: process.cwd(),
   serverExternalPackages: ['handlebars', '@elizaos/plugin-sql', '@elizaos/core'],
