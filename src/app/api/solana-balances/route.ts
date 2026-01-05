@@ -798,15 +798,16 @@ export async function GET(request: NextRequest) {
     `[Solana Balances] ${Object.keys(cachedPrices).length} prices cached, ${mintsNeedingPrices.length} need fetch`,
   );
 
-  // Birdeye multi-price API - fetch in batches of 100
+  // Birdeye multi-price API - fetch in batches of 50 (smaller batches to avoid URL length issues)
   const birdeyeApiKey = process.env.BIRDEYE_API_KEY;
+  const BIRDEYE_BATCH_SIZE = 50;
   if (mintsNeedingPrices.length > 0 && birdeyeApiKey) {
     console.log(
       `[Solana Balances] Fetching prices for ${mintsNeedingPrices.length} tokens from Birdeye`,
     );
-    for (let i = 0; i < mintsNeedingPrices.length; i += 100) {
-      const batch = mintsNeedingPrices.slice(i, i + 100);
-      console.log(`[Solana Balances] Birdeye batch ${i / 100 + 1}: ${batch.length} mints`);
+    for (let i = 0; i < mintsNeedingPrices.length; i += BIRDEYE_BATCH_SIZE) {
+      const batch = mintsNeedingPrices.slice(i, i + BIRDEYE_BATCH_SIZE);
+      console.log(`[Solana Balances] Birdeye batch ${i / BIRDEYE_BATCH_SIZE + 1}: ${batch.length} mints`);
       try {
         const priceResponse = await fetch(
           `https://public-api.birdeye.so/defi/multi_price?list_address=${batch.join(",")}`,
