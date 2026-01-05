@@ -452,21 +452,22 @@ async function fetchFromCodex(
  * Tries Codex first, falls back to Helius
  */
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
+  try {
+    const { searchParams } = new URL(request.url);
 
-  // Validate query params - return 400 on invalid params
-  const parseResult = GetSolanaBalancesQuerySchema.safeParse(
-    Object.fromEntries(searchParams.entries()),
-  );
-  if (!parseResult.success) {
-    return validationErrorResponse(parseResult.error, 400);
-  }
-  const query = parseResult.data;
+    // Validate query params - return 400 on invalid params
+    const parseResult = GetSolanaBalancesQuerySchema.safeParse(
+      Object.fromEntries(searchParams.entries()),
+    );
+    if (!parseResult.success) {
+      return validationErrorResponse(parseResult.error, 400);
+    }
+    const query = parseResult.data;
 
-  const heliusKey = process.env.HELIUS_API_KEY;
-  const codexKey = process.env.CODEX_API_KEY;
-  const { address: walletAddress } = query;
-  const forceRefresh = searchParams.get("refresh") === "true";
+    const heliusKey = process.env.HELIUS_API_KEY;
+    const codexKey = process.env.CODEX_API_KEY;
+    const { address: walletAddress } = query;
+    const forceRefresh = searchParams.get("refresh") === "true";
 
   // Local mode: use local RPC directly (mainnet APIs won't see local tokens)
   const isLocalMode =
@@ -952,13 +953,27 @@ export async function GET(request: NextRequest) {
   // Cache for 15 minutes
   await setCachedWalletResponse(walletAddress, enrichedTokens);
 
-  const response = { tokens: enrichedTokens };
-  const validatedResponse = SolanaBalancesResponseSchema.parse(response);
+    const response = { tokens: enrichedTokens };
+    const validatedResponse = SolanaBalancesResponseSchema.parse(response);
 
-  // Cache for 60 seconds - balances can change but short cache is fine for UX
-  return NextResponse.json(validatedResponse, {
-    headers: {
-      "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300",
-    },
-  });
+    // Cache for 60 seconds - balances can change but short cache is fine for UX
+    return NextResponse.json(validatedResponse, {
+      headers: {
+        "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300",
+      },
+    });
+  } catch (error) {
+    // FAIL-FAST: Log error details for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error("[Solana Balances API Error]", errorMessage);
+    if (errorStack) {
+      console.error("[Solana Balances API Stack]", errorStack);
+    }
+
+    return NextResponse.json(
+      { success: false, error: errorMessage },
+      { status: 500 },
+    );
+  }
 }
