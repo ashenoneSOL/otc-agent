@@ -845,9 +845,9 @@ export async function GET(request: NextRequest) {
         if (priceData.success && priceData.data) {
           let pricesFound = 0;
           for (const [mint, data] of Object.entries(priceData.data)) {
-            const price = data.value;
-            if (price && price > 0) {
-              prices[mint] = price;
+            // Birdeye returns null for tokens without price data
+            if (data && typeof data.value === "number" && data.value > 0) {
+              prices[mint] = data.value;
               pricesFound++;
             }
           }
