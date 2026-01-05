@@ -36,10 +36,11 @@ export type TokenBalance = z.infer<typeof TokenBalanceSchema>;
 /**
  * Solana token balance structure
  * Single source of truth - used by both API routes and hooks
+ * Note: amount is a string to handle values exceeding JavaScript's safe integer range
  */
 export const SolanaTokenBalanceSchema = z.object({
   mint: AddressSchema,
-  amount: z.number().int().nonnegative(),
+  amount: BigIntStringSchema, // String to handle large token amounts safely
   decimals: z.number().int().min(0).max(255),
   symbol: NonEmptyStringSchema,
   name: z.string(),

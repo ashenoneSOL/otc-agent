@@ -70,7 +70,7 @@ async function setSolanaPriceCache(prices: Record<string, number>): Promise<void
 interface CachedWalletResponse {
   tokens: Array<{
     mint: string;
-    amount: number;
+    amount: string; // String to handle large token amounts safely
     decimals: number;
     symbol: string;
     name: string;
@@ -295,12 +295,13 @@ async function fetchFromLocalRpc(walletAddress: string): Promise<CachedWalletRes
   const tokens = accounts
     .map((acc) => {
       const info = acc.account.data.parsed.info;
-      const rawAmount = parseInt(info.tokenAmount.amount, 10);
-      if (rawAmount === 0) return null;
+      const rawAmountStr = info.tokenAmount.amount;
+      // Check if zero by comparing string directly to avoid BigInt conversion
+      if (rawAmountStr === "0") return null;
 
       return {
         mint: info.mint,
-        amount: rawAmount,
+        amount: rawAmountStr, // Keep as string to handle large values
         decimals: info.tokenAmount.decimals,
         // For local tokens, use short mint address as symbol/name
         symbol: `${info.mint.slice(0, 4)}...${info.mint.slice(-4)}`,
@@ -424,7 +425,7 @@ async function fetchFromCodex(
 
       return {
         mint,
-        amount: parseInt(item.balance, 10),
+        amount: item.balance, // Keep as string to handle large values
         decimals: token.decimals,
         symbol: token.symbol,
         name: token.name,
@@ -436,12 +437,23 @@ async function fetchFromCodex(
         balanceUsd: item.balanceUsd ? parseFloat(item.balanceUsd) : 0,
       };
     })
-    .filter((t) => t.balanceUsd >= 0.01 || t.amount > 100 * 10 ** t.decimals)
+    .filter((t) => {
+      // Filter: show tokens worth > $0.01 or with > 100 tokens (using BigInt for large amounts)
+      if (t.balanceUsd >= 0.01) return true;
+      const amountBigInt = BigInt(t.amount);
+      const threshold = BigInt(100) * BigInt(10 ** t.decimals);
+      return amountBigInt > threshold;
+    })
     .sort((a, b) => {
       if (a.balanceUsd > 0 && b.balanceUsd > 0) return b.balanceUsd - a.balanceUsd;
       if (a.balanceUsd > 0) return -1;
       if (b.balanceUsd > 0) return 1;
-      return b.amount - a.amount;
+      // Sort by amount using BigInt comparison
+      const aAmount = BigInt(a.amount);
+      const bAmount = BigInt(b.amount);
+      if (bAmount > aAmount) return 1;
+      if (bAmount < aAmount) return -1;
+      return 0;
     });
 
   return tokens;
@@ -652,20 +664,22 @@ export async function GET(request: NextRequest) {
       if (!info.tokenAmount || !info.tokenAmount.amount) {
         throw new Error(`Token ${info.mint} missing amount in tokenAmount`);
       }
-      const rawAmount = parseInt(info.tokenAmount.amount, 10);
+      const rawAmountStr = info.tokenAmount.amount;
       // Calculate humanBalance ourselves in case uiAmount is null
+      // Use BigInt for division to handle large amounts
+      const rawAmountNum = Number(rawAmountStr);
       const humanBalance =
         typeof info.tokenAmount.uiAmount === "number"
           ? info.tokenAmount.uiAmount
-          : rawAmount / 10 ** decimals;
+          : rawAmountNum / 10 ** decimals;
       return {
         mint: info.mint,
-        amount: rawAmount,
+        amount: rawAmountStr, // Keep as string to handle large values
         decimals,
         humanBalance,
       };
     })
-    .filter((t) => t.amount > 0); // Any non-zero balance
+    .filter((t) => t.amount !== "0"); // Any non-zero balance
 
   console.log(`[Solana Balances] Found ${tokensWithBalance.length} tokens with balance > 0`);
 
