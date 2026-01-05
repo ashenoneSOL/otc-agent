@@ -786,11 +786,14 @@ export async function GET(request: NextRequest) {
 
   // Step 3: Get prices from cache first, then fetch missing from Birdeye
   const mints = tokensWithBalance.map((t) => t.mint);
-  const cachedPrices = await getSolanaPriceCache();
+  // If force refresh, ignore cached prices to get fresh data
+  const cachedPrices = forceRefresh ? {} : await getSolanaPriceCache();
   const prices: Record<string, number> = { ...cachedPrices };
 
-  // Find mints that need prices
-  const mintsNeedingPrices = mints.filter((mint) => prices[mint] === undefined);
+  // Find mints that need prices (either uncached or cached with $0)
+  const mintsNeedingPrices = mints.filter(
+    (mint) => prices[mint] === undefined || prices[mint] === 0,
+  );
   console.log(
     `[Solana Balances] ${Object.keys(cachedPrices).length} prices cached, ${mintsNeedingPrices.length} need fetch`,
   );
