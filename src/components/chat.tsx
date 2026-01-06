@@ -24,6 +24,8 @@ interface ChatProps {
   roomId?: string;
   token?: Token;
   marketData?: TokenMarketData | null;
+  /** If provided, focus on this specific consignment instead of showing aggregated data */
+  consignmentId?: string;
 }
 
 // --- Consolidated Chat State ---
@@ -208,7 +210,7 @@ const initialChatState: ChatState = {
   showClearChatModal: false,
 };
 
-export const Chat = ({ roomId: initialRoomId, token, marketData }: ChatProps = {}) => {
+export const Chat = ({ roomId: initialRoomId, token, marketData, consignmentId }: ChatProps = {}) => {
   // --- Consolidated State ---
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialChatState,
@@ -253,17 +255,27 @@ export const Chat = ({ roomId: initialRoomId, token, marketData }: ChatProps = {
     return BigInt(value);
   }, []);
 
-  // Calculate aggregated consignment data for the token
-  // Uses sanitized display fields (worst case for negotiable, actual for fixed)
+  // Calculate consignment data for the token
+  // If consignmentId is provided, focus on that specific consignment
+  // Otherwise, aggregate across all consignments (worst case for negotiable, actual for fixed)
   const consignmentData = useMemo(() => {
     if (!consignments?.length) return null;
 
     // Filter to active consignments with remaining balance
-    const activeConsignments = consignments.filter((c) => {
+    let activeConsignments = consignments.filter((c) => {
       if (c.status !== "active") return false;
       const remaining = safeBigInt(c.remainingAmount);
       return remaining > 0n;
     });
+
+    // If a specific consignment is requested, filter to just that one
+    if (consignmentId) {
+      const specificConsignment = activeConsignments.find((c) => c.id === consignmentId);
+      if (specificConsignment) {
+        activeConsignments = [specificConsignment];
+      }
+      // If the specific consignment is not found/active, fall through to show all
+    }
 
     if (!activeConsignments.length) return null;
 
@@ -350,7 +362,7 @@ export const Chat = ({ roomId: initialRoomId, token, marketData }: ChatProps = {
       // Uses the first active consignment (required for on-chain execution)
       primaryConsignmentId: activeConsignments[0].id,
     };
-  }, [consignments, safeBigInt]);
+  }, [consignments, safeBigInt, consignmentId]);
 
   // --- Refs ---
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

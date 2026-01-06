@@ -146,7 +146,7 @@ export function TokenDealsSection({ token, consignments }: TokenDealsSectionProp
                 type="button"
                 key={consignment.id}
                 className="w-full text-left p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer group"
-                onClick={() => router.push(`/token/${token.id}`)}
+                onClick={() => router.push(`/token/${token.id}?consignment=${consignment.id}`)}
                 onMouseEnter={handleMouseEnter}
               >
                 <div className="flex items-center justify-between gap-4">

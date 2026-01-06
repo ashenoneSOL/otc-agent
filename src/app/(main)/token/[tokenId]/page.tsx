@@ -1,7 +1,7 @@
 "use client";
 
 import nextDynamic from "next/dynamic";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import type React from "react";
 import { PageLoading } from "../../../../components/ui/loading-spinner";
 import { useMarketData, useToken } from "../../../../hooks/useToken";
@@ -12,13 +12,16 @@ const Chat = nextDynamic(() => import("../../../../components/chat"), {
 }) as React.ComponentType<{
   token?: Token;
   marketData?: TokenMarketData | null;
+  consignmentId?: string;
 }>;
 
 export const dynamic = "force-dynamic";
 
 export default function TokenPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const tokenId = params.tokenId as string;
+  const consignmentId = searchParams.get("consignment") || undefined;
 
   // Use React Query hooks for token and market data
   const { token, marketData: initialMarketData, isLoading: loading } = useToken(tokenId);
@@ -47,7 +50,7 @@ export default function TokenPage() {
       <main className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 flex flex-col min-h-0 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
           <div className="max-w-3xl mx-auto w-full flex-1 flex flex-col min-h-0">
-            <Chat token={token} marketData={marketData} />
+            <Chat token={token} marketData={marketData} consignmentId={consignmentId} />
           </div>
         </div>
       </main>
