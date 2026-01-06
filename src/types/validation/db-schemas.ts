@@ -142,14 +142,10 @@ const OTCConsignmentBaseSchema = z.object({
     (val) => (val === undefined || val === null ? 0 : val),
     z.number().int().min(0).max(10000),
   ),
+  // Legacy data may have null maxDiscountBps - default to 3000 (30% max discount)
   maxDiscountBps: z.preprocess(
-    (val) => {
-      if (val === undefined || val === null) {
-        throw new Error("maxDiscountBps is required - cannot use default");
-      }
-      return val;
-    },
-    z.number().int().min(0).max(3000, "Maximum discount cannot exceed 30%"),
+    (val) => (val === undefined || val === null ? 3000 : val),
+    z.number().int().min(0).max(10000),
   ),
   minLockupDays: z.preprocess(
     (val) => (val === undefined || val === null ? 0 : val),
@@ -163,12 +159,12 @@ const OTCConsignmentBaseSchema = z.object({
     (val) => (val === undefined || val === null ? "1" : val),
     BigIntStringSchema,
   ),
-  maxDealAmount: z.preprocess((val) => {
-    if (val === undefined || val === null) {
-      throw new Error("maxDealAmount is required - cannot use default");
-    }
-    return val;
-  }, BigIntStringSchema),
+  // Legacy data may have null maxDealAmount - we need to handle this gracefully
+  // Default to a large value that won't limit deals (will be capped by remaining amount)
+  maxDealAmount: z.preprocess(
+    (val) => (val === undefined || val === null ? "999999999999999999999" : val),
+    BigIntStringSchema,
+  ),
   isFractionalized: z.boolean(),
   isPrivate: z.boolean(),
   allowedBuyers: OptionalAddressArraySchema,
