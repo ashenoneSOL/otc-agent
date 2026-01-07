@@ -233,7 +233,7 @@ export async function DELETE(
   // Invalidate cache so trading desk shows fresh data
   invalidateConsignmentCache();
 
-  const response = { success: true };
+  const response = { success: true as const, message: "Consignment withdrawn successfully" };
   const validatedResponse = DeleteConsignmentResponseSchema.parse(response);
   return NextResponse.json(validatedResponse);
 }
