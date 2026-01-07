@@ -46,8 +46,20 @@ export async function POST(request: NextRequest) {
   const connection = new Connection(SOLANA_RPC, "confirmed");
 
   // Load desk keypair (supports env var and file-based)
-  const deskKeypair = await loadDeskKeypair();
-  console.log("[Withdraw Consignment API] Loaded desk keypair:", deskKeypair.publicKey.toBase58());
+  let deskKeypair: Awaited<ReturnType<typeof loadDeskKeypair>>;
+  try {
+    deskKeypair = await loadDeskKeypair();
+    console.log("[Withdraw Consignment API] Loaded desk keypair:", deskKeypair.publicKey.toBase58());
+  } catch (keypairError) {
+    const message = keypairError instanceof Error ? keypairError.message : String(keypairError);
+    console.error("[Withdraw Consignment API] Failed to load desk keypair:", message);
+    return NextResponse.json(
+      {
+        error: `Server configuration error: Unable to load desk keypair. ${message}`,
+      },
+      { status: 500 },
+    );
+  }
   const desk = new PublicKey(SOLANA_DESK);
 
   // Use bundled IDL (works on Vercel - filesystem paths fail in serverless)
@@ -186,16 +198,70 @@ export async function POST(request: NextRequest) {
 
   // Send transaction
   console.log("[Withdraw Consignment API] Sending transaction...");
-  const signature = await connection.sendRawTransaction(transaction.serialize(), {
-    skipPreflight: false,
-    maxRetries: 3,
-  });
-  console.log("[Withdraw Consignment API] Transaction sent:", signature);
+  let signature: string;
+  try {
+    signature = await connection.sendRawTransaction(transaction.serialize(), {
+      skipPreflight: false,
+      maxRetries: 3,
+    });
+    console.log("[Withdraw Consignment API] Transaction sent:", signature);
+  } catch (sendError) {
+    const message = sendError instanceof Error ? sendError.message : String(sendError);
+    console.error("[Withdraw Consignment API] Transaction send failed:", message);
+
+    // Parse common Solana errors for user-friendly messages
+    if (message.includes("Blockhash not found")) {
+      return NextResponse.json(
+        { error: "Transaction expired. Please try again." },
+        { status: 400 },
+      );
+    }
+    if (message.includes("insufficient funds") || message.includes("InsufficientFunds")) {
+      return NextResponse.json(
+        { error: "Insufficient SOL for transaction fees. Please add SOL to your wallet." },
+        { status: 400 },
+      );
+    }
+    if (message.includes("custom program error")) {
+      // Try to extract the program error
+      const programErrorMatch = message.match(/custom program error: (0x[0-9a-fA-F]+)/);
+      if (programErrorMatch) {
+        const errorCode = programErrorMatch[1];
+        return NextResponse.json(
+          { error: `On-chain withdrawal failed with error code ${errorCode}. The consignment may be inactive or already withdrawn.` },
+          { status: 400 },
+        );
+      }
+    }
+    if (message.includes("BadState") || message.includes("AccountNotActive")) {
+      return NextResponse.json(
+        { error: "Consignment is not active. It may have already been withdrawn or fully used in deals." },
+        { status: 400 },
+      );
+    }
+
+    return NextResponse.json(
+      { error: `Transaction failed: ${message}` },
+      { status: 500 },
+    );
+  }
 
   // Wait for confirmation
   console.log("[Withdraw Consignment API] Waiting for confirmation...");
-  await connection.confirmTransaction(signature, "confirmed");
-  console.log("[Withdraw Consignment API] Transaction confirmed");
+  try {
+    await connection.confirmTransaction(signature, "confirmed");
+    console.log("[Withdraw Consignment API] Transaction confirmed");
+  } catch (confirmError) {
+    const message = confirmError instanceof Error ? confirmError.message : String(confirmError);
+    console.error("[Withdraw Consignment API] Transaction confirmation failed:", message);
+    // Transaction was sent but confirmation failed - return the signature anyway
+    // User can check the transaction status manually
+    return NextResponse.json({
+      success: true,
+      signature,
+      warning: "Transaction sent but confirmation timed out. Check transaction status manually.",
+    });
+  }
 
   const withdrawResponse = { success: true, signature };
   const validatedWithdrawResponse = SolanaWithdrawConsignmentResponseSchema.parse(withdrawResponse);

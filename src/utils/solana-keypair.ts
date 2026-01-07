@@ -17,12 +17,22 @@ import bs58 from "bs58";
  *
  * Tries in order:
  * 1. SOLANA_DESK_PRIVATE_KEY env var (base58 or JSON array)
- * 2. File-based keypairs in solana/otc-program/ directory
+ * 2. SOLANA_PRIVATE_KEY env var (fallback, base58 or JSON array)
+ * 3. File-based keypairs in solana/otc-program/ directory
  */
 export async function loadDeskKeypair(): Promise<Keypair> {
-  // 1. Try environment variable first (production/mainnet)
-  const privateKeyStr = process.env.SOLANA_DESK_PRIVATE_KEY;
+  // 1. Try SOLANA_DESK_PRIVATE_KEY first (production/mainnet)
+  const deskPrivateKeyStr = process.env.SOLANA_DESK_PRIVATE_KEY;
+  if (deskPrivateKeyStr) {
+    return parseKeypairFromString(deskPrivateKeyStr);
+  }
+
+  // 2. Fallback to SOLANA_PRIVATE_KEY (legacy config)
+  const privateKeyStr = process.env.SOLANA_PRIVATE_KEY;
   if (privateKeyStr) {
+    console.warn(
+      "[Solana Keypair] Using SOLANA_PRIVATE_KEY as fallback. Consider setting SOLANA_DESK_PRIVATE_KEY for clarity.",
+    );
     return parseKeypairFromString(privateKeyStr);
   }
 
@@ -51,7 +61,7 @@ export async function loadDeskKeypair(): Promise<Keypair> {
   }
 
   throw new Error(
-    "Desk keypair not found. Set SOLANA_DESK_PRIVATE_KEY env var (base58 or JSON array) with the private key for the desk address.",
+    "Desk keypair not found. Set SOLANA_DESK_PRIVATE_KEY (or SOLANA_PRIVATE_KEY) env var with the private key for the desk address (base58 or JSON array format).",
   );
 }
 

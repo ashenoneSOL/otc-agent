@@ -1,3 +1,5 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import * as anchor from "@coral-xyz/anchor";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import {
@@ -235,22 +237,39 @@ async function handleApproval(request: NextRequest) {
     const idl = solanaIdlJson;
 
     let approverKeypair: InstanceType<typeof Keypair>;
-    const solanaPrivateKey = process.env.SOLANA_MAINNET_PRIVATE_KEY;
+    // Try multiple env var names for approver key
+    const solanaPrivateKey =
+      process.env.SOLANA_MAINNET_PRIVATE_KEY ||
+      process.env.SOLANA_PRIVATE_KEY ||
+      process.env.SOLANA_DESK_PRIVATE_KEY;
     if (solanaPrivateKey) {
       // Use base58-encoded private key from environment
       const secretKey = bs58.decode(solanaPrivateKey);
       approverKeypair = Keypair.fromSecretKey(secretKey);
       console.log(
-        `[Solana Approve] Using approver from SOLANA_MAINNET_PRIVATE_KEY: ${approverKeypair.publicKey.toBase58()}`,
+        `[Solana Approve] Using approver keypair: ${approverKeypair.publicKey.toBase58()}`,
       );
     } else {
-      // Fallback to id.json for local development
-      const keypairPath = path.join(process.cwd(), "solana/otc-program/id.json");
-      const keypairData = JSON.parse(await fs.readFile(keypairPath, "utf8"));
-      approverKeypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
-      console.log(
-        `[Solana Approve] Using approver from id.json: ${approverKeypair.publicKey.toBase58()}`,
-      );
+      // Fallback to id.json for local development only
+      const network = getNetwork();
+      if (network !== "local") {
+        throw new Error(
+          "SOLANA_PRIVATE_KEY or SOLANA_MAINNET_PRIVATE_KEY must be set for Solana approval on mainnet. " +
+            "Configure this environment variable in Vercel.",
+        );
+      }
+      try {
+        const keypairPath = path.join(process.cwd(), "solana/otc-program/id.json");
+        const keypairData = JSON.parse(await fs.readFile(keypairPath, "utf8"));
+        approverKeypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
+        console.log(
+          `[Solana Approve] Using approver from id.json: ${approverKeypair.publicKey.toBase58()}`,
+        );
+      } catch (fileError) {
+        throw new Error(
+          "Failed to load Solana approver keypair. Set SOLANA_PRIVATE_KEY environment variable.",
+        );
+      }
     }
 
     // Create provider with the approver keypair
@@ -332,23 +351,35 @@ async function handleApproval(request: NextRequest) {
 
     // Load desk keypair for signing fulfillment - REQUIRED for fulfillment to work
     let deskKeypair: InstanceType<typeof Keypair>;
-    const deskPrivateKey = process.env.SOLANA_DESK_PRIVATE_KEY;
+    const deskPrivateKey = process.env.SOLANA_DESK_PRIVATE_KEY || process.env.SOLANA_PRIVATE_KEY;
     if (deskPrivateKey) {
       const secretKey = bs58.decode(deskPrivateKey);
       deskKeypair = Keypair.fromSecretKey(secretKey);
       console.log(`[Approve API] Loaded desk keypair: ${deskKeypair.publicKey.toBase58()}`);
     } else {
-      // Try file-based
-      const deskKeypairPath = path.join(
-        process.cwd(),
-        "solana/otc-program/desk-mainnet-keypair.json",
-      );
-      // FAIL-FAST: Desk keypair file must exist and be valid
-      const deskKeypairData = JSON.parse(await fs.readFile(deskKeypairPath, "utf8"));
-      deskKeypair = Keypair.fromSecretKey(Uint8Array.from(deskKeypairData));
-      console.log(
-        `[Approve API] Loaded desk keypair from file: ${deskKeypair.publicKey.toBase58()}`,
-      );
+      // Try file-based for local development only
+      const network = getNetwork();
+      if (network !== "local") {
+        throw new Error(
+          "SOLANA_DESK_PRIVATE_KEY or SOLANA_PRIVATE_KEY must be set for Solana fulfillment on mainnet. " +
+            "Configure this environment variable in Vercel.",
+        );
+      }
+      try {
+        const deskKeypairPath = path.join(
+          process.cwd(),
+          "solana/otc-program/desk-mainnet-keypair.json",
+        );
+        const deskKeypairData = JSON.parse(await fs.readFile(deskKeypairPath, "utf8"));
+        deskKeypair = Keypair.fromSecretKey(Uint8Array.from(deskKeypairData));
+        console.log(
+          `[Approve API] Loaded desk keypair from file: ${deskKeypair.publicKey.toBase58()}`,
+        );
+      } catch (fileError) {
+        throw new Error(
+          "Failed to load Solana desk keypair. Set SOLANA_DESK_PRIVATE_KEY environment variable.",
+        );
+      }
     }
 
     // Verify desk signer keypair matches expected desk address
