@@ -127,7 +127,21 @@ export function getHeliusRpcUrl(): string {
     if (isBuildPhase()) {
       return "https://mainnet.helius-rpc.com/?api-key=build-placeholder";
     }
-    throw new Error("[Solana RPC] CRITICAL: HELIUS_API_KEY not configured!");
+    // Log available env vars for debugging (redacted)
+    const envKeys = Object.keys(process.env).filter(
+      (k) => k.includes("HELIUS") || k.includes("SOLANA") || k.includes("RPC"),
+    );
+    console.error("[Solana RPC] Available env vars matching HELIUS/SOLANA/RPC:", envKeys);
+    console.error(
+      "[Solana RPC] HELIUS_API_KEY value type:",
+      typeof process.env.HELIUS_API_KEY,
+      "truthy:",
+      !!process.env.HELIUS_API_KEY,
+    );
+    throw new Error(
+      "[Solana RPC] CRITICAL: HELIUS_API_KEY not configured! " +
+        "In Vercel: Settings > Environment Variables > Add HELIUS_API_KEY, then redeploy.",
+    );
   }
   return `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
 }
