@@ -1410,18 +1410,31 @@ export function AcceptQuoteModal({
       console.log("Desk token treasury:", deskTokenTreasury.toString());
       console.log("Desk USDC treasury:", deskUsdcTreasury.toString());
 
-      // Read nextOfferId from desk account
+      // Read nextOfferId and lockup limits from desk account
       // The program.account namespace is dynamically generated from IDL
       interface DeskAccountProgram {
         desk: {
-          fetch: (address: SolPubkey) => Promise<{ nextOfferId: anchor.BN }>;
+          fetch: (address: SolPubkey) => Promise<{
+            nextOfferId: anchor.BN;
+            maxLockupSecs: anchor.BN;
+            defaultUnlockDelaySecs: anchor.BN;
+          }>;
         };
       }
 
       const deskAccount = await (program.account as DeskAccountProgram).desk.fetch(desk);
       const nextOfferId = new anchor.BN(deskAccount.nextOfferId.toString());
 
+      // Get desk lockup limits
+      const maxLockupSecs = deskAccount.maxLockupSecs
+        ? Number(deskAccount.maxLockupSecs.toString())
+        : 365 * 24 * 60 * 60; // Default 1 year if not set
+      const minLockupSecs = deskAccount.defaultUnlockDelaySecs
+        ? Number(deskAccount.defaultUnlockDelaySecs.toString())
+        : 0;
+
       console.log("Next offer ID:", nextOfferId.toString());
+      console.log("Desk lockup limits:", { minLockupSecs, maxLockupSecs });
 
       // Generate offer keypair (IDL expects signer)
       const offerKeypair = Keypair.generate();
@@ -1453,8 +1466,18 @@ export function AcceptQuoteModal({
         console.log(`[AcceptQuote] Fetched Solana decimals: ${solDecimals}`);
       }
       const tokenAmountWei = new anchor.BN((BigInt(tokenAmount) * 10n ** solDecimals).toString());
-      const lockupSeconds = new anchor.BN(lockupDays * 24 * 60 * 60);
+
+      // Clamp lockup to desk's allowed range
+      const desiredLockupSecs = lockupDays * 24 * 60 * 60;
+      const clampedLockupSecs = Math.max(minLockupSecs, Math.min(desiredLockupSecs, maxLockupSecs));
+      const lockupSeconds = new anchor.BN(clampedLockupSecs);
       const paymentCurrencySol = currency === "USDC" ? 1 : 0; // 0 SOL, 1 USDC
+
+      if (clampedLockupSecs !== desiredLockupSecs) {
+        console.log(
+          `[AcceptQuote] Lockup clamped: ${desiredLockupSecs}s → ${clampedLockupSecs}s (desk max: ${maxLockupSecs}s)`,
+        );
+      }
 
       console.log("Token amount wei:", tokenAmountWei.toString());
       console.log("Lockup seconds:", lockupSeconds.toString());

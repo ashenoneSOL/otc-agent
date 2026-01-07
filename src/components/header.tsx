@@ -78,7 +78,7 @@ export const Header = memo(function Header() {
             : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white",
         )}
       >
-        How it works
+        How It Works
       </button>
       {mobile && (
         <>
@@ -207,7 +207,7 @@ export const Header = memo(function Header() {
                   setShowWelcomeModal(true);
                 }}
               >
-                How it works
+                How It Works
               </button>
               <Link
                 href="/consign"

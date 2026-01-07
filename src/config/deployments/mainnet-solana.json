@@ -1,10 +1,10 @@
 {
   "network": "solana-mainnet",
   "rpc": "/api/rpc/solana",
-  "deployer": "6BSAYJe4ckqHRr1ju8RWr9gJj2jEMeHioAL1qMRHUjdj",
+  "deployer": "AuEvjhx7MZgGcyAhqVVsPbwJ8qP5hH6V5bwfEVgfLP8B",
   "programId": "3uTdWzoAcBFKTVYRd2z2jDKAcuyW64rQLxa9wMreDJKo",
-  "desk": "EDzQZXDT3iZcXxkp56vb7LLJ1tgaTn1gbf1CgWQuKXtY",
-  "deskOwner": "6BSAYJe4ckqHRr1ju8RWr9gJj2jEMeHioAL1qMRHUjdj",
+  "desk": "12trWAgGB8MmDN7kUYQeZVR1ULzaJHhdDdCLPQE1Rcm6",
+  "deskOwner": "AuEvjhx7MZgGcyAhqVVsPbwJ8qP5hH6V5bwfEVgfLP8B",
   "usdcMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   "features": {
     "p2pAutoApproval": true,

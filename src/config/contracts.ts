@@ -266,6 +266,6 @@ export const MAINNET_OTC_ADDRESSES = {
   ethereum: "0x5a1C9911E104F18267505918894fd7d343739657",
   solana: {
     programId: "3uTdWzoAcBFKTVYRd2z2jDKAcuyW64rQLxa9wMreDJKo",
-    desk: "EDzQZXDT3iZcXxkp56vb7LLJ1tgaTn1gbf1CgWQuKXtY",
+    desk: "12trWAgGB8MmDN7kUYQeZVR1ULzaJHhdDdCLPQE1Rcm6",
   },
 } as const;

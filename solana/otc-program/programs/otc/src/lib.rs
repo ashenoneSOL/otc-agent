@@ -97,6 +97,17 @@ pub mod otc {
         Ok(())
     }
 
+    /// Transfer desk ownership to a new owner
+    /// Only the current owner can call this
+    pub fn transfer_owner(ctx: Context<TransferOwnership>, new_owner: Pubkey) -> Result<()> {
+        require!(new_owner != Pubkey::default(), OtcError::BadState);
+        let desk = &mut ctx.accounts.desk;
+        let old_owner = desk.owner;
+        desk.owner = new_owner;
+        msg!("Desk ownership transferred from {} to {}", old_owner, new_owner);
+        Ok(())
+    }
+
     pub fn register_token(
         ctx: Context<RegisterToken>,
         price_feed_id: [u8; 32],

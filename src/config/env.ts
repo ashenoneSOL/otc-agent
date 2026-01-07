@@ -49,6 +49,19 @@ export function getSolanaPrivateKey(): string | undefined {
 }
 
 /**
+ * Get Solana payer private key for SOL transfers during auto-fulfillment
+ * This must be a clean wallet (no program data) that can be used as source for system transfers
+ * Falls back to SOLANA_MAINNET_PRIVATE_KEY if not set
+ */
+export function getSolanaPayerPrivateKey(): string | undefined {
+  return (
+    process.env.SOLANA_PAYER_PRIVATE_KEY ||
+    process.env.SOLANA_MAINNET_PRIVATE_KEY ||
+    process.env.SOLANA_PRIVATE_KEY
+  );
+}
+
+/**
  * Get Groq API key for AI/LLM
  * Required for agent functionality
  */

@@ -8,16 +8,18 @@
  * CAUTION: This uses real mainnet - ensure you're the desk owner!
  */
 
+import type { Program } from "@coral-xyz/anchor";
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram, Keypair, Connection } from "@solana/web3.js";
-import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 import bs58 from "bs58";
 import * as fs from "fs";
 import * as path from "path";
+import type { Otc } from "../target/types/otc";
 
 // Mainnet config
 const SOLANA_RPC = process.env.SOLANA_MAINNET_RPC || "https://api.mainnet-beta.solana.com";
-const SOLANA_PRIVATE_KEY = process.env.SOLANA_PRIVATE_KEY || "5oMGgVVNFJYkaZZgCfoiv1CJknT4UD2TRdJRQ5iJZcHp2y2o1Z7ai37TGsmjbYEFbdV9HHUWjwK1RQYVKQr7G4Nm";
+const SOLANA_PRIVATE_KEY = process.env.SOLANA_PRIVATE_KEY;
 
 // Addresses from mainnet deployment
 const PROGRAM_ID = new PublicKey("3uTdWzoAcBFKTVYRd2z2jDKAcuyW64rQLxa9wMreDJKo");
@@ -30,6 +32,11 @@ const ELIZAOS_MINT = new PublicKey("DuMbhu7mvQvqQHGcnikDgb4XegXJRyhUBfdU22uELiZA
 
 async function main() {
   console.log("🔐 Register ELIZAOS Token on Mainnet Desk\n");
+  
+  // Validate required environment
+  if (!SOLANA_PRIVATE_KEY) {
+    throw new Error("SOLANA_PRIVATE_KEY environment variable is required");
+  }
   
   // Setup
   const keypair = Keypair.fromSecretKey(bs58.decode(SOLANA_PRIVATE_KEY));
@@ -64,7 +71,7 @@ async function main() {
   });
   anchor.setProvider(provider);
   
-  const program = new anchor.Program(idl, provider);
+  const program = new anchor.Program(idl, provider) as Program<Otc>;
   
   // Check if we're the desk owner
   console.log("\n[1] Checking desk ownership...");
