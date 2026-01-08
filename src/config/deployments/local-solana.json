@@ -2,8 +2,8 @@
   "network": "solana-local",
   "rpc": "http://127.0.0.1:8899",
   "programId": "3uTdWzoAcBFKTVYRd2z2jDKAcuyW64rQLxa9wMreDJKo",
-  "desk": "J2qJACY4MfvdEtj8tbWmbjGnQS3nxxH6RBtbqqwD85ko",
+  "desk": "8ZnK3T5fuxxv9tohKK2z2vzVDNcrPj8w3f1t4JhunTzu",
   "deskOwner": "4CSjHK6NXNBnU7egsfosaWSWktj7QAdWX2zj2mEE1TLU",
-  "usdcMint": "6fekHqP22LAmB43NKKfS6ZMcmsQUuEFNtTaRyqHhzBbh",
-  "tokenMint": "GchZXwW5XsZwAkweoDCQSghtUqp8Po1PGexEJ5XKbNPE"
+  "usdcMint": "47L3L3WnAzXxhfdLei9KuFPmQCpCuH7Az1eBHyp23qC8",
+  "tokenMint": "F58qvChFFi4sbAbGi9vdNTGYuooRicFANU3Bz2wgrnYZ"
 }
