@@ -32,10 +32,10 @@ import {
 
 // Re-export balance types from dedicated file to avoid circular deps
 export {
-  SolanaTokenBalanceSchema,
-  TokenBalanceSchema,
   type SolanaTokenBalance,
+  SolanaTokenBalanceSchema,
   type TokenBalance,
+  TokenBalanceSchema,
 } from "./balance-schemas";
 
 //==============================================================================

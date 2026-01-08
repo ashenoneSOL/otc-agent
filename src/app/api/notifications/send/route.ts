@@ -44,7 +44,14 @@ export async function POST(request: NextRequest) {
 
   const notificationResponse = {
     state: "success",
-    deliveries: result.notification_deliveries,
+    deliveries:
+      result && typeof result === "object" && "notification_deliveries" in result
+        ? (
+            result as {
+              notification_deliveries?: Array<{ recipient: string; status?: string }>;
+            }
+          ).notification_deliveries
+        : undefined,
   };
   const validatedNotification = NotificationResponseSchema.parse(notificationResponse);
   return NextResponse.json(validatedNotification);

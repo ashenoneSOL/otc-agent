@@ -140,7 +140,7 @@ export async function enrichSolanaTokensWithPrices(
   // Calculate USD values for all tokens with prices
   for (const token of tokens) {
     if (token.priceUsd !== undefined && token.priceUsd > 0) {
-      const balance = token.amount / 10 ** token.decimals;
+      const balance = Number(BigInt(token.amount)) / 10 ** token.decimals;
       token.balanceUsd = balance * token.priceUsd;
     }
   }

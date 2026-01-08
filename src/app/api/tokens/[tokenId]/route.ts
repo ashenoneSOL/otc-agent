@@ -18,7 +18,10 @@ export async function GET(
 
     // Validate tokenId format
     if (!tokenId.match(/^token-(ethereum|base|bsc|solana)-/)) {
-      return NextResponse.json({ success: false, error: "Invalid tokenId format" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "Invalid tokenId format" },
+        { status: 400 },
+      );
     }
 
     // Token lookup - return 404 if not found, 400 if invalid format
@@ -74,9 +77,6 @@ export async function GET(
     if (error instanceof Error && error.stack) {
       console.error("[Tokens API] Stack:", error.stack);
     }
-    return NextResponse.json(
-      { success: false, error: errorMessage },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }
 }

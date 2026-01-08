@@ -26,8 +26,6 @@ import {
 } from "viem";
 import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
 import { getOtcAddress, getSolanaConfig } from "../../../../config/contracts";
-// Import bundled IDL - do not read from filesystem (fails on Vercel)
-import solanaIdlJson from "../../../../contracts/solana-otc.idl.json";
 import {
   getAlchemyApiKey,
   getEvmPrivateKey,
@@ -36,6 +34,8 @@ import {
   getSolanaPayerPrivateKey,
 } from "../../../../config/env";
 import otcArtifact from "../../../../contracts/artifacts/contracts/OTC.sol/OTC.json";
+// Import bundled IDL - do not read from filesystem (fails on Vercel)
+import solanaIdlJson from "../../../../contracts/solana-otc.idl.json";
 import { agentRuntime } from "../../../../lib/agent-runtime";
 import { validateCSRF } from "../../../../lib/csrf";
 import { getChain, getViemChainForType } from "../../../../lib/getChain";
@@ -266,7 +266,7 @@ async function handleApproval(request: NextRequest) {
         console.log(
           `[Solana Approve] Using approver from id.json: ${approverKeypair.publicKey.toBase58()}`,
         );
-      } catch (fileError) {
+      } catch (_fileError) {
         throw new Error(
           "Failed to load Solana approver keypair. Set SOLANA_PRIVATE_KEY environment variable.",
         );
@@ -376,7 +376,7 @@ async function handleApproval(request: NextRequest) {
         console.log(
           `[Approve API] Loaded desk keypair from file: ${deskKeypair.publicKey.toBase58()}`,
         );
-      } catch (fileError) {
+      } catch (_fileError) {
         throw new Error(
           "Failed to load Solana desk keypair. Set SOLANA_DESK_PRIVATE_KEY environment variable.",
         );
@@ -395,7 +395,7 @@ async function handleApproval(request: NextRequest) {
 
     // Load payer keypair for SOL transfers
     // CRITICAL: The payer must be a clean wallet (no program data) for system transfers to work
-    // If the approver wallet has data (e.g., was used to create an Anchor account), 
+    // If the approver wallet has data (e.g., was used to create an Anchor account),
     // you MUST set SOLANA_PAYER_PRIVATE_KEY to a separate clean wallet
     let payerKeypair: InstanceType<typeof Keypair>;
     const payerPrivateKey = getSolanaPayerPrivateKey();
@@ -518,8 +518,10 @@ async function handleApproval(request: NextRequest) {
       if (offerData.currency === 0) {
         // Pay with SOL
         // CRITICAL: payer must be a clean wallet (no program data) for system transfers
-        console.log(`[Approve API] Attempting SOL payment with payer: ${payerKeypair.publicKey.toBase58()}`);
-        
+        console.log(
+          `[Approve API] Attempting SOL payment with payer: ${payerKeypair.publicKey.toBase58()}`,
+        );
+
         // Build signers array - include payer if different from approver
         const signers: InstanceType<typeof Keypair>[] = [deskKeypair];
         if (payerKeypair.publicKey.toBase58() !== approverKeypair.publicKey.toBase58()) {
@@ -527,7 +529,7 @@ async function handleApproval(request: NextRequest) {
         } else {
           signers.push(approverKeypair);
         }
-        
+
         fulfillTx = await program.methods
           .fulfillOfferSol(new anchor.BN(offerId))
           .accounts({
@@ -542,55 +544,61 @@ async function handleApproval(request: NextRequest) {
           .signers(signers)
           .rpc();
         console.log("[Approve API] ✅ Paid with SOL:", fulfillTx);
-    } else {
-      // Pay with USDC
-      const usdcMint = new PublicKey(deskData.usdcMint);
-      const deskUsdcTreasury = await getAssociatedTokenAddress(usdcMint, desk, true);
-      const payerUsdcAta = await getAssociatedTokenAddress(
-        usdcMint,
-        payerKeypair.publicKey,
-        false,
-      );
-      // Agent USDC ATA for commission (optional)
-      const agentUsdcAta = await getAssociatedTokenAddress(usdcMint, deskData.agent, false);
-
-      console.log(`[Approve API] Attempting USDC payment with payer: ${payerKeypair.publicKey.toBase58()}`);
-      
-      // Build signers array - include payer if different from approver
-      const signers: InstanceType<typeof Keypair>[] = [deskKeypair];
-      if (payerKeypair.publicKey.toBase58() !== approverKeypair.publicKey.toBase58()) {
-        signers.push(payerKeypair);
       } else {
-        signers.push(approverKeypair);
-      }
-
-      fulfillTx = await program.methods
-        .fulfillOfferUsdc(new anchor.BN(offerId))
-        .accounts({
-          desk,
-          offer,
+        // Pay with USDC
+        const usdcMint = new PublicKey(deskData.usdcMint);
+        const deskUsdcTreasury = await getAssociatedTokenAddress(usdcMint, desk, true);
+        const payerUsdcAta = await getAssociatedTokenAddress(
           usdcMint,
-          deskTokenTreasury,
-          deskUsdcTreasury,
-          payerUsdcAta,
-          agentUsdcAta,
-          deskSigner: deskKeypair.publicKey,
-          payer: payerKeypair.publicKey,
-          tokenProgram: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
-          systemProgram: new PublicKey("11111111111111111111111111111111"),
-        })
-        .signers(signers)
-        .rpc();
-      console.log("[Approve API] ✅ Paid with USDC:", fulfillTx);
+          payerKeypair.publicKey,
+          false,
+        );
+        // Agent USDC ATA for commission (optional)
+        const agentUsdcAta = await getAssociatedTokenAddress(usdcMint, deskData.agent, false);
+
+        console.log(
+          `[Approve API] Attempting USDC payment with payer: ${payerKeypair.publicKey.toBase58()}`,
+        );
+
+        // Build signers array - include payer if different from approver
+        const signers: InstanceType<typeof Keypair>[] = [deskKeypair];
+        if (payerKeypair.publicKey.toBase58() !== approverKeypair.publicKey.toBase58()) {
+          signers.push(payerKeypair);
+        } else {
+          signers.push(approverKeypair);
+        }
+
+        fulfillTx = await program.methods
+          .fulfillOfferUsdc(new anchor.BN(offerId))
+          .accounts({
+            desk,
+            offer,
+            usdcMint,
+            deskTokenTreasury,
+            deskUsdcTreasury,
+            payerUsdcAta,
+            agentUsdcAta,
+            deskSigner: deskKeypair.publicKey,
+            payer: payerKeypair.publicKey,
+            tokenProgram: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+            systemProgram: new PublicKey("11111111111111111111111111111111"),
+          })
+          .signers(signers)
+          .rpc();
+        console.log("[Approve API] ✅ Paid with USDC:", fulfillTx);
       }
     } catch (fulfillError) {
       // Check for the specific "from must not carry data" error
-      const errorMessage = fulfillError instanceof Error ? fulfillError.message : String(fulfillError);
-      if (errorMessage.includes("from` must not carry data") || errorMessage.includes("from must not carry data")) {
+      const errorMessage =
+        fulfillError instanceof Error ? fulfillError.message : String(fulfillError);
+      if (
+        errorMessage.includes("from` must not carry data") ||
+        errorMessage.includes("from must not carry data")
+      ) {
         throw new Error(
           `Solana fulfillment failed: The payer wallet (${payerKeypair.publicKey.toBase58()}) has program data and cannot be used for native SOL transfers. ` +
-          `SOLUTION: Set SOLANA_PAYER_PRIVATE_KEY to a clean wallet (one that has never been used to create an Anchor program account). ` +
-          `Original error: ${errorMessage}`
+            `SOLUTION: Set SOLANA_PAYER_PRIVATE_KEY to a clean wallet (one that has never been used to create an Anchor program account). ` +
+            `Original error: ${errorMessage}`,
         );
       }
       // Re-throw other errors as-is

@@ -48,7 +48,7 @@ export function ConsignmentRow({ consignment, onUpdate }: ConsignmentRowProps) {
   // Mutation hooks for withdrawal operations
   const solanaWithdrawMutation = useSolanaWithdrawConsignment();
   const evmWithdrawMutation = useWithdrawConsignment();
-  
+
   // Wallet auth for API authentication
   const { getAuthHeaders } = useWalletAuth();
 

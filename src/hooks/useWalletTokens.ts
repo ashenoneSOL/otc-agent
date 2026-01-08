@@ -25,7 +25,7 @@ interface EvmBalanceToken {
 
 interface SolanaBalanceToken {
   mint: string;
-  amount: number;
+  amount: string; // String to match SolanaTokenBalance schema
   decimals: number;
   symbol?: string;
   name?: string;

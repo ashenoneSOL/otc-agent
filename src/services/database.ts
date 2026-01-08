@@ -4,11 +4,10 @@
 import { v4 as uuidv4 } from "uuid";
 import { encodePacked, getAddress, keccak256 } from "viem";
 import { z } from "zod";
-import type QuoteService from "../lib/plugin-otc-desk/services/quoteService";
-
 // Import agent runtime directly - the circular dependency is resolved at runtime
 // since agentRuntime is a class with lazy initialization
 import { agentRuntime } from "../lib/agent-runtime";
+import type QuoteService from "../lib/plugin-otc-desk/services/quoteService";
 import { parseOrThrow } from "../lib/validation/helpers";
 import type {
   Chain,

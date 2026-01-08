@@ -53,221 +53,221 @@ export async function GET(request: NextRequest) {
       requester: requesterAddress,
     } = query;
 
-  // For user-specific requests, bypass cache (private data)
-  // For public requests, use serverless-optimized cache
-  let consignments: OTCConsignment[];
-  if (consignerAddress) {
-    // User's own consignments - don't use shared cache
-    consignments = await ConsignmentDB.getConsignmentsByConsigner(
-      consignerAddress,
-      true, // include withdrawn
-    );
-  } else {
-    // Public trading desk - use serverless cache
-    const filters: { chain?: Chain; tokenId?: string } = {};
-    if (tokenId) filters.tokenId = tokenId;
-    consignments = await getCachedConsignments(filters);
-  }
-
-  // Filter by chains if specified
-  if (chains && chains.length > 0) {
-    consignments = consignments.filter((c) => chains.includes(c.chain as Chain));
-  }
-
-  // Filter by negotiable types if specified
-  if (negotiableTypes && negotiableTypes.length > 0) {
-    consignments = consignments.filter((c) => {
-      const isNeg = c.isNegotiable;
-      if (negotiableTypes.includes("negotiable") && isNeg) return true;
-      if (negotiableTypes.includes("fixed") && !isNeg) return true;
-      return false;
-    });
-  }
-
-  // Filter out any null/undefined entries and by fractionalized if specified
-  const totalBefore = consignments.length;
-  consignments = consignments.filter((c) => c != null);
-  const nullCount = totalBefore - consignments.length;
-  if (nullCount > 0) {
-    console.warn(
-      `[Consignments API] WARNING: Found ${nullCount} null/undefined consignments in database - possible data corruption`,
-    );
-  }
-  if (isFractionalized === true) {
-    consignments = consignments.filter((c) => c.isFractionalized);
-  }
-
-  if (consignerAddress) {
-    consignments = consignments.filter((c) => {
-      // FAIL-FAST: Consignment must exist (already filtered above, but double-check)
-      if (!c) {
-        throw new Error("Null consignment found in filtered list - data corruption");
-      }
-      // FAIL-FAST: Consignment must have consignerAddress
-      if (!c.consignerAddress) {
-        throw new Error(`Consignment ${c.id} missing consignerAddress`);
-      }
-      // Solana addresses are case-sensitive, EVM addresses are case-insensitive
-      if (c.chain === "solana") {
-        return c.consignerAddress === consignerAddress;
-      }
-      return c.consignerAddress.toLowerCase() === consignerAddress.toLowerCase();
-    });
-  }
-
-  if (requesterAddress) {
-    consignments = consignments.filter((c) => {
-      if (!c) return false;
-      if (!c.isPrivate) return true;
-      // FAIL-FAST: Consignment must have consignerAddress
-      if (!c.consignerAddress) {
-        throw new Error(`Consignment ${c.id} missing consignerAddress`);
-      }
-      // Solana addresses are case-sensitive, EVM addresses are case-insensitive
-      if (c.chain === "solana") {
-        if (c.consignerAddress === requesterAddress) return true;
-        // allowedBuyers is optional array - check if present and includes requester
-        if (Array.isArray(c.allowedBuyers) && c.allowedBuyers.includes(requesterAddress))
-          return true;
-      } else {
-        const requester = requesterAddress.toLowerCase();
-        if (c.consignerAddress.toLowerCase() === requester) return true;
-        // allowedBuyers is optional array - check if present and includes requester
-        if (
-          Array.isArray(c.allowedBuyers) &&
-          c.allowedBuyers.some((b) => b.toLowerCase() === requester)
-        )
-          return true;
-      }
-      return false;
-    });
-  } else {
-    consignments = consignments.filter((c) => !c.isPrivate);
-  }
-
-  // Hide listings with < 1 token remaining from the public trading desk
-  // (consigners can still see their own dust listings via consignerAddress filter)
-  if (!consignerAddress) {
-    // Batch fetch all unique tokens using serverless cache
-    const uniqueTokenIds = Array.from(new Set(consignments.map((c) => c.tokenId)));
-    const tokenMap = new Map<string, { decimals: number }>();
-
-    // Fetch all tokens in parallel using cached function
-    // Note: getCachedToken throws if token not found, so we catch and return null
-    const tokenResults = await Promise.all(
-      uniqueTokenIds.map(async (tokenId: string) => {
-        try {
-          const token = await getCachedToken(tokenId);
-          if (token) {
-            return { tokenId, decimals: token.decimals };
-          }
-          return null;
-        } catch {
-          // Token not found in database - log and skip
-          console.warn(`[Consignments] Token ${tokenId} not found - consignment may be orphaned`);
-          return null;
-        }
-      }),
-    );
-
-    // Build lookup map
-    for (const result of tokenResults) {
-      if (result) {
-        tokenMap.set(result.tokenId, { decimals: result.decimals });
-      }
+    // For user-specific requests, bypass cache (private data)
+    // For public requests, use serverless-optimized cache
+    let consignments: OTCConsignment[];
+    if (consignerAddress) {
+      // User's own consignments - don't use shared cache
+      consignments = await ConsignmentDB.getConsignmentsByConsigner(
+        consignerAddress,
+        true, // include withdrawn
+      );
+    } else {
+      // Public trading desk - use serverless cache
+      const filters: { chain?: Chain; tokenId?: string } = {};
+      if (tokenId) filters.tokenId = tokenId;
+      consignments = await getCachedConsignments(filters);
     }
 
-    // Filter consignments using the pre-fetched token data
-    consignments = consignments.filter((c) => {
-      const tokenData = tokenMap.get(c.tokenId);
-      // FAIL-FAST: Token data should exist for all consignments
-      if (!tokenData) {
-        console.warn(
-          `[Consignments] Token data missing for ${c.tokenId} - skipping consignment ${c.id}`,
-        );
-        return false;
-      }
-      const decimals = tokenData.decimals;
-      const oneToken = BigInt(10) ** BigInt(decimals);
-      const remaining = BigInt(c.remainingAmount);
-      return remaining >= oneToken;
-    });
-  }
+    // Filter by chains if specified
+    if (chains && chains.length > 0) {
+      consignments = consignments.filter((c) => chains.includes(c.chain as Chain));
+    }
 
-  // Filter out unavailable Solana consignments (on-chain check with caching)
-  // Only check for public trading desk (not for owner's own consignments)
-  if (!consignerAddress) {
-    const solanaConsignments = consignments.filter(
-      (c) => c.chain === "solana" && c.contractConsignmentId,
-    );
-
-    if (solanaConsignments.length > 0) {
-      const solanaIds = solanaConsignments
-        .map((c) => c.contractConsignmentId)
-        .filter((id): id is string => typeof id === "string");
-
-      const statusMap = await batchCheckSolanaConsignments(solanaIds);
-
-      // Filter out inactive consignments and update DB for inactive ones
-      const inactiveIds: string[] = [];
+    // Filter by negotiable types if specified
+    if (negotiableTypes && negotiableTypes.length > 0) {
       consignments = consignments.filter((c) => {
-        if (c.chain !== "solana" || !c.contractConsignmentId) return true;
+        const isNeg = c.isNegotiable;
+        if (negotiableTypes.includes("negotiable") && isNeg) return true;
+        if (negotiableTypes.includes("fixed") && !isNeg) return true;
+        return false;
+      });
+    }
 
-        const status = statusMap.get(c.contractConsignmentId);
-        if (!status) return true; // Keep if we couldn't check
+    // Filter out any null/undefined entries and by fractionalized if specified
+    const totalBefore = consignments.length;
+    consignments = consignments.filter((c) => c != null);
+    const nullCount = totalBefore - consignments.length;
+    if (nullCount > 0) {
+      console.warn(
+        `[Consignments API] WARNING: Found ${nullCount} null/undefined consignments in database - possible data corruption`,
+      );
+    }
+    if (isFractionalized === true) {
+      consignments = consignments.filter((c) => c.isFractionalized);
+    }
 
-        if (!status.isActive) {
-          inactiveIds.push(c.id);
-          console.log(
-            `[Consignments] Hiding inactive Solana consignment ${c.id} (${c.contractConsignmentId})`,
+    if (consignerAddress) {
+      consignments = consignments.filter((c) => {
+        // FAIL-FAST: Consignment must exist (already filtered above, but double-check)
+        if (!c) {
+          throw new Error("Null consignment found in filtered list - data corruption");
+        }
+        // FAIL-FAST: Consignment must have consignerAddress
+        if (!c.consignerAddress) {
+          throw new Error(`Consignment ${c.id} missing consignerAddress`);
+        }
+        // Solana addresses are case-sensitive, EVM addresses are case-insensitive
+        if (c.chain === "solana") {
+          return c.consignerAddress === consignerAddress;
+        }
+        return c.consignerAddress.toLowerCase() === consignerAddress.toLowerCase();
+      });
+    }
+
+    if (requesterAddress) {
+      consignments = consignments.filter((c) => {
+        if (!c) return false;
+        if (!c.isPrivate) return true;
+        // FAIL-FAST: Consignment must have consignerAddress
+        if (!c.consignerAddress) {
+          throw new Error(`Consignment ${c.id} missing consignerAddress`);
+        }
+        // Solana addresses are case-sensitive, EVM addresses are case-insensitive
+        if (c.chain === "solana") {
+          if (c.consignerAddress === requesterAddress) return true;
+          // allowedBuyers is optional array - check if present and includes requester
+          if (Array.isArray(c.allowedBuyers) && c.allowedBuyers.includes(requesterAddress))
+            return true;
+        } else {
+          const requester = requesterAddress.toLowerCase();
+          if (c.consignerAddress.toLowerCase() === requester) return true;
+          // allowedBuyers is optional array - check if present and includes requester
+          if (
+            Array.isArray(c.allowedBuyers) &&
+            c.allowedBuyers.some((b) => b.toLowerCase() === requester)
+          )
+            return true;
+        }
+        return false;
+      });
+    } else {
+      consignments = consignments.filter((c) => !c.isPrivate);
+    }
+
+    // Hide listings with < 1 token remaining from the public trading desk
+    // (consigners can still see their own dust listings via consignerAddress filter)
+    if (!consignerAddress) {
+      // Batch fetch all unique tokens using serverless cache
+      const uniqueTokenIds = Array.from(new Set(consignments.map((c) => c.tokenId)));
+      const tokenMap = new Map<string, { decimals: number }>();
+
+      // Fetch all tokens in parallel using cached function
+      // Note: getCachedToken throws if token not found, so we catch and return null
+      const tokenResults = await Promise.all(
+        uniqueTokenIds.map(async (tokenId: string) => {
+          try {
+            const token = await getCachedToken(tokenId);
+            if (token) {
+              return { tokenId, decimals: token.decimals };
+            }
+            return null;
+          } catch {
+            // Token not found in database - log and skip
+            console.warn(`[Consignments] Token ${tokenId} not found - consignment may be orphaned`);
+            return null;
+          }
+        }),
+      );
+
+      // Build lookup map
+      for (const result of tokenResults) {
+        if (result) {
+          tokenMap.set(result.tokenId, { decimals: result.decimals });
+        }
+      }
+
+      // Filter consignments using the pre-fetched token data
+      consignments = consignments.filter((c) => {
+        const tokenData = tokenMap.get(c.tokenId);
+        // FAIL-FAST: Token data should exist for all consignments
+        if (!tokenData) {
+          console.warn(
+            `[Consignments] Token data missing for ${c.tokenId} - skipping consignment ${c.id}`,
           );
           return false;
         }
-        return true;
+        const decimals = tokenData.decimals;
+        const oneToken = BigInt(10) ** BigInt(decimals);
+        const remaining = BigInt(c.remainingAmount);
+        return remaining >= oneToken;
       });
+    }
 
-      // Background: Mark inactive consignments as withdrawn in DB
-      // Don't await - let it happen async to not slow down the response
-      if (inactiveIds.length > 0) {
-        Promise.all(
-          inactiveIds.map((id) =>
-            ConsignmentDB.updateConsignment(id, { status: "withdrawn" }).catch((err) => {
-              console.error(`[Consignments] Failed to update status for ${id}:`, err);
-            }),
-          ),
-        ).catch(() => {
-          // Ignore aggregate errors - individual ones are logged above
+    // Filter out unavailable Solana consignments (on-chain check with caching)
+    // Only check for public trading desk (not for owner's own consignments)
+    if (!consignerAddress) {
+      const solanaConsignments = consignments.filter(
+        (c) => c.chain === "solana" && c.contractConsignmentId,
+      );
+
+      if (solanaConsignments.length > 0) {
+        const solanaIds = solanaConsignments
+          .map((c) => c.contractConsignmentId)
+          .filter((id): id is string => typeof id === "string");
+
+        const statusMap = await batchCheckSolanaConsignments(solanaIds);
+
+        // Filter out inactive consignments and update DB for inactive ones
+        const inactiveIds: string[] = [];
+        consignments = consignments.filter((c) => {
+          if (c.chain !== "solana" || !c.contractConsignmentId) return true;
+
+          const status = statusMap.get(c.contractConsignmentId);
+          if (!status) return true; // Keep if we couldn't check
+
+          if (!status.isActive) {
+            inactiveIds.push(c.id);
+            console.log(
+              `[Consignments] Hiding inactive Solana consignment ${c.id} (${c.contractConsignmentId})`,
+            );
+            return false;
+          }
+          return true;
         });
+
+        // Background: Mark inactive consignments as withdrawn in DB
+        // Don't await - let it happen async to not slow down the response
+        if (inactiveIds.length > 0) {
+          Promise.all(
+            inactiveIds.map((id) =>
+              ConsignmentDB.updateConsignment(id, { status: "withdrawn" }).catch((err) => {
+                console.error(`[Consignments] Failed to update status for ${id}:`, err);
+              }),
+            ),
+          ).catch(() => {
+            // Ignore aggregate errors - individual ones are logged above
+          });
+        }
       }
     }
-  }
 
-  // Filter out consignments with invalid chain values (data cleanup)
-  const validChains = new Set(["ethereum", "base", "bsc", "solana"]);
-  const validConsignments = consignments.filter((c) => {
-    if (!validChains.has(c.chain)) {
-      console.warn(
-        `[Consignments] Invalid chain "${c.chain}" for consignment ${c.id} - filtering out`,
-      );
-      return false;
-    }
-    return true;
-  });
+    // Filter out consignments with invalid chain values (data cleanup)
+    const validChains = new Set(["ethereum", "base", "bsc", "solana"]);
+    const validConsignments = consignments.filter((c) => {
+      if (!validChains.has(c.chain)) {
+        console.warn(
+          `[Consignments] Invalid chain "${c.chain}" for consignment ${c.id} - filtering out`,
+        );
+        return false;
+      }
+      return true;
+    });
 
-  // Sanitize response: hide sensitive negotiation terms from non-owners
-  // Only the consigner (owner) can see their own full listing details
-  const isOwnerRequest = !!consignerAddress;
-  const responseConsignments = isOwnerRequest
-    ? validConsignments // Owner sees full data
-    : validConsignments.map(sanitizeConsignmentForBuyer); // Buyers see sanitized data
+    // Sanitize response: hide sensitive negotiation terms from non-owners
+    // Only the consigner (owner) can see their own full listing details
+    const isOwnerRequest = !!consignerAddress;
+    const responseConsignments = isOwnerRequest
+      ? validConsignments // Owner sees full data
+      : validConsignments.map(sanitizeConsignmentForBuyer); // Buyers see sanitized data
 
-  // Cache for 60 seconds, serve stale for 5 minutes while revalidating
-  // Private cache if filtering by consigner (user-specific data)
-  const cacheControl = consignerAddress
-    ? "private, s-maxage=30, stale-while-revalidate=60"
-    : "public, s-maxage=60, stale-while-revalidate=300";
+    // Cache for 60 seconds, serve stale for 5 minutes while revalidating
+    // Private cache if filtering by consigner (user-specific data)
+    const cacheControl = consignerAddress
+      ? "private, s-maxage=30, stale-while-revalidate=60"
+      : "public, s-maxage=60, stale-while-revalidate=300";
 
-  const response = {
+    const response = {
       success: true as const,
       consignments: responseConsignments,
     };
@@ -290,9 +290,7 @@ export async function GET(request: NextRequest) {
         success: false,
         error: errorMessage,
         // Include stack in development only
-        ...(process.env.NODE_ENV === "development" && errorStack
-          ? { stack: errorStack }
-          : {}),
+        ...(process.env.NODE_ENV === "development" && errorStack ? { stack: errorStack } : {}),
       },
       { status: 500 },
     );

@@ -72,173 +72,173 @@ export async function GET(request: NextRequest) {
 
     const { tokenAddress, chain } = parseResult.data;
 
-  // Only EVM chains have pool-based registration
-  if (chain === "solana") {
-    return NextResponse.json({
+    // Only EVM chains have pool-based registration
+    if (chain === "solana") {
+      return NextResponse.json({
+        success: true,
+        tokenAddress,
+        chain,
+        isRegistered: false, // Would need Solana-specific check
+        hasPool: true, // Solana uses different pricing mechanism
+        warning: "Solana token registration is handled separately",
+      });
+    }
+
+    // FAIL-FAST: chain must be valid Chain type, SUPPORTED_CHAINS guarantees ChainConfig exists
+    if (!(chain in SUPPORTED_CHAINS)) {
+      throw new Error(`Unsupported chain: ${chain}`);
+    }
+    const chainConfig = SUPPORTED_CHAINS[chain];
+
+    // FAIL-FAST: ChainConfig requires contracts field - if missing, config is invalid
+    if (!chainConfig.contracts) {
+      throw new Error(`Chain config for ${chain} missing contracts - invalid ChainConfig`);
+    }
+
+    // FAIL-FAST: ChainConfig requires rpcUrl field - if missing, config is invalid
+    if (!chainConfig.rpcUrl) {
+      throw new Error(`Chain config for ${chain} missing rpcUrl - invalid ChainConfig`);
+    }
+
+    // FAIL-FAST: EVM chains require chainId
+    if (chainConfig.chainId === undefined) {
+      throw new Error(`Chain config missing chainId for: ${chain}`);
+    }
+
+    const otcAddress = chainConfig.contracts.otc;
+    const registrationHelperAddress = chainConfig.contracts.registrationHelper;
+    const chainId = chainConfig.chainId;
+
+    // FAIL-FAST: EVM chains require OTC address
+    if (!otcAddress) {
+      throw new Error(`OTC contract not deployed on ${chain}`);
+    }
+
+    const viemChain = getViemChain(chain);
+
+    // Server-side: use direct Alchemy URL instead of proxy for internal API calls
+    const alchemyKey = getAlchemyApiKey();
+    let rpcUrl: string;
+    if (chainConfig.rpcUrl.startsWith("/")) {
+      // Proxy URL - construct direct Alchemy URL based on chain
+      if (!alchemyKey) {
+        throw new Error("ALCHEMY_API_KEY not configured");
+      }
+      const alchemyUrls: Record<string, string> = {
+        ethereum: `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`,
+        base: `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`,
+        bsc: `https://bnb-mainnet.g.alchemy.com/v2/${alchemyKey}`,
+      };
+      rpcUrl = alchemyUrls[chain];
+      if (!rpcUrl) {
+        throw new Error(`No Alchemy URL configured for chain: ${chain}`);
+      }
+    } else {
+      rpcUrl = chainConfig.rpcUrl;
+    }
+
+    const client = createPublicClient({
+      chain: viemChain,
+      transport: http(rpcUrl),
+    });
+
+    // Check if token is registered
+    const tokenIdBytes32 = keccak256(encodePacked(["address"], [tokenAddress as Address]));
+
+    let isRegistered = false;
+    const tokenResult = await safeReadContract<[Address, number, boolean, Address]>(client, {
+      address: otcAddress as Address,
+      abi: tokensAbi as Abi,
+      functionName: "tokens",
+      args: [tokenIdBytes32],
+    });
+
+    const [registeredAddress, , isActive] = tokenResult;
+    isRegistered = isActive && registeredAddress !== "0x0000000000000000000000000000000000000000";
+
+    // Find all pools (skip for local development - no real DEX pools)
+    let allPoolsRaw: PoolInfo[] = [];
+    let pool: PoolInfo | null = null;
+    let poolError: string | undefined;
+
+    // Local development (chainId 31337) doesn't have real DEX pools
+    // Just check token registration instead
+    if (chainId !== 31337) {
+      allPoolsRaw = await findAllPools(tokenAddress, chainId);
+      // Best pool is the first one (highest TVL)
+      pool = allPoolsRaw.length > 0 ? allPoolsRaw[0] : null;
+    }
+
+    // Get registration fee if helper is configured and token is not registered
+    let registrationFee: string | undefined;
+    let registrationFeeEth: string | undefined;
+
+    if (!isRegistered && registrationHelperAddress) {
+      const fee = await safeReadContract<bigint>(client, {
+        address: registrationHelperAddress as Address,
+        abi: registrationHelperAbi as Abi,
+        functionName: "registrationFee",
+      });
+      registrationFee = fee.toString();
+      registrationFeeEth = (Number(fee) / 1e18).toFixed(6);
+    }
+
+    // Build warning message
+    let warning: string | undefined;
+
+    // Local development mode: no pools needed if token is registered
+    if (chainId === 31337) {
+      if (!isRegistered) {
+        warning = "Token not registered in local OTC contract.";
+      }
+    } else if (!pool) {
+      warning = "No liquidity pool found. Requires Uniswap V3/V4, Aerodrome, or Pancakeswap pool.";
+    } else if (pool.tvlUsd < 1000) {
+      warning = `Low liquidity detected ($${pool.tvlUsd.toFixed(0)}). Price accuracy may be affected.`;
+    } else if (pool.tvlUsd < 10000) {
+      warning = `Moderate liquidity ($${pool.tvlUsd.toFixed(0)}). Consider waiting for more liquidity for better price accuracy.`;
+    }
+
+    // For local development, consider registered tokens as "having a pool"
+    // This allows the consignment flow to work without real DEX pools
+    const hasPoolOrLocal = chainId === 31337 ? isRegistered : !!pool;
+
+    const result: PoolCheckResult = {
       success: true,
       tokenAddress,
       chain,
-      isRegistered: false, // Would need Solana-specific check
-      hasPool: true, // Solana uses different pricing mechanism
-      warning: "Solana token registration is handled separately",
-    });
-  }
-
-  // FAIL-FAST: chain must be valid Chain type, SUPPORTED_CHAINS guarantees ChainConfig exists
-  if (!(chain in SUPPORTED_CHAINS)) {
-    throw new Error(`Unsupported chain: ${chain}`);
-  }
-  const chainConfig = SUPPORTED_CHAINS[chain];
-
-  // FAIL-FAST: ChainConfig requires contracts field - if missing, config is invalid
-  if (!chainConfig.contracts) {
-    throw new Error(`Chain config for ${chain} missing contracts - invalid ChainConfig`);
-  }
-
-  // FAIL-FAST: ChainConfig requires rpcUrl field - if missing, config is invalid
-  if (!chainConfig.rpcUrl) {
-    throw new Error(`Chain config for ${chain} missing rpcUrl - invalid ChainConfig`);
-  }
-
-  // FAIL-FAST: EVM chains require chainId
-  if (chainConfig.chainId === undefined) {
-    throw new Error(`Chain config missing chainId for: ${chain}`);
-  }
-
-  const otcAddress = chainConfig.contracts.otc;
-  const registrationHelperAddress = chainConfig.contracts.registrationHelper;
-  const chainId = chainConfig.chainId;
-
-  // FAIL-FAST: EVM chains require OTC address
-  if (!otcAddress) {
-    throw new Error(`OTC contract not deployed on ${chain}`);
-  }
-
-  const viemChain = getViemChain(chain);
-  
-  // Server-side: use direct Alchemy URL instead of proxy for internal API calls
-  const alchemyKey = getAlchemyApiKey();
-  let rpcUrl: string;
-  if (chainConfig.rpcUrl.startsWith("/")) {
-    // Proxy URL - construct direct Alchemy URL based on chain
-    if (!alchemyKey) {
-      throw new Error("ALCHEMY_API_KEY not configured");
-    }
-    const alchemyUrls: Record<string, string> = {
-      ethereum: `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`,
-      base: `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`,
-      bsc: `https://bnb-mainnet.g.alchemy.com/v2/${alchemyKey}`,
+      isRegistered,
+      hasPool: hasPoolOrLocal,
+      warning,
+      error: poolError,
     };
-    rpcUrl = alchemyUrls[chain];
-    if (!rpcUrl) {
-      throw new Error(`No Alchemy URL configured for chain: ${chain}`);
+
+    if (pool) {
+      result.pool = {
+        address: pool.address,
+        protocol: pool.protocol,
+        tvlUsd: pool.tvlUsd,
+        priceUsd: pool.priceUsd,
+        baseToken: pool.baseToken,
+      };
     }
-  } else {
-    rpcUrl = chainConfig.rpcUrl;
-  }
 
-  const client = createPublicClient({
-    chain: viemChain,
-    transport: http(rpcUrl),
-  });
-
-  // Check if token is registered
-  const tokenIdBytes32 = keccak256(encodePacked(["address"], [tokenAddress as Address]));
-
-  let isRegistered = false;
-  const tokenResult = await safeReadContract<[Address, number, boolean, Address]>(client, {
-    address: otcAddress as Address,
-    abi: tokensAbi as Abi,
-    functionName: "tokens",
-    args: [tokenIdBytes32],
-  });
-
-  const [registeredAddress, , isActive] = tokenResult;
-  isRegistered = isActive && registeredAddress !== "0x0000000000000000000000000000000000000000";
-
-  // Find all pools (skip for local development - no real DEX pools)
-  let allPoolsRaw: PoolInfo[] = [];
-  let pool: PoolInfo | null = null;
-  let poolError: string | undefined;
-
-  // Local development (chainId 31337) doesn't have real DEX pools
-  // Just check token registration instead
-  if (chainId !== 31337) {
-    allPoolsRaw = await findAllPools(tokenAddress, chainId);
-    // Best pool is the first one (highest TVL)
-    pool = allPoolsRaw.length > 0 ? allPoolsRaw[0] : null;
-  }
-
-  // Get registration fee if helper is configured and token is not registered
-  let registrationFee: string | undefined;
-  let registrationFeeEth: string | undefined;
-
-  if (!isRegistered && registrationHelperAddress) {
-    const fee = await safeReadContract<bigint>(client, {
-      address: registrationHelperAddress as Address,
-      abi: registrationHelperAbi as Abi,
-      functionName: "registrationFee",
-    });
-    registrationFee = fee.toString();
-    registrationFeeEth = (Number(fee) / 1e18).toFixed(6);
-  }
-
-  // Build warning message
-  let warning: string | undefined;
-
-  // Local development mode: no pools needed if token is registered
-  if (chainId === 31337) {
-    if (!isRegistered) {
-      warning = "Token not registered in local OTC contract.";
+    // Include all pools for user selection (sorted by TVL)
+    if (allPoolsRaw.length > 0) {
+      result.allPools = allPoolsRaw.map((p) => ({
+        address: p.address,
+        protocol: p.protocol,
+        tvlUsd: p.tvlUsd,
+        priceUsd: p.priceUsd,
+        baseToken: p.baseToken,
+      }));
     }
-  } else if (!pool) {
-    warning = "No liquidity pool found. Requires Uniswap V3/V4, Aerodrome, or Pancakeswap pool.";
-  } else if (pool.tvlUsd < 1000) {
-    warning = `Low liquidity detected ($${pool.tvlUsd.toFixed(0)}). Price accuracy may be affected.`;
-  } else if (pool.tvlUsd < 10000) {
-    warning = `Moderate liquidity ($${pool.tvlUsd.toFixed(0)}). Consider waiting for more liquidity for better price accuracy.`;
-  }
 
-  // For local development, consider registered tokens as "having a pool"
-  // This allows the consignment flow to work without real DEX pools
-  const hasPoolOrLocal = chainId === 31337 ? isRegistered : !!pool;
-
-  const result: PoolCheckResult = {
-    success: true,
-    tokenAddress,
-    chain,
-    isRegistered,
-    hasPool: hasPoolOrLocal,
-    warning,
-    error: poolError,
-  };
-
-  if (pool) {
-    result.pool = {
-      address: pool.address,
-      protocol: pool.protocol,
-      tvlUsd: pool.tvlUsd,
-      priceUsd: pool.priceUsd,
-      baseToken: pool.baseToken,
-    };
-  }
-
-  // Include all pools for user selection (sorted by TVL)
-  if (allPoolsRaw.length > 0) {
-    result.allPools = allPoolsRaw.map((p) => ({
-      address: p.address,
-      protocol: p.protocol,
-      tvlUsd: p.tvlUsd,
-      priceUsd: p.priceUsd,
-      baseToken: p.baseToken,
-    }));
-  }
-
-  // Only show registration fee if non-zero (we've removed the fee)
-  if (registrationFee && registrationFee !== "0") {
-    result.registrationFee = registrationFee;
-    result.registrationFeeEth = registrationFeeEth;
-  }
+    // Only show registration fee if non-zero (we've removed the fee)
+    if (registrationFee && registrationFee !== "0") {
+      result.registrationFee = registrationFee;
+      result.registrationFeeEth = registrationFeeEth;
+    }
 
     const validatedResponse = TokenPoolCheckResponseSchema.parse(result);
     return NextResponse.json(validatedResponse, {
@@ -255,9 +255,6 @@ export async function GET(request: NextRequest) {
       console.error("[Token Pool Check API Stack]", errorStack);
     }
 
-    return NextResponse.json(
-      { success: false, error: errorMessage },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }
 }

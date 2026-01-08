@@ -441,7 +441,10 @@ async function findPumpSwapPools(
                   : poolBaseTokenAccount.toBase58();
               }
             } catch (vaultErr) {
-              console.warn(`[PumpSwap] Could not fetch vault addresses for ${pair.pairAddress}:`, vaultErr);
+              console.warn(
+                `[PumpSwap] Could not fetch vault addresses for ${pair.pairAddress}:`,
+                vaultErr,
+              );
               // Continue without vault addresses - price update will use manual method
             }
 
@@ -579,10 +582,7 @@ async function findPumpSwapPools(
         // Found a valid pool, no need to try more seeds
         break;
       }
-    } catch (pdaErr) {
-      // PDA derivation failed or account doesn't exist - try next pattern
-      continue;
-    }
+    } catch (_pdaErr) {}
   }
 
   // If we still haven't found pools and this is devnet, log a warning

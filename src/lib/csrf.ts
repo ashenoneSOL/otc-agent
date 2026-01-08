@@ -20,7 +20,7 @@ export function validateCSRF(request: NextRequest): NextResponse | null {
 
   // Get allowed origins from environment
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL;
-  
+
   // Build list of allowed origins
   // Include localhost, VERCEL_URL, and custom domains
   const allowedOrigins = [

@@ -3,14 +3,14 @@ import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getSolanaConfig } from "../../../../config/contracts";
 import { getHeliusRpcUrl, getNetwork } from "../../../../config/env";
+// Import bundled IDL - do not read from filesystem (fails on Vercel)
+import idlJson from "../../../../contracts/solana-otc.idl.json";
 import { validationErrorResponse } from "../../../../lib/validation/helpers";
 import {
   SolanaWithdrawConsignmentRequestWithSignedTxSchema,
   SolanaWithdrawConsignmentResponseSchema,
 } from "../../../../types/validation/api-schemas";
 import { createAnchorWallet, loadDeskKeypair } from "../../../../utils/solana-keypair";
-// Import bundled IDL - do not read from filesystem (fails on Vercel)
-import idlJson from "../../../../contracts/solana-otc.idl.json";
 
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
@@ -49,7 +49,10 @@ export async function POST(request: NextRequest) {
   let deskKeypair: Awaited<ReturnType<typeof loadDeskKeypair>>;
   try {
     deskKeypair = await loadDeskKeypair();
-    console.log("[Withdraw Consignment API] Loaded desk keypair:", deskKeypair.publicKey.toBase58());
+    console.log(
+      "[Withdraw Consignment API] Loaded desk keypair:",
+      deskKeypair.publicKey.toBase58(),
+    );
   } catch (keypairError) {
     const message = keypairError instanceof Error ? keypairError.message : String(keypairError);
     console.error("[Withdraw Consignment API] Failed to load desk keypair:", message);
@@ -228,22 +231,24 @@ export async function POST(request: NextRequest) {
       if (programErrorMatch) {
         const errorCode = programErrorMatch[1];
         return NextResponse.json(
-          { error: `On-chain withdrawal failed with error code ${errorCode}. The consignment may be inactive or already withdrawn.` },
+          {
+            error: `On-chain withdrawal failed with error code ${errorCode}. The consignment may be inactive or already withdrawn.`,
+          },
           { status: 400 },
         );
       }
     }
     if (message.includes("BadState") || message.includes("AccountNotActive")) {
       return NextResponse.json(
-        { error: "Consignment is not active. It may have already been withdrawn or fully used in deals." },
+        {
+          error:
+            "Consignment is not active. It may have already been withdrawn or fully used in deals.",
+        },
         { status: 400 },
       );
     }
 
-    return NextResponse.json(
-      { error: `Transaction failed: ${message}` },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: `Transaction failed: ${message}` }, { status: 500 });
   }
 
   // Wait for confirmation

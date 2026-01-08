@@ -53,9 +53,7 @@ async function triggerBackgroundUpdate(tokenMint: string): Promise<void> {
     }
 
     // Price is stale - trigger background update (POST)
-    console.log(
-      `[LazyPrice] ${tokenMint.slice(0, 8)}... price stale, updating in background...`,
-    );
+    console.log(`[LazyPrice] ${tokenMint.slice(0, 8)}... price stale, updating in background...`);
 
     // Fire-and-forget - don't await
     fetch("/api/solana/update-price", {
@@ -116,7 +114,7 @@ export function useLazySolanaPriceUpdate(tokenMints: string[]): void {
     return () => {
       mountedRef.current = false;
     };
-  }, [tokenMints.join(",")]); // Re-run when mints change
+  }, [tokenMints]); // Re-run when mints change
 }
 
 /**

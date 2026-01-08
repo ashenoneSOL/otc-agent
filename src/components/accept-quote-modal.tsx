@@ -22,6 +22,7 @@ import { getCurrentNetwork, getSolanaConfig, getSolanaDesk } from "../config/con
 import { useChain, useWalletActions, useWalletConnection } from "../contexts";
 import otcArtifact from "../contracts/artifacts/contracts/OTC.sol/OTC.json";
 import { useOTC } from "../hooks/contracts/useOTC";
+import { triggerLazyPriceUpdate } from "../hooks/useLazySolanaPriceUpdate";
 import { useNativePrices } from "../hooks/useNativePrices";
 import { useSolanaPaymentBalance } from "../hooks/useSolanaBalance";
 import { useTransactionErrorHandler } from "../hooks/useTransactionErrorHandler";
@@ -35,7 +36,6 @@ import type {
   TransactionError,
 } from "../types";
 import { getExplorerTxUrl } from "../utils/format";
-import { triggerLazyPriceUpdate } from "../hooks/useLazySolanaPriceUpdate";
 // Shared Solana OTC utilities
 import {
   createSolanaConnection,
@@ -1511,9 +1511,9 @@ export function AcceptQuoteModal({
 
       const [priceCheckRes, consignmentAccount] = await Promise.all([
         // Fast price check (GET) - no on-chain transaction
-        fetch(
-          `/api/solana/update-price?tokenMint=${encodeURIComponent(tokenMintAddress)}`,
-        ).then((r) => r.json()),
+        fetch(`/api/solana/update-price?tokenMint=${encodeURIComponent(tokenMintAddress)}`).then(
+          (r) => r.json(),
+        ),
         // Fetch consignment account in parallel
         (program.account as ConsignmentAccountProgram).consignment.fetch(consignmentPubkey),
       ]);
@@ -1557,7 +1557,7 @@ export function AcceptQuoteModal({
             typeof priceData.price === "number" ? priceData.price.toFixed(8) : "?";
           const reasonText =
             typeof priceData.reason === "string" && priceData.reason.trim() !== ""
-              ? priceData.reason + " "
+              ? `${priceData.reason} `
               : "";
           throw new Error(
             `Token price ($${priceDisplay}) could not be set on-chain. ${reasonText}` +

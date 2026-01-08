@@ -210,7 +210,12 @@ const initialChatState: ChatState = {
   showClearChatModal: false,
 };
 
-export const Chat = ({ roomId: initialRoomId, token, marketData, consignmentId }: ChatProps = {}) => {
+export const Chat = ({
+  roomId: initialRoomId,
+  token,
+  marketData,
+  consignmentId,
+}: ChatProps = {}) => {
   // --- Consolidated State ---
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialChatState,

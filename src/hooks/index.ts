@@ -47,7 +47,12 @@ export { useDeals, useInvalidateDeals } from "./useDeals";
 // Utility Hooks - Non-React-Query hooks
 // ============================================================================
 export { useDeploymentValidation } from "./useDeploymentValidation";
-
+// Solana lazy price updates (stale-while-revalidate)
+export {
+  triggerLazyPriceUpdate,
+  useLazySolanaPriceUpdate,
+  useLazySolanaPriceUpdateSingle,
+} from "./useLazySolanaPriceUpdate";
 // Prices
 export { useNativePrice, useNativePrices } from "./useNativePrices";
 // Notifications
@@ -65,7 +70,6 @@ export {
   usePrefetchQuote,
   useQuoteByOffer,
 } from "./useQuote";
-
 // Solana balances
 export {
   useSolanaPaymentBalance,
@@ -73,12 +77,6 @@ export {
   useSolBalance,
   useSplTokenBalance,
 } from "./useSolanaBalance";
-// Solana lazy price updates (stale-while-revalidate)
-export {
-  triggerLazyPriceUpdate,
-  useLazySolanaPriceUpdate,
-  useLazySolanaPriceUpdateSingle,
-} from "./useLazySolanaPriceUpdate";
 // Token data
 export {
   useInvalidateToken,

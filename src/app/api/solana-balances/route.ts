@@ -481,47 +481,425 @@ export async function GET(request: NextRequest) {
     const { address: walletAddress } = query;
     const forceRefresh = searchParams.get("refresh") === "true";
 
-  // Local mode: use local RPC directly (mainnet APIs won't see local tokens)
-  const isLocalMode =
-    process.env.NEXT_PUBLIC_NETWORK === "local" || process.env.NETWORK === "local";
+    // Local mode: use local RPC directly (mainnet APIs won't see local tokens)
+    const isLocalMode =
+      process.env.NEXT_PUBLIC_NETWORK === "local" || process.env.NETWORK === "local";
 
-  if (isLocalMode) {
-    console.log("[Solana Balances] Local mode - using direct RPC");
-    const localTokens = await fetchFromLocalRpc(walletAddress);
-    const response = { tokens: localTokens, source: "local" as const };
-    const validatedResponse = SolanaBalancesResponseSchema.parse(response);
-    return NextResponse.json(validatedResponse);
-  }
-
-  // Check wallet cache first (15 minute TTL) unless force refresh
-  if (!forceRefresh) {
-    const cachedTokens = await getCachedWalletResponse(walletAddress);
-    if (cachedTokens) {
-      return NextResponse.json({ tokens: cachedTokens });
+    if (isLocalMode) {
+      console.log("[Solana Balances] Local mode - using direct RPC");
+      const localTokens = await fetchFromLocalRpc(walletAddress);
+      const response = { tokens: localTokens, source: "local" as const };
+      const validatedResponse = SolanaBalancesResponseSchema.parse(response);
+      return NextResponse.json(validatedResponse);
     }
-  } else {
-    console.log("[Solana Balances] Force refresh requested");
-  }
 
-  // FAIL-FAST: Require at least one API key
-  if (!codexKey && !heliusKey) {
-    throw new Error("Either CODEX_API_KEY or HELIUS_API_KEY must be configured");
-  }
+    // Check wallet cache first (15 minute TTL) unless force refresh
+    if (!forceRefresh) {
+      const cachedTokens = await getCachedWalletResponse(walletAddress);
+      if (cachedTokens) {
+        return NextResponse.json({ tokens: cachedTokens });
+      }
+    } else {
+      console.log("[Solana Balances] Force refresh requested");
+    }
 
-  if (codexKey) {
-    console.log("[Solana Balances] Using Codex API...");
-    const codexTokens = await fetchFromCodex(walletAddress, codexKey);
-    if (codexTokens.length === 0) {
-      // Empty wallet is valid - return empty tokens array
-      const emptyResponse = { tokens: [], source: "codex" as const };
+    // FAIL-FAST: Require at least one API key
+    if (!codexKey && !heliusKey) {
+      throw new Error("Either CODEX_API_KEY or HELIUS_API_KEY must be configured");
+    }
+
+    if (codexKey) {
+      console.log("[Solana Balances] Using Codex API...");
+      const codexTokens = await fetchFromCodex(walletAddress, codexKey);
+      if (codexTokens.length === 0) {
+        // Empty wallet is valid - return empty tokens array
+        const emptyResponse = { tokens: [], source: "codex" as const };
+        const validatedEmpty = SolanaBalancesResponseSchema.parse(emptyResponse);
+        return NextResponse.json(validatedEmpty);
+      }
+      console.log(`[Solana Balances] Codex returned ${codexTokens.length} tokens`);
+
+      // Check blob cache for unreliable image URLs (parallel)
+      const unreliableUrls = codexTokens
+        .map((t) => t.logoURI)
+        .filter(
+          (url) =>
+            url &&
+            (url.includes("ipfs.io/ipfs/") ||
+              url.includes("storage.auto.fun") ||
+              url.includes(".mypinata.cloud")),
+        ) as string[];
+
+      const cachedBlobUrls: Record<string, string> = {};
+      if (unreliableUrls.length > 0) {
+        const blobChecks = await Promise.allSettled(
+          unreliableUrls.map(async (url) => {
+            const urlHash = crypto.createHash("md5").update(url).digest("hex");
+            const extension = getExtensionFromUrl(url);
+            if (!extension) {
+              throw new Error(`Unable to determine extension for URL: ${url}`);
+            }
+            const blobPath = `token-images/${urlHash}.${extension}`;
+            const existing = await head(blobPath);
+            return { url, blobUrl: existing.url };
+          }),
+        );
+        for (const result of blobChecks) {
+          if (result.status === "fulfilled" && result.value.blobUrl) {
+            cachedBlobUrls[result.value.url] = result.value.blobUrl;
+          }
+        }
+      }
+      console.log(
+        `[Solana Balances] Found ${Object.keys(cachedBlobUrls).length} cached blob images`,
+      );
+
+      // Upgrade tokens with cached blob URLs
+      const enrichedTokens = codexTokens.map((token) => {
+        const rawLogoUrl = token.logoURI;
+        let logoURI: string | null = null;
+        if (rawLogoUrl) {
+          if (rawLogoUrl.includes("blob.vercel-storage.com")) {
+            logoURI = rawLogoUrl;
+          } else if (cachedBlobUrls[rawLogoUrl]) {
+            logoURI = cachedBlobUrls[rawLogoUrl];
+          } else if (
+            !rawLogoUrl.includes("ipfs.io/ipfs/") &&
+            !rawLogoUrl.includes("storage.auto.fun") &&
+            !rawLogoUrl.includes(".mypinata.cloud")
+          ) {
+            logoURI = rawLogoUrl;
+          }
+        }
+
+        return {
+          ...token,
+          logoURI,
+        };
+      });
+
+      // Cache unreliable image URLs to blob storage (background, fire-and-forget)
+      for (const token of codexTokens.slice(0, 30)) {
+        const originalUrl = token.logoURI;
+        if (
+          originalUrl &&
+          !originalUrl.includes("blob.vercel-storage.com") &&
+          (originalUrl.includes("ipfs.io/ipfs/") ||
+            originalUrl.includes("storage.auto.fun") ||
+            originalUrl.includes(".mypinata.cloud")) &&
+          !cachedBlobUrls[originalUrl]
+        ) {
+          // Cache image in background - don't await (non-critical)
+          // Errors will propagate but won't block response
+          cacheImageToBlob(originalUrl);
+        }
+      }
+
+      await setCachedWalletResponse(walletAddress, enrichedTokens);
+      const response = { tokens: enrichedTokens, source: "codex" as const };
+      const validatedResponse = SolanaBalancesResponseSchema.parse(response);
+      return NextResponse.json(validatedResponse);
+    }
+
+    // Use Helius (codexKey not available)
+    if (!heliusKey) {
+      throw new Error("HELIUS_API_KEY required when CODEX_API_KEY not available");
+    }
+
+    // Step 1: Get token balances from Helius (fast, single call)
+    const balancesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "balances",
+        method: "getTokenAccountsByOwner",
+        params: [
+          walletAddress,
+          { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
+          { encoding: "jsonParsed" },
+        ],
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!balancesResponse.ok) {
+      throw new Error(`Helius balances API failed: ${balancesResponse.status}`);
+    }
+
+    interface TokenAccount {
+      pubkey: string;
+      account: {
+        data: {
+          parsed: {
+            info: {
+              mint: string;
+              tokenAmount: {
+                amount: string;
+                decimals: number;
+                uiAmount: number;
+              };
+            };
+          };
+        };
+      };
+    }
+
+    const balancesData = (await balancesResponse.json()) as {
+      result?: { value?: TokenAccount[] };
+    };
+    if (!balancesData.result) {
+      throw new Error("Helius balances API response missing result field");
+    }
+    if (!Array.isArray(balancesData.result.value)) {
+      throw new Error("Helius balances API returned invalid response structure");
+    }
+    const accounts = balancesData.result.value;
+
+    console.log(`[Solana Balances] RPC returned ${accounts.length} token accounts`);
+
+    // Filter to tokens with balance > 0
+    const tokensWithBalance = accounts
+      .map((acc) => {
+        const info = acc.account.data.parsed.info;
+        const decimals = info.tokenAmount.decimals;
+        if (!info.tokenAmount || !info.tokenAmount.amount) {
+          throw new Error(`Token ${info.mint} missing amount in tokenAmount`);
+        }
+        const rawAmountStr = info.tokenAmount.amount;
+        // Calculate humanBalance ourselves in case uiAmount is null
+        // Use BigInt for division to handle large amounts
+        const rawAmountNum = Number(rawAmountStr);
+        const humanBalance =
+          typeof info.tokenAmount.uiAmount === "number"
+            ? info.tokenAmount.uiAmount
+            : rawAmountNum / 10 ** decimals;
+        return {
+          mint: info.mint,
+          amount: rawAmountStr, // Keep as string to handle large values
+          decimals,
+          humanBalance,
+        };
+      })
+      .filter((t) => t.amount !== "0"); // Any non-zero balance
+
+    console.log(`[Solana Balances] Found ${tokensWithBalance.length} tokens with balance > 0`);
+
+    if (tokensWithBalance.length === 0) {
+      // Empty wallet is valid - return empty array
+      const emptyResponse = { tokens: [] };
       const validatedEmpty = SolanaBalancesResponseSchema.parse(emptyResponse);
       return NextResponse.json(validatedEmpty);
     }
-    console.log(`[Solana Balances] Codex returned ${codexTokens.length} tokens`);
 
-    // Check blob cache for unreliable image URLs (parallel)
-    const unreliableUrls = codexTokens
-      .map((t) => t.logoURI)
+    // Step 2: Get metadata from cache first, then fetch missing from Helius
+    interface HeliusAsset {
+      id: string;
+      content?: {
+        metadata?: { name?: string; symbol?: string };
+        links?: { image?: string };
+      };
+      token_info?: { symbol?: string; decimals?: number };
+    }
+
+    const allMints = tokensWithBalance.map((t) => t.mint);
+    const cachedMetadata = await getSolanaMetadataCache();
+    const metadata: Record<string, { symbol: string; name: string; logoURI: string | null }> = {
+      ...cachedMetadata,
+    };
+
+    // Find mints that need metadata
+    const mintsNeedingMetadata = allMints.filter((mint) => !metadata[mint]);
+    console.log(
+      `[Solana Balances] ${Object.keys(cachedMetadata).length} cached, ${mintsNeedingMetadata.length} need metadata`,
+    );
+
+    // Batch fetch metadata for uncached tokens (100 at a time)
+    if (mintsNeedingMetadata.length > 0) {
+      for (let i = 0; i < mintsNeedingMetadata.length; i += 100) {
+        const batch = mintsNeedingMetadata.slice(i, i + 100);
+        const metadataResponse = await fetch(
+          `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: "metadata",
+              method: "getAssetBatch",
+              params: { ids: batch },
+            }),
+            signal: AbortSignal.timeout(8000),
+          },
+        );
+
+        if (!metadataResponse.ok) {
+          throw new Error(`Helius metadata fetch failed: ${metadataResponse.status}`);
+        }
+
+        interface HeliusMetadataResponse {
+          result?: HeliusAsset[];
+        }
+
+        const data = (await metadataResponse.json()) as HeliusMetadataResponse;
+        if (!data.result) {
+          throw new Error("Helius metadata API response missing result field");
+        }
+        if (!Array.isArray(data.result)) {
+          throw new Error("Helius metadata API returned invalid response structure");
+        }
+        const assets = data.result;
+        for (const asset of assets) {
+          if (!asset.id) {
+            throw new Error("Helius asset missing id");
+          }
+          // Symbol can come from content.metadata or token_info - check both explicitly
+          const contentSymbol =
+            typeof asset.content?.metadata?.symbol === "string" &&
+            asset.content.metadata.symbol.trim() !== ""
+              ? asset.content.metadata.symbol
+              : undefined;
+          const tokenInfoSymbol =
+            typeof asset.token_info?.symbol === "string" && asset.token_info.symbol.trim() !== ""
+              ? asset.token_info.symbol
+              : undefined;
+          const symbol = contentSymbol ?? tokenInfoSymbol;
+          if (!symbol) {
+            throw new Error(`Helius asset ${asset.id} missing symbol`);
+          }
+          const name = asset.content?.metadata?.name;
+          if (!name) {
+            throw new Error(`Helius asset ${asset.id} missing name`);
+          }
+          // logoURI is optional - use null if not present
+          const logoURI = asset.content?.links?.image ?? null;
+          metadata[asset.id] = {
+            symbol,
+            name,
+            logoURI,
+          };
+        }
+      }
+
+      // Update bulk metadata cache (merge with existing to handle concurrent requests)
+      const existing = await getSolanaMetadataCache();
+      const merged = { ...existing, ...metadata };
+      await setSolanaMetadataCache(merged);
+    }
+
+    console.log(`[Solana Balances] Got metadata for ${Object.keys(metadata).length} tokens`);
+
+    // Step 3: Get prices from cache first, then fetch missing from Birdeye
+    const mints = tokensWithBalance.map((t) => t.mint);
+    // If force refresh, ignore cached prices to get fresh data
+    const cachedPrices = forceRefresh ? {} : await getSolanaPriceCache();
+    const prices: Record<string, number> = { ...cachedPrices };
+
+    // Find mints that need prices (either uncached or cached with $0)
+    const mintsNeedingPrices = mints.filter(
+      (mint) => prices[mint] === undefined || prices[mint] === 0,
+    );
+    console.log(
+      `[Solana Balances] ${Object.keys(cachedPrices).length} prices cached, ${mintsNeedingPrices.length} need fetch`,
+    );
+
+    // Birdeye multi-price API - fetch in batches of 50 (smaller batches to avoid URL length issues)
+    const birdeyeApiKey = process.env.BIRDEYE_API_KEY;
+    const BIRDEYE_BATCH_SIZE = 50;
+    const batchErrors: string[] = [];
+    if (mintsNeedingPrices.length > 0 && birdeyeApiKey) {
+      console.log(
+        `[Solana Balances] Fetching prices for ${mintsNeedingPrices.length} tokens from Birdeye`,
+      );
+      for (let i = 0; i < mintsNeedingPrices.length; i += BIRDEYE_BATCH_SIZE) {
+        const batch = mintsNeedingPrices.slice(i, i + BIRDEYE_BATCH_SIZE);
+        const batchNum = Math.floor(i / BIRDEYE_BATCH_SIZE) + 1;
+        console.log(`[Solana Balances] Birdeye batch ${batchNum}: ${batch.length} mints`);
+        try {
+          const priceResponse = await fetch(
+            `https://public-api.birdeye.so/defi/multi_price?list_address=${batch.join(",")}`,
+            {
+              headers: {
+                "X-API-KEY": birdeyeApiKey,
+                Accept: "application/json",
+              },
+              signal: AbortSignal.timeout(10000),
+            },
+          );
+
+          if (!priceResponse.ok) {
+            const errMsg = `Batch ${batchNum}: HTTP ${priceResponse.status}`;
+            console.warn(`[Solana Balances] Birdeye error: ${errMsg}`);
+            batchErrors.push(errMsg);
+            continue; // Try next batch instead of breaking
+          }
+
+          interface BirdeyePriceData {
+            value?: number;
+            priceChange24h?: number;
+            updateUnixTime?: number;
+          }
+
+          interface BirdeyeResponse {
+            success?: boolean;
+            data?: Record<string, BirdeyePriceData>;
+          }
+
+          const priceData = (await priceResponse.json()) as BirdeyeResponse;
+          const returnedCount = priceData.data ? Object.keys(priceData.data).length : 0;
+          console.log(
+            `[Solana Balances] Birdeye batch ${batchNum} returned ${returnedCount} tokens`,
+          );
+
+          // Only accept prices updated within the last 24 hours to filter stale data
+          const MAX_PRICE_AGE_SECONDS = 24 * 60 * 60; // 24 hours
+          const nowUnix = Math.floor(Date.now() / 1000);
+
+          if (priceData.success && priceData.data) {
+            let pricesFound = 0;
+            let staleCount = 0;
+            for (const [mint, data] of Object.entries(priceData.data)) {
+              // Birdeye returns null for tokens without price data
+              if (data && typeof data.value === "number" && data.value > 0) {
+                // Check if price is stale (older than 24 hours)
+                const updateTime = data.updateUnixTime ?? 0;
+                const ageSeconds = nowUnix - updateTime;
+                if (ageSeconds > MAX_PRICE_AGE_SECONDS) {
+                  staleCount++;
+                  continue; // Skip stale prices
+                }
+                prices[mint] = data.value;
+                pricesFound++;
+              }
+            }
+            console.log(
+              `[Solana Balances] Batch ${batchNum}: ${pricesFound} fresh prices, ${staleCount} stale (>24h old)`,
+            );
+          } else if (!priceData.success) {
+            batchErrors.push(`Batch ${batchNum}: success=false`);
+          }
+        } catch (err) {
+          // Network errors, timeouts, etc - continue with other batches
+          const errMsg = `Batch ${batchNum}: ${err instanceof Error ? err.message : String(err)}`;
+          console.warn(`[Solana Balances] Birdeye fetch error: ${errMsg}`);
+          batchErrors.push(errMsg);
+        }
+      }
+
+      // Update bulk price cache if we got any prices
+      if (Object.keys(prices).length > Object.keys(cachedPrices).length) {
+        const existing = await getSolanaPriceCache();
+        const merged = { ...existing, ...prices };
+        await setSolanaPriceCache(merged);
+      }
+    } else if (mintsNeedingPrices.length > 0 && !birdeyeApiKey) {
+      console.warn("[Solana Balances] BIRDEYE_API_KEY not set - prices unavailable");
+    }
+    console.log(`[Solana Balances] Have prices for ${Object.keys(prices).length} tokens`);
+
+    // Step 4: Check blob cache for unreliable image URLs (parallel)
+    const unreliableUrls = Object.values(metadata)
+      .map((m) => m.logoURI)
       .filter(
         (url) =>
           url &&
@@ -552,9 +930,20 @@ export async function GET(request: NextRequest) {
     }
     console.log(`[Solana Balances] Found ${Object.keys(cachedBlobUrls).length} cached blob images`);
 
-    // Upgrade tokens with cached blob URLs
-    const enrichedTokens = codexTokens.map((token) => {
-      const rawLogoUrl = token.logoURI;
+    // Step 5: Combine everything
+    const tokensWithData = tokensWithBalance.map((token) => {
+      const meta = metadata[token.mint];
+      if (!meta) {
+        throw new Error(
+          `Metadata missing for token ${token.mint} - metadata fetch should have populated this`,
+        );
+      }
+      // Price is optional - tokens without prices are still valid (use 0 as default)
+      const priceUsd = prices[token.mint] ?? 0;
+      // logoURI is optional - use null if not present
+      const rawLogoUrl = meta.logoURI ?? null;
+
+      // Get reliable URL: blob cache > reliable URL > null
       let logoURI: string | null = null;
       if (rawLogoUrl) {
         if (rawLogoUrl.includes("blob.vercel-storage.com")) {
@@ -571,14 +960,48 @@ export async function GET(request: NextRequest) {
       }
 
       return {
-        ...token,
+        mint: token.mint,
+        amount: token.amount,
+        decimals: token.decimals,
+        humanBalance: token.humanBalance,
+        priceUsd,
+        balanceUsd: token.humanBalance * priceUsd,
+        symbol: meta.symbol,
+        name: meta.name,
         logoURI,
+        // Keep original URL for background caching
+        _originalLogoUrl: rawLogoUrl,
       };
     });
 
-    // Cache unreliable image URLs to blob storage (background, fire-and-forget)
-    for (const token of codexTokens.slice(0, 30)) {
-      const originalUrl = token.logoURI;
+    interface TokenWithOriginalUrl {
+      _originalLogoUrl?: string;
+    }
+
+    // Filter: only show tokens worth listing (>$0.01 or >100 tokens if no price)
+    const MIN_USD_VALUE = 0.01;
+    const MIN_TOKENS_NO_PRICE = 100;
+
+    const filteredTokens = tokensWithData.filter((t) => {
+      if (t.priceUsd > 0) return t.balanceUsd >= MIN_USD_VALUE;
+      return t.humanBalance >= MIN_TOKENS_NO_PRICE;
+    });
+
+    // Sort: priced tokens by value, then unpriced by balance
+    filteredTokens.sort((a, b) => {
+      if (a.balanceUsd > 0 && b.balanceUsd > 0) return b.balanceUsd - a.balanceUsd;
+      if (a.balanceUsd > 0) return -1;
+      if (b.balanceUsd > 0) return 1;
+      return b.humanBalance - a.humanBalance;
+    });
+
+    console.log(
+      `[Solana Balances] ${tokensWithBalance.length} total -> ${filteredTokens.length} after filter`,
+    );
+
+    // Fire-and-forget: cache unreliable images in background for next request
+    for (const token of filteredTokens.slice(0, 30)) {
+      const originalUrl = (token as TokenWithOriginalUrl)._originalLogoUrl;
       if (
         originalUrl &&
         !originalUrl.includes("blob.vercel-storage.com") &&
@@ -587,443 +1010,26 @@ export async function GET(request: NextRequest) {
           originalUrl.includes(".mypinata.cloud")) &&
         !cachedBlobUrls[originalUrl]
       ) {
-        // Cache image in background - don't await (non-critical)
+        // Background image cache - don't await (non-critical)
         // Errors will propagate but won't block response
         cacheImageToBlob(originalUrl);
       }
     }
 
+    // Format response
+    const enrichedTokens = filteredTokens.map((t) => ({
+      mint: t.mint,
+      amount: t.amount,
+      decimals: t.decimals,
+      priceUsd: t.priceUsd,
+      balanceUsd: t.balanceUsd,
+      symbol: t.symbol,
+      name: t.name,
+      logoURI: t.logoURI,
+    }));
+
+    // Cache for 15 minutes
     await setCachedWalletResponse(walletAddress, enrichedTokens);
-    const response = { tokens: enrichedTokens, source: "codex" as const };
-    const validatedResponse = SolanaBalancesResponseSchema.parse(response);
-    return NextResponse.json(validatedResponse);
-  }
-
-  // Use Helius (codexKey not available)
-  if (!heliusKey) {
-    throw new Error("HELIUS_API_KEY required when CODEX_API_KEY not available");
-  }
-
-  // Step 1: Get token balances from Helius (fast, single call)
-  const balancesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "balances",
-      method: "getTokenAccountsByOwner",
-      params: [
-        walletAddress,
-        { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
-        { encoding: "jsonParsed" },
-      ],
-    }),
-    signal: AbortSignal.timeout(10000),
-  });
-
-  if (!balancesResponse.ok) {
-    throw new Error(`Helius balances API failed: ${balancesResponse.status}`);
-  }
-
-  interface TokenAccount {
-    pubkey: string;
-    account: {
-      data: {
-        parsed: {
-          info: {
-            mint: string;
-            tokenAmount: {
-              amount: string;
-              decimals: number;
-              uiAmount: number;
-            };
-          };
-        };
-      };
-    };
-  }
-
-  const balancesData = (await balancesResponse.json()) as {
-    result?: { value?: TokenAccount[] };
-  };
-  if (!balancesData.result) {
-    throw new Error("Helius balances API response missing result field");
-  }
-  if (!Array.isArray(balancesData.result.value)) {
-    throw new Error("Helius balances API returned invalid response structure");
-  }
-  const accounts = balancesData.result.value;
-
-  console.log(`[Solana Balances] RPC returned ${accounts.length} token accounts`);
-
-  // Filter to tokens with balance > 0
-  const tokensWithBalance = accounts
-    .map((acc) => {
-      const info = acc.account.data.parsed.info;
-      const decimals = info.tokenAmount.decimals;
-      if (!info.tokenAmount || !info.tokenAmount.amount) {
-        throw new Error(`Token ${info.mint} missing amount in tokenAmount`);
-      }
-      const rawAmountStr = info.tokenAmount.amount;
-      // Calculate humanBalance ourselves in case uiAmount is null
-      // Use BigInt for division to handle large amounts
-      const rawAmountNum = Number(rawAmountStr);
-      const humanBalance =
-        typeof info.tokenAmount.uiAmount === "number"
-          ? info.tokenAmount.uiAmount
-          : rawAmountNum / 10 ** decimals;
-      return {
-        mint: info.mint,
-        amount: rawAmountStr, // Keep as string to handle large values
-        decimals,
-        humanBalance,
-      };
-    })
-    .filter((t) => t.amount !== "0"); // Any non-zero balance
-
-  console.log(`[Solana Balances] Found ${tokensWithBalance.length} tokens with balance > 0`);
-
-  if (tokensWithBalance.length === 0) {
-    // Empty wallet is valid - return empty array
-    const emptyResponse = { tokens: [] };
-    const validatedEmpty = SolanaBalancesResponseSchema.parse(emptyResponse);
-    return NextResponse.json(validatedEmpty);
-  }
-
-  // Step 2: Get metadata from cache first, then fetch missing from Helius
-  interface HeliusAsset {
-    id: string;
-    content?: {
-      metadata?: { name?: string; symbol?: string };
-      links?: { image?: string };
-    };
-    token_info?: { symbol?: string; decimals?: number };
-  }
-
-  const allMints = tokensWithBalance.map((t) => t.mint);
-  const cachedMetadata = await getSolanaMetadataCache();
-  const metadata: Record<string, { symbol: string; name: string; logoURI: string | null }> = {
-    ...cachedMetadata,
-  };
-
-  // Find mints that need metadata
-  const mintsNeedingMetadata = allMints.filter((mint) => !metadata[mint]);
-  console.log(
-    `[Solana Balances] ${Object.keys(cachedMetadata).length} cached, ${mintsNeedingMetadata.length} need metadata`,
-  );
-
-  // Batch fetch metadata for uncached tokens (100 at a time)
-  if (mintsNeedingMetadata.length > 0) {
-    for (let i = 0; i < mintsNeedingMetadata.length; i += 100) {
-      const batch = mintsNeedingMetadata.slice(i, i + 100);
-      const metadataResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "metadata",
-          method: "getAssetBatch",
-          params: { ids: batch },
-        }),
-        signal: AbortSignal.timeout(8000),
-      });
-
-      if (!metadataResponse.ok) {
-        throw new Error(`Helius metadata fetch failed: ${metadataResponse.status}`);
-      }
-
-      interface HeliusMetadataResponse {
-        result?: HeliusAsset[];
-      }
-
-      const data = (await metadataResponse.json()) as HeliusMetadataResponse;
-      if (!data.result) {
-        throw new Error("Helius metadata API response missing result field");
-      }
-      if (!Array.isArray(data.result)) {
-        throw new Error("Helius metadata API returned invalid response structure");
-      }
-      const assets = data.result;
-      for (const asset of assets) {
-        if (!asset.id) {
-          throw new Error("Helius asset missing id");
-        }
-        // Symbol can come from content.metadata or token_info - check both explicitly
-        const contentSymbol =
-          typeof asset.content?.metadata?.symbol === "string" &&
-          asset.content.metadata.symbol.trim() !== ""
-            ? asset.content.metadata.symbol
-            : undefined;
-        const tokenInfoSymbol =
-          typeof asset.token_info?.symbol === "string" && asset.token_info.symbol.trim() !== ""
-            ? asset.token_info.symbol
-            : undefined;
-        const symbol = contentSymbol ?? tokenInfoSymbol;
-        if (!symbol) {
-          throw new Error(`Helius asset ${asset.id} missing symbol`);
-        }
-        const name = asset.content?.metadata?.name;
-        if (!name) {
-          throw new Error(`Helius asset ${asset.id} missing name`);
-        }
-        // logoURI is optional - use null if not present
-        const logoURI = asset.content?.links?.image ?? null;
-        metadata[asset.id] = {
-          symbol,
-          name,
-          logoURI,
-        };
-      }
-    }
-
-    // Update bulk metadata cache (merge with existing to handle concurrent requests)
-    const existing = await getSolanaMetadataCache();
-    const merged = { ...existing, ...metadata };
-    await setSolanaMetadataCache(merged);
-  }
-
-  console.log(`[Solana Balances] Got metadata for ${Object.keys(metadata).length} tokens`);
-
-  // Step 3: Get prices from cache first, then fetch missing from Birdeye
-  const mints = tokensWithBalance.map((t) => t.mint);
-  // If force refresh, ignore cached prices to get fresh data
-  const cachedPrices = forceRefresh ? {} : await getSolanaPriceCache();
-  const prices: Record<string, number> = { ...cachedPrices };
-
-  // Find mints that need prices (either uncached or cached with $0)
-  const mintsNeedingPrices = mints.filter(
-    (mint) => prices[mint] === undefined || prices[mint] === 0,
-  );
-  console.log(
-    `[Solana Balances] ${Object.keys(cachedPrices).length} prices cached, ${mintsNeedingPrices.length} need fetch`,
-  );
-
-  // Birdeye multi-price API - fetch in batches of 50 (smaller batches to avoid URL length issues)
-  const birdeyeApiKey = process.env.BIRDEYE_API_KEY;
-  const BIRDEYE_BATCH_SIZE = 50;
-  const batchErrors: string[] = [];
-  if (mintsNeedingPrices.length > 0 && birdeyeApiKey) {
-    console.log(
-      `[Solana Balances] Fetching prices for ${mintsNeedingPrices.length} tokens from Birdeye`,
-    );
-    for (let i = 0; i < mintsNeedingPrices.length; i += BIRDEYE_BATCH_SIZE) {
-      const batch = mintsNeedingPrices.slice(i, i + BIRDEYE_BATCH_SIZE);
-      const batchNum = Math.floor(i / BIRDEYE_BATCH_SIZE) + 1;
-      console.log(`[Solana Balances] Birdeye batch ${batchNum}: ${batch.length} mints`);
-      try {
-        const priceResponse = await fetch(
-          `https://public-api.birdeye.so/defi/multi_price?list_address=${batch.join(",")}`,
-          {
-            headers: {
-              "X-API-KEY": birdeyeApiKey,
-              Accept: "application/json",
-            },
-            signal: AbortSignal.timeout(10000),
-          },
-        );
-
-        if (!priceResponse.ok) {
-          const errMsg = `Batch ${batchNum}: HTTP ${priceResponse.status}`;
-          console.warn(`[Solana Balances] Birdeye error: ${errMsg}`);
-          batchErrors.push(errMsg);
-          continue; // Try next batch instead of breaking
-        }
-
-        interface BirdeyePriceData {
-          value?: number;
-          priceChange24h?: number;
-          updateUnixTime?: number;
-        }
-
-        interface BirdeyeResponse {
-          success?: boolean;
-          data?: Record<string, BirdeyePriceData>;
-        }
-
-        const priceData = (await priceResponse.json()) as BirdeyeResponse;
-        const returnedCount = priceData.data ? Object.keys(priceData.data).length : 0;
-        console.log(`[Solana Balances] Birdeye batch ${batchNum} returned ${returnedCount} tokens`);
-        
-        // Only accept prices updated within the last 24 hours to filter stale data
-        const MAX_PRICE_AGE_SECONDS = 24 * 60 * 60; // 24 hours
-        const nowUnix = Math.floor(Date.now() / 1000);
-        
-        if (priceData.success && priceData.data) {
-          let pricesFound = 0;
-          let staleCount = 0;
-          for (const [mint, data] of Object.entries(priceData.data)) {
-            // Birdeye returns null for tokens without price data
-            if (data && typeof data.value === "number" && data.value > 0) {
-              // Check if price is stale (older than 24 hours)
-              const updateTime = data.updateUnixTime ?? 0;
-              const ageSeconds = nowUnix - updateTime;
-              if (ageSeconds > MAX_PRICE_AGE_SECONDS) {
-                staleCount++;
-                continue; // Skip stale prices
-              }
-              prices[mint] = data.value;
-              pricesFound++;
-            }
-          }
-          console.log(
-            `[Solana Balances] Batch ${batchNum}: ${pricesFound} fresh prices, ${staleCount} stale (>24h old)`,
-          );
-        } else if (!priceData.success) {
-          batchErrors.push(`Batch ${batchNum}: success=false`);
-        }
-      } catch (err) {
-        // Network errors, timeouts, etc - continue with other batches
-        const errMsg = `Batch ${batchNum}: ${err instanceof Error ? err.message : String(err)}`;
-        console.warn(`[Solana Balances] Birdeye fetch error: ${errMsg}`);
-        batchErrors.push(errMsg);
-        continue; // Try next batch instead of breaking
-      }
-    }
-
-    // Update bulk price cache if we got any prices
-    if (Object.keys(prices).length > Object.keys(cachedPrices).length) {
-      const existing = await getSolanaPriceCache();
-      const merged = { ...existing, ...prices };
-      await setSolanaPriceCache(merged);
-    }
-  } else if (mintsNeedingPrices.length > 0 && !birdeyeApiKey) {
-    console.warn("[Solana Balances] BIRDEYE_API_KEY not set - prices unavailable");
-  }
-  console.log(`[Solana Balances] Have prices for ${Object.keys(prices).length} tokens`);
-
-  // Step 4: Check blob cache for unreliable image URLs (parallel)
-  const unreliableUrls = Object.values(metadata)
-    .map((m) => m.logoURI)
-    .filter(
-      (url) =>
-        url &&
-        (url.includes("ipfs.io/ipfs/") ||
-          url.includes("storage.auto.fun") ||
-          url.includes(".mypinata.cloud")),
-    ) as string[];
-
-  const cachedBlobUrls: Record<string, string> = {};
-  if (unreliableUrls.length > 0) {
-    const blobChecks = await Promise.allSettled(
-      unreliableUrls.map(async (url) => {
-        const urlHash = crypto.createHash("md5").update(url).digest("hex");
-        const extension = getExtensionFromUrl(url);
-        if (!extension) {
-          throw new Error(`Unable to determine extension for URL: ${url}`);
-        }
-        const blobPath = `token-images/${urlHash}.${extension}`;
-        const existing = await head(blobPath);
-        return { url, blobUrl: existing.url };
-      }),
-    );
-    for (const result of blobChecks) {
-      if (result.status === "fulfilled" && result.value.blobUrl) {
-        cachedBlobUrls[result.value.url] = result.value.blobUrl;
-      }
-    }
-  }
-  console.log(`[Solana Balances] Found ${Object.keys(cachedBlobUrls).length} cached blob images`);
-
-  // Step 5: Combine everything
-  const tokensWithData = tokensWithBalance.map((token) => {
-    const meta = metadata[token.mint];
-    if (!meta) {
-      throw new Error(
-        `Metadata missing for token ${token.mint} - metadata fetch should have populated this`,
-      );
-    }
-    // Price is optional - tokens without prices are still valid (use 0 as default)
-    const priceUsd = prices[token.mint] ?? 0;
-    // logoURI is optional - use null if not present
-    const rawLogoUrl = meta.logoURI ?? null;
-
-    // Get reliable URL: blob cache > reliable URL > null
-    let logoURI: string | null = null;
-    if (rawLogoUrl) {
-      if (rawLogoUrl.includes("blob.vercel-storage.com")) {
-        logoURI = rawLogoUrl;
-      } else if (cachedBlobUrls[rawLogoUrl]) {
-        logoURI = cachedBlobUrls[rawLogoUrl];
-      } else if (
-        !rawLogoUrl.includes("ipfs.io/ipfs/") &&
-        !rawLogoUrl.includes("storage.auto.fun") &&
-        !rawLogoUrl.includes(".mypinata.cloud")
-      ) {
-        logoURI = rawLogoUrl;
-      }
-    }
-
-    return {
-      mint: token.mint,
-      amount: token.amount,
-      decimals: token.decimals,
-      humanBalance: token.humanBalance,
-      priceUsd,
-      balanceUsd: token.humanBalance * priceUsd,
-      symbol: meta.symbol,
-      name: meta.name,
-      logoURI,
-      // Keep original URL for background caching
-      _originalLogoUrl: rawLogoUrl,
-    };
-  });
-
-  interface TokenWithOriginalUrl {
-    _originalLogoUrl?: string;
-  }
-
-  // Filter: only show tokens worth listing (>$0.01 or >100 tokens if no price)
-  const MIN_USD_VALUE = 0.01;
-  const MIN_TOKENS_NO_PRICE = 100;
-
-  const filteredTokens = tokensWithData.filter((t) => {
-    if (t.priceUsd > 0) return t.balanceUsd >= MIN_USD_VALUE;
-    return t.humanBalance >= MIN_TOKENS_NO_PRICE;
-  });
-
-  // Sort: priced tokens by value, then unpriced by balance
-  filteredTokens.sort((a, b) => {
-    if (a.balanceUsd > 0 && b.balanceUsd > 0) return b.balanceUsd - a.balanceUsd;
-    if (a.balanceUsd > 0) return -1;
-    if (b.balanceUsd > 0) return 1;
-    return b.humanBalance - a.humanBalance;
-  });
-
-  console.log(
-    `[Solana Balances] ${tokensWithBalance.length} total -> ${filteredTokens.length} after filter`,
-  );
-
-  // Fire-and-forget: cache unreliable images in background for next request
-  for (const token of filteredTokens.slice(0, 30)) {
-    const originalUrl = (token as TokenWithOriginalUrl)._originalLogoUrl;
-    if (
-      originalUrl &&
-      !originalUrl.includes("blob.vercel-storage.com") &&
-      (originalUrl.includes("ipfs.io/ipfs/") ||
-        originalUrl.includes("storage.auto.fun") ||
-        originalUrl.includes(".mypinata.cloud")) &&
-      !cachedBlobUrls[originalUrl]
-    ) {
-      // Background image cache - don't await (non-critical)
-      // Errors will propagate but won't block response
-      cacheImageToBlob(originalUrl);
-    }
-  }
-
-  // Format response
-  const enrichedTokens = filteredTokens.map((t) => ({
-    mint: t.mint,
-    amount: t.amount,
-    decimals: t.decimals,
-    priceUsd: t.priceUsd,
-    balanceUsd: t.balanceUsd,
-    symbol: t.symbol,
-    name: t.name,
-    logoURI: t.logoURI,
-  }));
-
-  // Cache for 15 minutes
-  await setCachedWalletResponse(walletAddress, enrichedTokens);
 
     const response = { tokens: enrichedTokens };
     const validatedResponse = SolanaBalancesResponseSchema.parse(response);
@@ -1043,9 +1049,6 @@ export async function GET(request: NextRequest) {
       console.error("[Solana Balances API Stack]", errorStack);
     }
 
-    return NextResponse.json(
-      { success: false, error: errorMessage },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }
 }

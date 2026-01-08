@@ -267,13 +267,7 @@ export interface QuoteAccepted {
 //==============================================================================
 
 // Import for local use in this file (extends, etc.)
-import type {
-  ConsignmentDeal as ConsignmentDealType,
-  OTCConsignment as OTCConsignmentType,
-  Token as TokenType,
-  TokenMarketData as TokenMarketDataType,
-  UserSessionMemory as UserSessionMemoryType,
-} from "./db-types";
+import type { TokenMarketData as TokenMarketDataType, Token as TokenType } from "./db-types";
 
 // Re-export for external consumers
 export type {

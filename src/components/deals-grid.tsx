@@ -125,8 +125,17 @@ export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
   const solanaMints = useMemo(() => {
     if (!tokensData) return [];
     return Object.values(tokensData)
-      .filter((token) => token.chain === "solana" && token.contractAddress)
-      .map((token) => token.contractAddress);
+      .filter((token): token is Token => {
+        if (!token) return false;
+        return token.chain === "solana" && token.contractAddress !== undefined;
+      })
+      .map((token) => {
+        // Type guard ensures token is non-null and has contractAddress
+        if (!token.contractAddress) {
+          throw new Error("Token contractAddress missing after filter");
+        }
+        return token.contractAddress;
+      });
   }, [tokensData]);
 
   // Lazy-load Solana on-chain prices in background (stale-while-revalidate)

@@ -1,7 +1,7 @@
-import { type PublicClient, createPublicClient, http, parseAbi } from "viem";
+import { createPublicClient, http, type Log, type PublicClient, parseAbi } from "viem";
 import { base } from "viem/chains";
 import { getRegistrationHelperForChain } from "../config/contracts";
-import { type MinimalPublicClient, getLogsChunked } from "../lib/viem-utils";
+import { getLogsChunked, hasDecodedArgs, type MinimalPublicClient } from "../lib/viem-utils";
 import { TokenRegistryService } from "./tokenRegistry";
 
 // Protected symbols that can only be registered from verified contract addresses
@@ -52,14 +52,6 @@ interface TokenRegisteredArgs {
   pool: string;
   oracle: string;
   registeredBy: string;
-}
-
-/**
- * TokenRegistered event log with decoded args
- */
-interface TokenRegisteredLog {
-  args: TokenRegisteredArgs;
-  // Other log fields are not used
 }
 
 const ERC20_ABI = parseAbi([
@@ -117,7 +109,12 @@ export async function startBaseListener() {
     },
     onLogs: async (logs) => {
       for (const log of logs) {
-        await handleTokenRegistered(client as MinimalPublicClient, log as TokenRegisteredLog);
+        // FAIL-FAST: Log must have decoded args (watchEvent with event definition decodes automatically)
+        if (!hasDecodedArgs(log)) {
+          console.warn("[Base Listener] Log missing decoded args, skipping:", log);
+          continue;
+        }
+        await handleTokenRegistered(client as MinimalPublicClient, log);
       }
     },
     onError: (error) => {
@@ -144,9 +141,13 @@ export async function startBaseListener() {
 /**
  * Handle a TokenRegistered event
  */
-async function handleTokenRegistered(client: MinimalPublicClient, log: TokenRegisteredLog) {
+async function handleTokenRegistered(
+  client: MinimalPublicClient,
+  log: Log & { args: Record<string, unknown> },
+) {
   // When using watchEvent with event definition, viem automatically decodes the log
-  const { tokenAddress, pool, registeredBy } = log.args;
+  const args = log.args as unknown as TokenRegisteredArgs;
+  const { tokenAddress, pool, registeredBy } = args;
 
   console.log(
     "[Base Listener] Token registered:",
@@ -226,7 +227,9 @@ export async function backfillBaseEvents(fromBlock?: bigint) {
   const latestBlock = await client.getBlockNumber();
   const startBlock = fromBlock || latestBlock - BigInt(10000); // Last ~10k blocks
 
-  console.log(`[Base Backfill] Fetching events from block ${startBlock} to ${latestBlock} (chunked)`);
+  console.log(
+    `[Base Backfill] Fetching events from block ${startBlock} to ${latestBlock} (chunked)`,
+  );
 
   const logs = await getLogsChunked(client as PublicClient, {
     address: registrationHelperAddress as `0x${string}`,
@@ -248,7 +251,12 @@ export async function backfillBaseEvents(fromBlock?: bigint) {
   console.log(`[Base Backfill] Found ${logs.length} TokenRegistered events`);
 
   for (const log of logs) {
-    await handleTokenRegistered(client as MinimalPublicClient, log as TokenRegisteredLog);
+    // FAIL-FAST: Log must have decoded args when using getLogs with event definition
+    if (!hasDecodedArgs(log)) {
+      console.warn("[Base Backfill] Log missing decoded args, skipping:", log);
+      continue;
+    }
+    await handleTokenRegistered(client as MinimalPublicClient, log);
   }
 
   console.log("[Base Backfill] ✅ Backfill complete");

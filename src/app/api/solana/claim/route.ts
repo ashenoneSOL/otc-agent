@@ -4,6 +4,8 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getSolanaConfig } from "../../../../config/contracts";
 import { getHeliusRpcUrl, getNetwork } from "../../../../config/env";
+// Import bundled IDL - do not read from filesystem (fails on Vercel)
+import idlJson from "../../../../contracts/solana-otc.idl.json";
 import { validationErrorResponse } from "../../../../lib/validation/helpers";
 import {
   SolanaClaimRequestSchema,
@@ -11,8 +13,6 @@ import {
 } from "../../../../types/validation/api-schemas";
 import { createAnchorWallet, loadDeskKeypair } from "../../../../utils/solana-keypair";
 import { getTokenProgramId } from "../../../../utils/solana-otc";
-// Import bundled IDL - do not read from filesystem (fails on Vercel)
-import idlJson from "../../../../contracts/solana-otc.idl.json";
 
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;

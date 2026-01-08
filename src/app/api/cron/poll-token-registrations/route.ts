@@ -1,10 +1,14 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { type NextRequest, NextResponse } from "next/server";
-import { type PublicClient, createPublicClient, http, parseAbi } from "viem";
+import { createPublicClient, http, type PublicClient, parseAbi } from "viem";
 import { base } from "viem/chains";
 import { getRegistrationHelperForChain, getSolanaProgramId } from "../../../../config/contracts";
 import { getHeliusRpcUrl, getNetwork } from "../../../../config/env";
-import { type MinimalPublicClient, getLogsChunked } from "../../../../lib/viem-utils";
+import {
+  getLogsChunked,
+  hasDecodedArgs,
+  type MinimalPublicClient,
+} from "../../../../lib/viem-utils";
 import { TokenDB } from "../../../../services/database";
 import { TokenRegistryService } from "../../../../services/tokenRegistry";
 import { CronPollTokenRegistrationsResponseSchema } from "../../../../types/validation/api-schemas";
@@ -103,13 +107,15 @@ async function pollBaseRegistrations() {
     registeredBy: string;
   }
 
-  interface TokenRegisteredLog {
-    args: TokenRegisteredArgs;
-  }
-
   let processed = 0;
   for (const log of logs) {
-    const { tokenAddress, registeredBy } = (log as TokenRegisteredLog).args;
+    // FAIL-FAST: Log must have decoded args
+    if (!hasDecodedArgs(log)) {
+      console.warn("[Cron Base] Log missing decoded args, skipping:", log);
+      continue;
+    }
+    const args = log.args as unknown as TokenRegisteredArgs;
+    const { tokenAddress, registeredBy } = args;
 
     console.log(`[Cron Base] Processing token registration: ${tokenAddress} by ${registeredBy}`);
 

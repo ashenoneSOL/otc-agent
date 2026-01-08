@@ -99,9 +99,7 @@ export async function GET(request: NextRequest) {
         success: false,
         error: errorMessage,
         // Include stack in development only
-        ...(process.env.NODE_ENV === "development" && errorStack
-          ? { stack: errorStack }
-          : {}),
+        ...(process.env.NODE_ENV === "development" && errorStack ? { stack: errorStack } : {}),
       },
       { status: 500 },
     );

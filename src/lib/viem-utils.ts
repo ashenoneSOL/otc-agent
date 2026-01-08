@@ -228,6 +228,19 @@ export async function readERC20Balance(
 const ALCHEMY_FREE_TIER_BLOCK_LIMIT = 10n;
 
 /**
+ * Type guard to check if a log has decoded args
+ * When using getLogs with event definition, viem decodes args but Log type doesn't include it
+ */
+export function hasDecodedArgs(log: Log): log is Log & { args: Record<string, unknown> } {
+  const logWithArgs = log as Log & { args?: Record<string, unknown> };
+  return (
+    logWithArgs.args !== undefined &&
+    typeof logWithArgs.args === "object" &&
+    logWithArgs.args !== null
+  );
+}
+
+/**
  * Parameters for chunked getLogs
  */
 interface GetLogsChunkedParams<TAbiEvent extends AbiEvent> {
@@ -273,8 +286,7 @@ export async function getLogsChunked<TAbiEvent extends AbiEvent>(
   let currentFrom = fromBlock;
 
   while (currentFrom <= toBlock) {
-    const currentTo =
-      currentFrom + chunkSize > toBlock ? toBlock : currentFrom + chunkSize - 1n;
+    const currentTo = currentFrom + chunkSize > toBlock ? toBlock : currentFrom + chunkSize - 1n;
 
     const logs = await client.getLogs({
       address,
