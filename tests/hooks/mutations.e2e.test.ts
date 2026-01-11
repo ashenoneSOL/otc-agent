@@ -51,7 +51,7 @@ async function apiCall<T>(
 ): Promise<ApiResponse<T>> {
   const options: RequestInit = {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", origin: BASE_URL },
     signal: AbortSignal.timeout(timeoutMs),
   };
   if (body) {
@@ -514,7 +514,7 @@ describe("Mutation Hooks E2E Tests", () => {
 
       const response = await fetch(`${BASE_URL}/api/consignments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", origin: BASE_URL },
         body: "{}",
       });
 
@@ -526,7 +526,7 @@ describe("Mutation Hooks E2E Tests", () => {
 
       const response = await fetch(`${BASE_URL}/api/consignments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", origin: BASE_URL },
         body: "{invalid json",
       });
 
@@ -538,7 +538,7 @@ describe("Mutation Hooks E2E Tests", () => {
 
       const response = await fetch(`${BASE_URL}/api/consignments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", origin: BASE_URL },
         body: "null",
       });
 

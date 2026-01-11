@@ -11,7 +11,12 @@
  * - FAIL-FAST: SOL price fetching throws if unavailable (no hardcoded fallbacks)
  */
 import { Connection, PublicKey } from "@solana/web3.js";
-import { getCoingeckoApiKey, getHeliusRpcUrl, getNetwork } from "../config/env";
+import {
+  getCoingeckoApiKey,
+  getHeliusRpcUrl,
+  getNetwork,
+  getSolanaRpcProxyUrl,
+} from "../config/env";
 import { getCached, setCache } from "./retry-cache";
 import { sleep } from "./tx-helpers";
 
@@ -142,11 +147,14 @@ export async function findBestSolanaPool(
     return cached;
   }
 
-  // Use Helius for mainnet (via proxy on client, direct on server)
+  // Use Helius for mainnet: proxy on client, direct on server
   const network = getNetwork();
+  const isClientSide = typeof window !== "undefined";
   const rpcUrl =
     cluster === "mainnet"
-      ? getHeliusRpcUrl() // Direct Helius (server-side only)
+      ? isClientSide
+        ? getSolanaRpcProxyUrl() // Client: proxy to /api/rpc/solana
+        : getHeliusRpcUrl() // Server: direct Helius
       : network === "local"
         ? "http://127.0.0.1:8899"
         : "https://api.devnet.solana.com";

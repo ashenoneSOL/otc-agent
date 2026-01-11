@@ -252,10 +252,15 @@ export function DealsGrid({ filters, searchQuery = "" }: DealsGridProps) {
   }
 
   if (filteredGroups.length === 0) {
+    // Check if filters are at their defaults (All Chains = 4 chains, All Types = 2 types)
+    const isDefaultFilters = filters.chains.length === 4 && filters.negotiableTypes.length === 2;
+
     return (
       <div className="text-center py-12">
         <p className="text-zinc-600 dark:text-zinc-400">
-          No OTC deals match your filters. Try adjusting the filters or be the first to list a deal.
+          {isDefaultFilters
+            ? "No active deals at the moment. Be the first to list a token!"
+            : "No OTC deals match your filters."}
         </p>
       </div>
     );

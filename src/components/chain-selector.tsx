@@ -50,12 +50,6 @@ export const ChainSelector = memo(function ChainSelector({
 
   return (
     <div className="flex items-center gap-2">
-      <label
-        htmlFor="chain-selector"
-        className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-nowrap"
-      >
-        Chain:
-      </label>
       <div className="relative">
         <select
           id="chain-selector"

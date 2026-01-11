@@ -91,8 +91,14 @@ async function fetchJson<T>(
   url: string,
   options?: RequestInit,
 ): Promise<{ status: number; data: T }> {
+  const headers = new Headers(options?.headers);
+  // Satisfy CSRF origin checks for non-GET requests in API routes
+  if (!headers.has("origin") && !headers.has("referer")) {
+    headers.set("origin", BASE_URL);
+  }
   const response = await fetch(url, {
     ...options,
+    headers,
     signal: AbortSignal.timeout(TEST_TIMEOUT - 1000),
   });
   const data = (await response.json()) as T;

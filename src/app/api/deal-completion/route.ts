@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     }
     const chainType = body.chain;
     const offerAddress = body.offerAddress;
-    const beneficiaryOverride = body.beneficiary; // Solana wallet address
+    const beneficiaryOverride = typeof body.beneficiary === "string" ? body.beneficiary : undefined; // Solana wallet address
 
     const runtime = agentRuntime.runtime;
     if (!runtime) {
@@ -151,11 +151,128 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "QuoteService not available" }, { status: 500 });
     }
 
-    const quote = await quoteService.getQuoteByQuoteId(quoteId);
+    // Handle "default-" quotes that were created client-side without agent negotiation
+    // These need to be created in the database before we can complete the deal
+    let quote: QuoteMemory;
+    const isDefaultQuote = quoteId.startsWith("default-");
+
+    if (isDefaultQuote) {
+      console.log("[DealCompletion] Creating quote for default quoteId:", quoteId);
+
+      // Validate required fields for creating a new quote
+      if (!tokenId) {
+        return NextResponse.json(
+          { error: "tokenId is required for default quotes" },
+          { status: 400 },
+        );
+      }
+      if (!beneficiaryOverride) {
+        return NextResponse.json(
+          { error: "beneficiary is required for default quotes" },
+          { status: 400 },
+        );
+      }
+      if (typeof body.discountBps !== "number") {
+        return NextResponse.json(
+          { error: "discountBps is required for default quotes" },
+          { status: 400 },
+        );
+      }
+      if (typeof body.lockupDays !== "number") {
+        return NextResponse.json(
+          { error: "lockupDays is required for default quotes" },
+          { status: 400 },
+        );
+      }
+
+      // Get token metadata for the quote
+      const token = await TokenDB.getToken(tokenId);
+
+      // EVM addresses are case-insensitive; Solana base58 is case-sensitive (do not lowercase)
+      const normalizedBeneficiary = beneficiaryOverride.startsWith("0x")
+        ? beneficiaryOverride.toLowerCase()
+        : beneficiaryOverride;
+      const entityId = walletToEntityId(normalizedBeneficiary);
+      const now = Date.now();
+      const lockupDays = body.lockupDays;
+      const lockupMonths = Math.ceil(lockupDays / 30);
+
+      // Create a minimal quote directly in cache
+      const newQuote: QuoteMemory = {
+        id: crypto.randomUUID(),
+        quoteId,
+        entityId,
+        beneficiary: normalizedBeneficiary,
+        tokenAmount: tokenAmountStr,
+        discountBps: body.discountBps,
+        apr: 0,
+        lockupMonths,
+        lockupDays,
+        paymentCurrency,
+        priceUsdPerToken: typeof body.priceAtQuote === "number" ? body.priceAtQuote : 0,
+        totalUsd: 0,
+        discountUsd: 0,
+        discountedUsd: 0,
+        paymentAmount: "0",
+        signature: "default-quote-no-signature",
+        status: "active",
+        createdAt: now,
+        executedAt: 0,
+        rejectedAt: 0,
+        approvedAt: 0,
+        offerId: offerId ?? "",
+        transactionHash: transactionHash ?? "",
+        blockNumber: blockNumber ?? 0,
+        rejectionReason: "",
+        approvalNote: "",
+        tokenId,
+        tokenSymbol: token.symbol,
+        tokenName: token.name,
+        tokenLogoUrl: token.logoUrl ?? "",
+        chain: chainType as "evm" | "solana" | "base" | "bsc" | "ethereum",
+        consignmentId: consignmentId ?? "",
+        agentCommissionBps: 0,
+      };
+
+      // Save to cache
+      await runtime.setCache(`quote:${quoteId}`, newQuote);
+
+      // Add to entity_quotes index
+      const entityQuotes = (await runtime.getCache<string[]>(`entity_quotes:${entityId}`)) ?? [];
+      if (!entityQuotes.includes(quoteId)) {
+        entityQuotes.push(quoteId);
+        await runtime.setCache(`entity_quotes:${entityId}`, entityQuotes);
+      }
+
+      // Add to all_quotes index
+      const allQuotes = (await runtime.getCache<string[]>("all_quotes")) ?? [];
+      if (!allQuotes.includes(quoteId)) {
+        allQuotes.push(quoteId);
+        await runtime.setCache("all_quotes", allQuotes);
+      }
+
+      console.log("[DealCompletion] Created default quote:", quoteId);
+      quote = newQuote;
+    } else {
+      // Normal flow - fetch existing quote
+      try {
+        quote = await quoteService.getQuoteByQuoteId(quoteId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[DealCompletion] Quote lookup failed:", message);
+        return NextResponse.json(
+          { error: `Quote not found: ${quoteId}. ${message}` },
+          { status: 404 },
+        );
+      }
+    }
 
     // Update beneficiary AND entityId if provided (for Solana wallets)
-    if (beneficiaryOverride && typeof beneficiaryOverride === "string") {
-      const normalizedBeneficiary = beneficiaryOverride.toLowerCase();
+    if (beneficiaryOverride) {
+      // EVM addresses are case-insensitive; Solana base58 is case-sensitive (do not lowercase)
+      const normalizedBeneficiary = beneficiaryOverride.startsWith("0x")
+        ? beneficiaryOverride.toLowerCase()
+        : beneficiaryOverride;
       if (quote.beneficiary !== normalizedBeneficiary) {
         console.log("[DealCompletion] Updating beneficiary and entityId:", {
           oldBeneficiary: quote.beneficiary,
@@ -521,6 +638,7 @@ export async function POST(request: NextRequest) {
     if (!transactionHash) {
       throw new Error("transactionHash is required for updateQuoteExecution");
     }
+    // blockNumber is required for EVM, but Solana uses slots (can pass 0)
     if (blockNumber == null) {
       throw new Error("blockNumber is required for updateQuoteExecution");
     }

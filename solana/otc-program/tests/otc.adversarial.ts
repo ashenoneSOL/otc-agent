@@ -1,13 +1,16 @@
 import type { Program } from "@coral-xyz/anchor";
-import pkg from "@coral-xyz/anchor";
+import * as anchor from "@coral-xyz/anchor";
 import { createMint, getAssociatedTokenAddressSync, getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import { Keypair, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { assert } from "chai";
 import type { Otc } from "../target/types/otc";
 
-const { AnchorProvider, setProvider, workspace, BN } = pkg as typeof import("@coral-xyz/anchor");
+const { AnchorProvider, setProvider, workspace, BN } = anchor;
 
-async function expectRejectedWith(promise: Promise<unknown>, expectedError: string): Promise<void> {
+async function expectRejectedWith<T>(
+  promise: Promise<T>,
+  expectedError: string,
+): Promise<void> {
   try {
     await promise;
     assert.fail("Expected promise to reject but it resolved");

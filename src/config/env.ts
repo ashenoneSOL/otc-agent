@@ -99,14 +99,22 @@ export function getCronSecret(): string | undefined {
  */
 export function getWorkerAuthToken(): string {
   const token = process.env.WORKER_AUTH_TOKEN;
-  if (!token) {
-    // During build phase, return placeholder - actual token only needed at runtime
-    if (isBuildPhase()) {
-      return "build-placeholder-token";
-    }
-    throw new Error("WORKER_AUTH_TOKEN must be set for quote signature generation");
+  if (token) {
+    return token;
   }
-  return token;
+
+  // During build phase, return placeholder - actual token only needed at runtime
+  if (isBuildPhase()) {
+    return "build-placeholder-token";
+  }
+
+  // For development (non-production), use a default secret
+  // IMPORTANT: Production deployments MUST set WORKER_AUTH_TOKEN in environment
+  if (process.env.NODE_ENV !== "production") {
+    return "dev-worker-secret";
+  }
+
+  throw new Error("WORKER_AUTH_TOKEN must be set for quote signature generation");
 }
 
 /**

@@ -25,8 +25,8 @@ echo ""
 # 2. Unit/Integration Tests (bun test)
 # ============================================
 echo "=== Unit/Integration Tests (bun test) ==="
-# Run all tests from tests/ folder (excludes contracts/lib OpenZeppelin tests)
-bun test tests/
+# Run Bun-based runtime tests (exclude Synpress/Playwright tests)
+bun run test:unit
 echo ""
 
 echo "=== All Tests Complete ==="

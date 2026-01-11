@@ -76,12 +76,6 @@ export const DealFilters = memo(function DealFilters({
         />
 
         <div className="flex items-center gap-2">
-          <label
-            htmlFor="type-filter"
-            className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-nowrap"
-          >
-            Type:
-          </label>
           <div className="relative">
             <select
               id="type-filter"

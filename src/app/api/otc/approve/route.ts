@@ -49,6 +49,7 @@ import {
   ApproveOfferRequestSchema,
   ApproveOfferResponseSchema,
 } from "../../../../types/validation/api-schemas";
+import { findBestSolanaPool } from "../../../../utils/pool-finder-solana";
 import { fetchJupiterPrices } from "../../../../utils/price-fetcher";
 import { checkPriceDivergence } from "../../../../utils/price-validator";
 
@@ -326,8 +327,9 @@ async function handleApproval(request: NextRequest) {
       offer: {
         fetch: (address: SolanaPublicKey) => Promise<{
           currency: number;
-          id: import("@coral-xyz/anchor").BN;
+          id: anchor.BN;
           tokenMint: SolanaPublicKey;
+          priceUsdPerToken8D: anchor.BN;
         }>;
       };
       desk: {
@@ -484,16 +486,54 @@ async function handleApproval(request: NextRequest) {
         }
       }
 
-      // FAIL-FAST: If no price from either source, cannot safely proceed
+      // If neither CoinGecko nor Jupiter have it, try on-chain pool (PumpSwap/Raydium)
+      if (tokenPriceUsd === null) {
+        console.log(`[Approve API] Token not in Jupiter, trying on-chain pool: ${tokenMintStr}`);
+        try {
+          const poolInfo = await findBestSolanaPool(tokenMintStr, "mainnet");
+          if (poolInfo?.priceUsd && poolInfo.priceUsd > 0) {
+            tokenPriceUsd = poolInfo.priceUsd;
+            console.log(
+              `[Approve API] Fetched token price from ${poolInfo.protocol} pool: $${tokenPriceUsd}`,
+            );
+          }
+        } catch (poolErr) {
+          console.warn(`[Approve API] Pool price lookup failed:`, poolErr);
+        }
+      }
+
+      // If still no price, try using the offer's recorded price as last resort
+      if (tokenPriceUsd === null) {
+        const offerPrice8d = offerData.priceUsdPerToken8D.toNumber();
+        if (offerPrice8d > 0) {
+          tokenPriceUsd = offerPrice8d / 1e8;
+          console.log(`[Approve API] Using offer's recorded price as fallback: $${tokenPriceUsd}`);
+        }
+      }
+
+      // FAIL-FAST: If no price from any source, cannot safely proceed
       if (tokenPriceUsd === null || tokenPriceUsd <= 0) {
         throw new Error(
-          `Token price unavailable for ${tokenMintStr}: not found in CoinGecko or Jupiter. ` +
+          `Token price unavailable for ${tokenMintStr}: not found in CoinGecko, Jupiter, or on-chain pools. ` +
             `Cannot safely approve offer without valid token price.`,
         );
       }
 
       const tokenPrice8d = Math.round(tokenPriceUsd * 1e8);
       console.log(`[Approve API] Using token price: $${tokenPriceUsd} (${tokenPrice8d} in 8d)`);
+
+      // setPrices requires desk OWNER (not just approver) - load owner keypair specifically
+      // SOLANA_PRIVATE_KEY is the desk owner, SOLANA_MAINNET_PRIVATE_KEY is an approver
+      const ownerPrivateKey = process.env.SOLANA_PRIVATE_KEY;
+      if (!ownerPrivateKey) {
+        throw new Error(
+          "SOLANA_PRIVATE_KEY must be set for setPrices call (requires desk owner, not just approver).",
+        );
+      }
+      const ownerKeypair = Keypair.fromSecretKey(bs58.decode(ownerPrivateKey));
+      console.log(
+        `[Approve API] Using owner keypair for setPrices: ${ownerKeypair.publicKey.toBase58()}`,
+      );
 
       const now = Math.floor(Date.now() / 1000);
       await program.methods
@@ -504,10 +544,10 @@ async function handleApproval(request: NextRequest) {
           new anchor.BN(3600), // 1 hour max age
         )
         .accounts({
-          owner: approverKeypair.publicKey,
+          owner: ownerKeypair.publicKey,
           desk,
         })
-        .signers([approverKeypair])
+        .signers([ownerKeypair])
         .rpc();
       console.log("[Approve API] Prices set on desk");
     }

@@ -1,11 +1,7 @@
+import Markdown from "markdown-to-jsx";
 import { Lexer } from "marked";
-import dynamic from "next/dynamic";
 import { type ComponentProps, memo, useMemo } from "react";
 import type { MarkdownBlockProps, MemoizedMarkdownProps } from "../types";
-
-const Markdown = dynamic(() => import("markdown-to-jsx"), {
-  ssr: true,
-});
 
 // Extract the options type from the Markdown component's props
 type MarkdownComponentOptions = ComponentProps<typeof Markdown>["options"];

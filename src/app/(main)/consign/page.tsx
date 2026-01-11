@@ -1,10 +1,6 @@
-"use client";
+import ConsignPageClient from "./ConsignPageClient";
 
-import dynamic from "next/dynamic";
-
-const ConsignPageClient = dynamic(() => import("./ConsignPageClient"), {
-  ssr: false,
-});
+export const dynamic = "force-dynamic";
 
 export default function ConsignPage() {
   return <ConsignPageClient />;

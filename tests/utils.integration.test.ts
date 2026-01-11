@@ -8,6 +8,58 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { createPublicClient, http } from "viem";
+import { mainnet } from "viem/chains";
+import { z } from "zod";
+import { filterDustTokens, sortTokensByValue } from "../src/lib/balance-fetcher";
+import { walletToEntityId } from "../src/lib/entityId";
+import { parseOfferStruct } from "../src/lib/otc-helpers";
+import { parseOrNull, parseOrThrow, validateAndTransform } from "../src/lib/validation/helpers";
+import { ERC20_ABI, safeReadContract } from "../src/lib/viem-utils";
+import {
+  checksumAddress,
+  detectChainFromAddress,
+  isEvmAddress,
+  isSolanaAddress,
+  validateAndNormalizeAddress,
+} from "../src/utils/address-utils";
+import {
+  isConsignmentOwner,
+  sanitizeConsignmentForBuyer,
+} from "../src/utils/consignment-sanitizer";
+import {
+  mergeDealsWithOffers,
+  transformEvmDeal,
+  transformSolanaDeal,
+} from "../src/utils/deal-transforms";
+import {
+  formatNativeAmount,
+  formatPercentFromBps,
+  formatTimeRemaining,
+  formatTokenAmount,
+  formatUsd,
+  getLockupLabel,
+  isMatured,
+} from "../src/utils/format";
+import {
+  CHAIN_LOGO_CONFIG,
+  checksumAddress as checksumAddressFromLogoFetcher,
+  fetchTrustWalletLogo,
+} from "../src/utils/logo-fetcher";
+import { formatPoolInfo, validatePoolLiquidity } from "../src/utils/pool-finder-base";
+import {
+  fetchDeFiLlamaPrices,
+  fetchJupiterPrices,
+  fetchNativePrices,
+  fetchTokenPrices,
+} from "../src/utils/price-fetcher";
+import {
+  fetchJsonWithRetryAndCache,
+  fetchWithRetry,
+  getCached,
+  setCache,
+  withRetryAndCache,
+} from "../src/utils/retry-cache";
 
 // =============================================================================
 // PRICE FETCHER TESTS - Real API Calls
@@ -23,7 +75,6 @@ describe("Price Fetcher - Real API Integration", () => {
     test(
       "fetches native prices from CoinGecko (rate limit tolerant)",
       async () => {
-        const { fetchNativePrices } = await import("../src/utils/price-fetcher");
         const prices = await fetchNativePrices(["ETH"]);
 
         // CoinGecko may rate limit (429) - that's acceptable
@@ -43,7 +94,6 @@ describe("Price Fetcher - Real API Integration", () => {
     test(
       "fetches multiple native prices in one call",
       async () => {
-        const { fetchNativePrices } = await import("../src/utils/price-fetcher");
         const prices = await fetchNativePrices(["ETH", "SOL"]);
 
         // API may rate limit - that's acceptable behavior
@@ -65,7 +115,6 @@ describe("Price Fetcher - Real API Integration", () => {
     test(
       "returns empty object for unknown symbols",
       async () => {
-        const { fetchNativePrices } = await import("../src/utils/price-fetcher");
         const prices = await fetchNativePrices(["NOTAREALTOKEN123"]);
 
         expect(Object.keys(prices)).toHaveLength(0);
@@ -78,7 +127,6 @@ describe("Price Fetcher - Real API Integration", () => {
     test(
       "fetches real token price from DeFiLlama",
       async () => {
-        const { fetchDeFiLlamaPrices } = await import("../src/utils/price-fetcher");
         const prices = await fetchDeFiLlamaPrices("ethereum", [KNOWN_EVM_TOKEN]);
 
         // LINK should have a real price
@@ -95,7 +143,6 @@ describe("Price Fetcher - Real API Integration", () => {
     test(
       "returns empty object for empty address list",
       async () => {
-        const { fetchDeFiLlamaPrices } = await import("../src/utils/price-fetcher");
         const prices = await fetchDeFiLlamaPrices("ethereum", []);
 
         expect(Object.keys(prices)).toHaveLength(0);
@@ -108,7 +155,6 @@ describe("Price Fetcher - Real API Integration", () => {
     test(
       "fetches real SOL price from Jupiter",
       async () => {
-        const { fetchJupiterPrices } = await import("../src/utils/price-fetcher");
         const prices = await fetchJupiterPrices([KNOWN_SOLANA_TOKEN]);
 
         // Wrapped SOL should have price
@@ -125,7 +171,6 @@ describe("Price Fetcher - Real API Integration", () => {
     test(
       "handles batch of multiple Solana tokens",
       async () => {
-        const { fetchJupiterPrices } = await import("../src/utils/price-fetcher");
         const USDC_SOLANA = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
         const prices = await fetchJupiterPrices([KNOWN_SOLANA_TOKEN, USDC_SOLANA]);
 
@@ -141,7 +186,6 @@ describe("Price Fetcher - Real API Integration", () => {
     test(
       "routes EVM chains to DeFiLlama/CoinGecko",
       async () => {
-        const { fetchTokenPrices } = await import("../src/utils/price-fetcher");
         const prices = await fetchTokenPrices("ethereum", [KNOWN_EVM_TOKEN]);
 
         // Should return object (may be empty if rate limited)
@@ -153,7 +197,6 @@ describe("Price Fetcher - Real API Integration", () => {
     test(
       "routes Solana to Jupiter",
       async () => {
-        const { fetchTokenPrices } = await import("../src/utils/price-fetcher");
         const prices = await fetchTokenPrices("solana", [KNOWN_SOLANA_TOKEN]);
 
         expect(typeof prices).toBe("object");
@@ -171,8 +214,6 @@ describe("Retry Cache Utilities", () => {
 
   describe("getCached / setCache", () => {
     test("stores and retrieves values", async () => {
-      const { getCached, setCache } = await import("../src/utils/retry-cache");
-
       const key = `test-${Date.now()}`;
       const value = { foo: "bar", num: 42 };
 
@@ -183,8 +224,6 @@ describe("Retry Cache Utilities", () => {
     });
 
     test("returns undefined for expired cache", async () => {
-      const { getCached, setCache } = await import("../src/utils/retry-cache");
-
       const key = `expired-${Date.now()}`;
       setCache(key, "value", 1); // 1ms TTL
 
@@ -195,8 +234,6 @@ describe("Retry Cache Utilities", () => {
     });
 
     test("returns undefined for non-existent keys", async () => {
-      const { getCached } = await import("../src/utils/retry-cache");
-
       const retrieved = getCached(`nonexistent-${Date.now()}`);
       expect(retrieved).toBeUndefined();
     });
@@ -206,8 +243,6 @@ describe("Retry Cache Utilities", () => {
     test(
       "executes function and caches result",
       async () => {
-        const { withRetryAndCache, getCached } = await import("../src/utils/retry-cache");
-
         const key = `retry-test-${Date.now()}`;
         let callCount = 0;
 
@@ -229,8 +264,6 @@ describe("Retry Cache Utilities", () => {
     test(
       "throws immediately for non-retryable errors",
       async () => {
-        const { withRetryAndCache } = await import("../src/utils/retry-cache");
-
         const key = `non-retryable-${Date.now()}`;
 
         await expect(
@@ -249,8 +282,6 @@ describe("Retry Cache Utilities", () => {
     test(
       "respects skipCache option",
       async () => {
-        const { withRetryAndCache, getCached } = await import("../src/utils/retry-cache");
-
         const key = `skip-cache-${Date.now()}`;
         let callCount = 0;
 
@@ -278,8 +309,6 @@ describe("Retry Cache Utilities", () => {
     test.skipIf(skipInCI)(
       "fetches real JSON and caches it",
       async () => {
-        const { fetchJsonWithRetryAndCache, getCached } = await import("../src/utils/retry-cache");
-
         // Use httpbin.org which is more reliable for testing
         const url = "https://httpbin.org/json";
         const cacheKey = `json-test-${Date.now()}`;
@@ -312,9 +341,6 @@ describe("Retry Cache Utilities", () => {
 describe("Validation Helpers", () => {
   describe("parseOrThrow", () => {
     test("returns validated data for valid input", async () => {
-      const { parseOrThrow } = await import("../src/lib/validation/helpers");
-      const { z } = await import("zod");
-
       const schema = z.object({
         name: z.string().min(1),
         age: z.number().int().positive(),
@@ -327,9 +353,6 @@ describe("Validation Helpers", () => {
     });
 
     test("throws descriptive error for invalid input", async () => {
-      const { parseOrThrow } = await import("../src/lib/validation/helpers");
-      const { z } = await import("zod");
-
       const schema = z.object({
         email: z.string().email(),
         count: z.number().min(0),
@@ -341,9 +364,6 @@ describe("Validation Helpers", () => {
     });
 
     test("includes field path in error message", async () => {
-      const { parseOrThrow } = await import("../src/lib/validation/helpers");
-      const { z } = await import("zod");
-
       const schema = z.object({
         nested: z.object({
           value: z.number(),
@@ -358,9 +378,6 @@ describe("Validation Helpers", () => {
 
   describe("parseOrNull", () => {
     test("returns data for valid input", async () => {
-      const { parseOrNull } = await import("../src/lib/validation/helpers");
-      const { z } = await import("zod");
-
       const schema = z.string().uuid();
       const validUuid = "123e4567-e89b-12d3-a456-426614174000";
 
@@ -369,9 +386,6 @@ describe("Validation Helpers", () => {
     });
 
     test("returns null for invalid input", async () => {
-      const { parseOrNull } = await import("../src/lib/validation/helpers");
-      const { z } = await import("zod");
-
       const schema = z.string().uuid();
       const result = parseOrNull(schema, "not-a-uuid");
 
@@ -381,9 +395,6 @@ describe("Validation Helpers", () => {
 
   describe("validateAndTransform", () => {
     test("validates and transforms in one step", async () => {
-      const { validateAndTransform } = await import("../src/lib/validation/helpers");
-      const { z } = await import("zod");
-
       const schema = z.string();
       const transform = (s: string) => s.toUpperCase();
 
@@ -399,8 +410,6 @@ describe("Validation Helpers", () => {
 describe("Balance Fetcher Utilities", () => {
   describe("filterDustTokens", () => {
     test("filters out tokens below minimum balance", async () => {
-      const { filterDustTokens } = await import("../src/lib/balance-fetcher");
-
       const tokens = [
         {
           contractAddress: "0x1",
@@ -429,8 +438,6 @@ describe("Balance Fetcher Utilities", () => {
     });
 
     test("keeps tokens without price if balance meets threshold", async () => {
-      const { filterDustTokens } = await import("../src/lib/balance-fetcher");
-
       const tokens = [
         {
           contractAddress: "0x1",
@@ -451,8 +458,6 @@ describe("Balance Fetcher Utilities", () => {
 
   describe("sortTokensByValue", () => {
     test("sorts priced tokens by USD value descending", async () => {
-      const { sortTokensByValue } = await import("../src/lib/balance-fetcher");
-
       const tokens = [
         {
           contractAddress: "0x1",
@@ -481,8 +486,6 @@ describe("Balance Fetcher Utilities", () => {
     });
 
     test("puts priced tokens before unpriced tokens", async () => {
-      const { sortTokensByValue } = await import("../src/lib/balance-fetcher");
-
       const tokens = [
         {
           contractAddress: "0x1",
@@ -518,8 +521,6 @@ describe("Balance Fetcher Utilities", () => {
 describe("Consignment Sanitizer", () => {
   describe("sanitizeConsignmentForBuyer", () => {
     test("hides sensitive negotiation range for negotiable consignments", async () => {
-      const { sanitizeConsignmentForBuyer } = await import("../src/utils/consignment-sanitizer");
-
       const negotiableConsignment = {
         id: "test-123",
         tokenId: "token-base-0x1234",
@@ -558,8 +559,6 @@ describe("Consignment Sanitizer", () => {
     });
 
     test("exposes fixed terms for fixed consignments", async () => {
-      const { sanitizeConsignmentForBuyer } = await import("../src/utils/consignment-sanitizer");
-
       const fixedConsignment = {
         id: "test-456",
         tokenId: "token-base-0x5678",
@@ -596,8 +595,6 @@ describe("Consignment Sanitizer", () => {
     });
 
     test("throws for negotiable consignment missing required fields", async () => {
-      const { sanitizeConsignmentForBuyer } = await import("../src/utils/consignment-sanitizer");
-
       const invalidConsignment = {
         id: "test-789",
         tokenId: "token-base-0x9999",
@@ -629,8 +626,6 @@ describe("Consignment Sanitizer", () => {
 
   describe("isConsignmentOwner", () => {
     test("matches EVM addresses case-insensitively", async () => {
-      const { isConsignmentOwner } = await import("../src/utils/consignment-sanitizer");
-
       const consignment = {
         consignerAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         chain: "base" as const,
@@ -645,8 +640,6 @@ describe("Consignment Sanitizer", () => {
     });
 
     test("matches Solana addresses case-sensitively", async () => {
-      const { isConsignmentOwner } = await import("../src/utils/consignment-sanitizer");
-
       const consignment = {
         consignerAddress: "E6K5x45Bxfmci6FmKRQ2YJMpLz7fCdLm7r7ReCq6P5vP",
         chain: "solana" as const,
@@ -670,8 +663,6 @@ describe("Consignment Sanitizer", () => {
     });
 
     test("returns false for null/undefined caller", async () => {
-      const { isConsignmentOwner } = await import("../src/utils/consignment-sanitizer");
-
       const consignment = {
         consignerAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         chain: "base" as const,
@@ -693,8 +684,6 @@ describe("Consignment Sanitizer", () => {
 describe("Entity ID Utilities", () => {
   describe("walletToEntityId", () => {
     test("generates deterministic UUID for EVM address", async () => {
-      const { walletToEntityId } = await import("../src/lib/entityId");
-
       const address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
       const id1 = walletToEntityId(address);
@@ -708,8 +697,6 @@ describe("Entity ID Utilities", () => {
     });
 
     test("normalizes EVM addresses to lowercase", async () => {
-      const { walletToEntityId } = await import("../src/lib/entityId");
-
       const lower = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
       const upper = "0xF39FD6E51AAD88F6F4CE6AB8827279CFFFB92266";
 
@@ -717,8 +704,6 @@ describe("Entity ID Utilities", () => {
     });
 
     test("preserves Solana address case", async () => {
-      const { walletToEntityId } = await import("../src/lib/entityId");
-
       const solana = "E6K5x45Bxfmci6FmKRQ2YJMpLz7fCdLm7r7ReCq6P5vP";
       const lowerSolana = solana.toLowerCase();
 
@@ -727,8 +712,6 @@ describe("Entity ID Utilities", () => {
     });
 
     test("generates different IDs for different addresses", async () => {
-      const { walletToEntityId } = await import("../src/lib/entityId");
-
       const addr1 = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
       const addr2 = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 
@@ -743,22 +726,16 @@ describe("Entity ID Utilities", () => {
 describe("Address Utils - Comprehensive", () => {
   describe("isEvmAddress", () => {
     test("validates checksummed addresses", async () => {
-      const { isEvmAddress } = await import("../src/utils/address-utils");
-
       // Valid checksummed addresses
       expect(isEvmAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")).toBe(true);
       expect(isEvmAddress("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")).toBe(true);
     });
 
     test("validates lowercase addresses", async () => {
-      const { isEvmAddress } = await import("../src/utils/address-utils");
-
       expect(isEvmAddress("0xd8da6bf26964af9d7eed9e03e53415d37aa96045")).toBe(true);
     });
 
     test("rejects invalid formats", async () => {
-      const { isEvmAddress } = await import("../src/utils/address-utils");
-
       expect(isEvmAddress("d8dA6BF26964aF9D7eEd9e03E53415D37aA96045")).toBe(false); // no 0x
       expect(isEvmAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA9604")).toBe(false); // 39 chars
       expect(isEvmAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA960456")).toBe(false); // 41 chars
@@ -768,8 +745,6 @@ describe("Address Utils - Comprehensive", () => {
 
   describe("isSolanaAddress", () => {
     test("validates real Solana addresses", async () => {
-      const { isSolanaAddress } = await import("../src/utils/address-utils");
-
       // Real program/account addresses
       expect(isSolanaAddress("So11111111111111111111111111111111111111112")).toBe(true);
       expect(isSolanaAddress("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")).toBe(true);
@@ -777,35 +752,25 @@ describe("Address Utils - Comprehensive", () => {
     });
 
     test("rejects invalid Base58 characters", async () => {
-      const { isSolanaAddress } = await import("../src/utils/address-utils");
-
       // Contains 0, I, O, or l which are not in Base58
       expect(isSolanaAddress("0oIlInvalidBase58Address")).toBe(false);
     });
 
     test("rejects EVM addresses", async () => {
-      const { isSolanaAddress } = await import("../src/utils/address-utils");
-
       expect(isSolanaAddress("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")).toBe(false);
     });
   });
 
   describe("detectChainFromAddress", () => {
     test("detects EVM addresses", async () => {
-      const { detectChainFromAddress } = await import("../src/utils/address-utils");
-
       expect(detectChainFromAddress("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")).toBe("evm");
     });
 
     test("detects Solana addresses", async () => {
-      const { detectChainFromAddress } = await import("../src/utils/address-utils");
-
       expect(detectChainFromAddress("E6K5x45Bxfmci6FmKRQ2YJMpLz7fCdLm7r7ReCq6P5vP")).toBe("solana");
     });
 
     test("returns null for unrecognized formats", async () => {
-      const { detectChainFromAddress } = await import("../src/utils/address-utils");
-
       expect(detectChainFromAddress("not-an-address")).toBeNull();
       expect(detectChainFromAddress("")).toBeNull();
     });
@@ -813,8 +778,6 @@ describe("Address Utils - Comprehensive", () => {
 
   describe("checksumAddress", () => {
     test("checksums valid EVM address", async () => {
-      const { checksumAddress } = await import("../src/utils/address-utils");
-
       const lower = "0xd8da6bf26964af9d7eed9e03e53415d37aa96045";
       const checksummed = checksumAddress(lower);
 
@@ -822,8 +785,6 @@ describe("Address Utils - Comprehensive", () => {
     });
 
     test("throws for invalid address (fail-fast)", async () => {
-      const { checksumAddress } = await import("../src/utils/address-utils");
-
       expect(() => checksumAddress("invalid")).toThrow();
       expect(() => checksumAddress("0x123")).toThrow();
     });
@@ -831,8 +792,6 @@ describe("Address Utils - Comprehensive", () => {
 
   describe("validateAndNormalizeAddress", () => {
     test("validates and normalizes EVM address", async () => {
-      const { validateAndNormalizeAddress } = await import("../src/utils/address-utils");
-
       const result = validateAndNormalizeAddress(
         "0xD8DA6BF26964AF9D7EED9E03E53415D37AA96045",
         "base",
@@ -842,8 +801,6 @@ describe("Address Utils - Comprehensive", () => {
     });
 
     test("returns null for Solana address on EVM chain", async () => {
-      const { validateAndNormalizeAddress } = await import("../src/utils/address-utils");
-
       const result = validateAndNormalizeAddress(
         "E6K5x45Bxfmci6FmKRQ2YJMpLz7fCdLm7r7ReCq6P5vP",
         "base",
@@ -853,8 +810,6 @@ describe("Address Utils - Comprehensive", () => {
     });
 
     test("validates Solana address preserving case", async () => {
-      const { validateAndNormalizeAddress } = await import("../src/utils/address-utils");
-
       const solana = "E6K5x45Bxfmci6FmKRQ2YJMpLz7fCdLm7r7ReCq6P5vP";
       const result = validateAndNormalizeAddress(solana, "solana");
 
@@ -876,10 +831,6 @@ describe("Viem Utils - Real Integration", () => {
     test.skipIf(skipInCI)(
       "reads real ERC20 data from Ethereum mainnet (USDC)",
       async () => {
-        const { createPublicClient, http } = await import("viem");
-        const { mainnet } = await import("viem/chains");
-        const { safeReadContract, ERC20_ABI } = await import("../src/lib/viem-utils");
-
         // Use a real public RPC (no API key needed for read-only)
         const client = createPublicClient({
           chain: mainnet,
@@ -922,8 +873,6 @@ describe("Viem Utils - Real Integration", () => {
 
   describe("ERC20_ABI", () => {
     test("has all required ERC20 functions", async () => {
-      const { ERC20_ABI } = await import("../src/lib/viem-utils");
-
       const functionNames = ERC20_ABI.map((item) => item.name);
 
       expect(functionNames).toContain("symbol");
@@ -943,8 +892,6 @@ describe("Viem Utils - Real Integration", () => {
 describe("OTC Helpers", () => {
   describe("parseOfferStruct", () => {
     test("parses array format (Solidity tuple return)", async () => {
-      const { parseOfferStruct } = await import("../src/lib/otc-helpers");
-
       const rawOffer = [
         1n, // consignmentId
         "0x1234567890123456789012345678901234567890123456789012345678901234", // tokenId (bytes32)
@@ -981,8 +928,6 @@ describe("OTC Helpers", () => {
     });
 
     test("passes through object format unchanged", async () => {
-      const { parseOfferStruct } = await import("../src/lib/otc-helpers");
-
       const objectOffer = {
         consignmentId: 2n,
         tokenId: "0xabcd",
@@ -1025,10 +970,8 @@ describe("Logo Fetcher - Real API Integration", () => {
 
   describe("checksumAddress", () => {
     test("checksums address for TrustWallet compatibility", async () => {
-      const { checksumAddress } = await import("../src/utils/logo-fetcher");
-
       const lower = "0x514910771af9ca656af840dff83e8264ecf986ca";
-      const checksummed = checksumAddress(lower);
+      const checksummed = checksumAddressFromLogoFetcher(lower);
 
       // TrustWallet requires exact checksummed format
       expect(checksummed).toBe("0x514910771AF9Ca656af840dff83E8264EcF986CA");
@@ -1039,8 +982,6 @@ describe("Logo Fetcher - Real API Integration", () => {
     test(
       "fetches logo for known token (LINK)",
       async () => {
-        const { fetchTrustWalletLogo } = await import("../src/utils/logo-fetcher");
-
         const logoUrl = await fetchTrustWalletLogo(LINK_ADDRESS, "ethereum");
 
         // LINK has a well-known logo on TrustWallet
@@ -1054,8 +995,6 @@ describe("Logo Fetcher - Real API Integration", () => {
     test(
       "returns null for unsupported chain",
       async () => {
-        const { fetchTrustWalletLogo } = await import("../src/utils/logo-fetcher");
-
         const logoUrl = await fetchTrustWalletLogo(LINK_ADDRESS, "unsupported-chain");
 
         expect(logoUrl).toBeNull();
@@ -1066,8 +1005,6 @@ describe("Logo Fetcher - Real API Integration", () => {
     test(
       "returns null for non-existent token",
       async () => {
-        const { fetchTrustWalletLogo } = await import("../src/utils/logo-fetcher");
-
         // Random address unlikely to have a logo
         const fakeAddress = "0x0000000000000000000000000000000000000001";
         const logoUrl = await fetchTrustWalletLogo(fakeAddress, "ethereum");
@@ -1080,8 +1017,6 @@ describe("Logo Fetcher - Real API Integration", () => {
 
   describe("CHAIN_LOGO_CONFIG", () => {
     test("has config for supported chains", async () => {
-      const { CHAIN_LOGO_CONFIG } = await import("../src/utils/logo-fetcher");
-
       expect(CHAIN_LOGO_CONFIG.ethereum).toBeDefined();
       expect(CHAIN_LOGO_CONFIG.base).toBeDefined();
       expect(CHAIN_LOGO_CONFIG.bsc).toBeDefined();
@@ -1100,8 +1035,6 @@ describe("Logo Fetcher - Real API Integration", () => {
 describe("Pool Finder Utilities", () => {
   describe("validatePoolLiquidity", () => {
     test("validates pool with sufficient liquidity", async () => {
-      const { validatePoolLiquidity } = await import("../src/utils/pool-finder-base");
-
       const highTvlPool = {
         protocol: "Uniswap V3" as const,
         address: "0x1234567890123456789012345678901234567890",
@@ -1120,8 +1053,6 @@ describe("Pool Finder Utilities", () => {
     });
 
     test("flags low liquidity pools", async () => {
-      const { validatePoolLiquidity } = await import("../src/utils/pool-finder-base");
-
       const lowTvlPool = {
         protocol: "Uniswap V3" as const,
         address: "0x1234567890123456789012345678901234567890",
@@ -1143,8 +1074,6 @@ describe("Pool Finder Utilities", () => {
 
   describe("formatPoolInfo", () => {
     test("formats Uniswap V3 pool info", async () => {
-      const { formatPoolInfo } = await import("../src/utils/pool-finder-base");
-
       const uniPool = {
         protocol: "Uniswap V3" as const,
         address: "0x1234567890123456789012345678901234567890",
@@ -1165,8 +1094,6 @@ describe("Pool Finder Utilities", () => {
     });
 
     test("formats Aerodrome pool info", async () => {
-      const { formatPoolInfo } = await import("../src/utils/pool-finder-base");
-
       const aeroPoolStable = {
         protocol: "Aerodrome" as const,
         address: "0x1234567890123456789012345678901234567890",
@@ -1186,8 +1113,6 @@ describe("Pool Finder Utilities", () => {
     });
 
     test("formats Aerodrome volatile pool", async () => {
-      const { formatPoolInfo } = await import("../src/utils/pool-finder-base");
-
       const aeroPoolVolatile = {
         protocol: "Aerodrome" as const,
         address: "0x1234567890123456789012345678901234567890",
@@ -1212,8 +1137,6 @@ describe("Pool Finder Utilities", () => {
 describe("Deal Transforms - Comprehensive", () => {
   describe("transformSolanaDeal fail-fast validation", () => {
     test("throws for missing offerId", async () => {
-      const { transformSolanaDeal } = await import("../src/utils/deal-transforms");
-
       const invalidDeal = {
         id: "deal-1",
         quoteId: "quote-1",
@@ -1238,8 +1161,6 @@ describe("Deal Transforms - Comprehensive", () => {
     });
 
     test("throws for missing tokenSymbol", async () => {
-      const { transformSolanaDeal } = await import("../src/utils/deal-transforms");
-
       const invalidDeal = {
         id: "deal-1",
         quoteId: "quote-1",
@@ -1264,8 +1185,6 @@ describe("Deal Transforms - Comprehensive", () => {
     });
 
     test("throws for missing lockupDays", async () => {
-      const { transformSolanaDeal } = await import("../src/utils/deal-transforms");
-
       const invalidDeal = {
         id: "deal-1",
         quoteId: "quote-1",
@@ -1292,8 +1211,6 @@ describe("Deal Transforms - Comprehensive", () => {
 
   describe("transformEvmDeal fail-fast validation", () => {
     test("throws for invalid ethUsdPrice", async () => {
-      const { transformEvmDeal } = await import("../src/utils/deal-transforms");
-
       const invalidDeal = {
         id: "deal-1",
         quoteId: "quote-1",
@@ -1319,8 +1236,6 @@ describe("Deal Transforms - Comprehensive", () => {
     });
 
     test("throws for missing priceUsdPerToken", async () => {
-      const { transformEvmDeal } = await import("../src/utils/deal-transforms");
-
       const invalidDeal = {
         id: "deal-1",
         quoteId: "quote-1",
@@ -1348,8 +1263,6 @@ describe("Deal Transforms - Comprehensive", () => {
 
   describe("mergeDealsWithOffers", () => {
     test("merges database deals with contract offers", async () => {
-      const { mergeDealsWithOffers } = await import("../src/utils/deal-transforms");
-
       const dbDeals = [
         {
           id: "deal-1",
@@ -1414,22 +1327,16 @@ describe("Deal Transforms - Comprehensive", () => {
 describe("Format Utilities - Edge Cases", () => {
   describe("formatTokenAmount edge cases", () => {
     test("handles zero", async () => {
-      const { formatTokenAmount } = await import("../src/utils/format");
-
       expect(formatTokenAmount(0)).toBe("0");
     });
 
     test("handles very large numbers", async () => {
-      const { formatTokenAmount } = await import("../src/utils/format");
-
       // 999 billion should use B suffix
       const result = formatTokenAmount(999_999_999_999);
       expect(result).toContain("B");
     });
 
     test("handles boundary values", async () => {
-      const { formatTokenAmount } = await import("../src/utils/format");
-
       expect(formatTokenAmount(999)).not.toContain("K");
       expect(formatTokenAmount(1000)).toContain("K");
       expect(formatTokenAmount(999999)).toContain("K");
@@ -1437,16 +1344,12 @@ describe("Format Utilities - Edge Cases", () => {
     });
 
     test("handles negative numbers", async () => {
-      const { formatTokenAmount } = await import("../src/utils/format");
-
       // Negative values should still format (edge case for refunds/adjustments)
       const result = formatTokenAmount(-1000);
       expect(result).toContain("-");
     });
 
     test("handles fractional amounts", async () => {
-      const { formatTokenAmount } = await import("../src/utils/format");
-
       expect(formatTokenAmount(0.5)).toBe("0.5");
       expect(formatTokenAmount(0.001)).toBe("0");
     });
@@ -1454,36 +1357,26 @@ describe("Format Utilities - Edge Cases", () => {
 
   describe("formatUsd edge cases", () => {
     test("handles zero", async () => {
-      const { formatUsd } = await import("../src/utils/format");
-
       expect(formatUsd(0)).toBe("$0.00");
     });
 
     test("handles very small decimals", async () => {
-      const { formatUsd } = await import("../src/utils/format");
-
       const result = formatUsd(0.001);
       expect(result).toBe("$0.00"); // Rounds to 2 decimals
     });
 
     test("handles large numbers with commas", async () => {
-      const { formatUsd } = await import("../src/utils/format");
-
       const result = formatUsd(1234567.89);
       expect(result).toContain(",");
     });
 
     test("handles negative amounts", async () => {
-      const { formatUsd } = await import("../src/utils/format");
-
       const result = formatUsd(-50.0);
       expect(result).toContain("-");
       expect(result).toContain("50");
     });
 
     test("handles very large amounts", async () => {
-      const { formatUsd } = await import("../src/utils/format");
-
       const result = formatUsd(999999999999.99);
       expect(result).toContain("$");
       expect(result).toContain(",");
@@ -1492,8 +1385,6 @@ describe("Format Utilities - Edge Cases", () => {
 
   describe("getLockupLabel edge cases", () => {
     test("handles same created and unlock time", async () => {
-      const { getLockupLabel } = await import("../src/utils/format");
-
       const ts = Math.floor(Date.now() / 1000);
       const result = getLockupLabel(ts, ts);
 
@@ -1501,8 +1392,6 @@ describe("Format Utilities - Edge Cases", () => {
     });
 
     test("handles unlock before created (edge case)", async () => {
-      const { getLockupLabel } = await import("../src/utils/format");
-
       const created = Math.floor(Date.now() / 1000);
       const unlock = created - 1000;
       const result = getLockupLabel(created, unlock);
@@ -1511,8 +1400,6 @@ describe("Format Utilities - Edge Cases", () => {
     });
 
     test("handles exactly 1 month", async () => {
-      const { getLockupLabel } = await import("../src/utils/format");
-
       const created = 1704067200;
       const unlock = created + 30 * 24 * 60 * 60;
       const result = getLockupLabel(created, unlock);
@@ -1521,8 +1408,6 @@ describe("Format Utilities - Edge Cases", () => {
     });
 
     test("handles long lockups (12 months)", async () => {
-      const { getLockupLabel } = await import("../src/utils/format");
-
       const created = 1704067200;
       const unlock = created + 365 * 24 * 60 * 60;
       const result = getLockupLabel(created, unlock);
@@ -1533,29 +1418,21 @@ describe("Format Utilities - Edge Cases", () => {
 
   describe("isMatured edge cases", () => {
     test("handles exact current time", async () => {
-      const { isMatured } = await import("../src/utils/format");
-
       const now = Math.floor(Date.now() / 1000);
       expect(isMatured(now)).toBe(true); // <= is matured
     });
 
     test("handles bigint timestamps", async () => {
-      const { isMatured } = await import("../src/utils/format");
-
       const futureTs = BigInt(Math.floor(Date.now() / 1000) + 1000000);
       expect(isMatured(futureTs)).toBe(false);
     });
 
     test("handles 1 second in the past", async () => {
-      const { isMatured } = await import("../src/utils/format");
-
       const pastTs = Math.floor(Date.now() / 1000) - 1;
       expect(isMatured(pastTs)).toBe(true);
     });
 
     test("handles 1 second in the future", async () => {
-      const { isMatured } = await import("../src/utils/format");
-
       const futureTs = Math.floor(Date.now() / 1000) + 1;
       expect(isMatured(futureTs)).toBe(false);
     });
@@ -1563,8 +1440,6 @@ describe("Format Utilities - Edge Cases", () => {
 
   describe("formatTimeRemaining edge cases", () => {
     test("returns hours for < 1 day", async () => {
-      const { formatTimeRemaining } = await import("../src/utils/format");
-
       const futureTs = Math.floor(Date.now() / 1000) + 5 * 3600; // 5 hours
       const result = formatTimeRemaining(futureTs);
 
@@ -1572,8 +1447,6 @@ describe("Format Utilities - Edge Cases", () => {
     });
 
     test("returns singular day", async () => {
-      const { formatTimeRemaining } = await import("../src/utils/format");
-
       const futureTs = Math.floor(Date.now() / 1000) + 1 * 86400; // 1 day
       const result = formatTimeRemaining(futureTs);
 
@@ -1581,8 +1454,6 @@ describe("Format Utilities - Edge Cases", () => {
     });
 
     test("returns plural days", async () => {
-      const { formatTimeRemaining } = await import("../src/utils/format");
-
       const futureTs = Math.floor(Date.now() / 1000) + 15 * 86400; // 15 days
       const result = formatTimeRemaining(futureTs);
 
@@ -1592,23 +1463,17 @@ describe("Format Utilities - Edge Cases", () => {
 
   describe("formatNativeAmount edge cases", () => {
     test("handles zero amount", async () => {
-      const { formatNativeAmount } = await import("../src/utils/format");
-
       const result = formatNativeAmount(0, "ETH");
       expect(result).toContain("0.0000");
       expect(result).toContain("ETH");
     });
 
     test("handles very small amounts", async () => {
-      const { formatNativeAmount } = await import("../src/utils/format");
-
       const result = formatNativeAmount(0.000001, "ETH");
       expect(result).toContain("ETH");
     });
 
     test("handles BNB symbol", async () => {
-      const { formatNativeAmount } = await import("../src/utils/format");
-
       const result = formatNativeAmount(1.5, "BNB");
       expect(result).toContain("BNB");
     });
@@ -1621,8 +1486,6 @@ describe("Format Utilities - Edge Cases", () => {
 describe("Error Handling - Fail Fast", () => {
   describe("withRetryAndCache error scenarios", () => {
     test("propagates non-retryable errors immediately", async () => {
-      const { withRetryAndCache } = await import("../src/utils/retry-cache");
-
       let attempts = 0;
       const key = `error-test-${Date.now()}`;
 
@@ -1642,8 +1505,6 @@ describe("Error Handling - Fail Fast", () => {
     });
 
     test("retries on rate limit errors", async () => {
-      const { withRetryAndCache } = await import("../src/utils/retry-cache");
-
       let attempts = 0;
       const key = `retry-test-${Date.now()}`;
 
@@ -1665,8 +1526,6 @@ describe("Error Handling - Fail Fast", () => {
     }, 15_000);
 
     test("exhausts retries and throws last error", async () => {
-      const { withRetryAndCache } = await import("../src/utils/retry-cache");
-
       let attempts = 0;
       const key = `exhaust-test-${Date.now()}`;
 
@@ -1687,8 +1546,6 @@ describe("Error Handling - Fail Fast", () => {
 
   describe("fetchWithRetry error scenarios", () => {
     test("returns Response object for non-429 errors (caller decides what to do)", async () => {
-      const { fetchWithRetry } = await import("../src/utils/retry-cache");
-
       // fetchWithRetry returns the Response - it doesn't throw on non-200
       // except for 429 which triggers retries
       const response = await fetchWithRetry("https://httpbin.org/status/500", undefined, {
@@ -1703,16 +1560,12 @@ describe("Error Handling - Fail Fast", () => {
 
   describe("checksumAddress fail-fast", () => {
     test("throws on completely invalid input", async () => {
-      const { checksumAddress } = await import("../src/utils/address-utils");
-
       expect(() => checksumAddress("")).toThrow();
       expect(() => checksumAddress("abc")).toThrow();
       expect(() => checksumAddress("0x")).toThrow();
     });
 
     test("throws on wrong length address", async () => {
-      const { checksumAddress } = await import("../src/utils/address-utils");
-
       expect(() => checksumAddress("0x1234")).toThrow();
       expect(() => checksumAddress("0x123456789012345678901234567890123456789012")).toThrow();
     });
@@ -1720,9 +1573,6 @@ describe("Error Handling - Fail Fast", () => {
 
   describe("parseOrThrow fail-fast", () => {
     test("includes all validation errors in message", async () => {
-      const { parseOrThrow } = await import("../src/lib/validation/helpers");
-      const { z } = await import("zod");
-
       const schema = z.object({
         a: z.number().positive(),
         b: z.string().min(5),
@@ -1733,9 +1583,6 @@ describe("Error Handling - Fail Fast", () => {
     });
 
     test("handles deeply nested validation errors", async () => {
-      const { parseOrThrow } = await import("../src/lib/validation/helpers");
-      const { z } = await import("zod");
-
       const schema = z.object({
         level1: z.object({
           level2: z.object({
@@ -1757,8 +1604,6 @@ describe("Error Handling - Fail Fast", () => {
 describe("Concurrent Behavior", () => {
   describe("Cache concurrent access", () => {
     test("handles concurrent reads of same key", async () => {
-      const { getCached, setCache } = await import("../src/utils/retry-cache");
-
       const key = `concurrent-read-${Date.now()}`;
       const value = { data: "test" };
       setCache(key, value, 30000);
@@ -1775,8 +1620,6 @@ describe("Concurrent Behavior", () => {
     });
 
     test("handles concurrent writes to different keys", async () => {
-      const { getCached, setCache } = await import("../src/utils/retry-cache");
-
       const now = Date.now();
       const keys = [`key-a-${now}`, `key-b-${now}`, `key-c-${now}`];
 
@@ -1798,8 +1641,6 @@ describe("Concurrent Behavior", () => {
 
   describe("Price fetching concurrent calls", () => {
     test("handles multiple parallel price fetches", async () => {
-      const { fetchTokenPrices } = await import("../src/utils/price-fetcher");
-
       // Parallel fetches for different chains
       const results = await Promise.all([
         fetchTokenPrices("ethereum", ["0x514910771af9ca656af840dff83e8264ecf986ca"]),
@@ -1814,8 +1655,6 @@ describe("Concurrent Behavior", () => {
 
   describe("withRetryAndCache deduplication", () => {
     test("returns cached value for concurrent calls", async () => {
-      const { withRetryAndCache, getCached } = await import("../src/utils/retry-cache");
-
       let executionCount = 0;
       const key = `dedup-${Date.now()}`;
 
@@ -1842,8 +1681,6 @@ describe("Concurrent Behavior", () => {
 describe("Boundary Value Tests", () => {
   describe("Balance filtering boundaries", () => {
     test("exactly at minBalance threshold", async () => {
-      const { filterDustTokens } = await import("../src/lib/balance-fetcher");
-
       const tokens = [
         {
           contractAddress: "0x1",
@@ -1861,8 +1698,6 @@ describe("Boundary Value Tests", () => {
     });
 
     test("just below minBalance threshold", async () => {
-      const { filterDustTokens } = await import("../src/lib/balance-fetcher");
-
       const tokens = [
         {
           contractAddress: "0x1",
@@ -1880,8 +1715,6 @@ describe("Boundary Value Tests", () => {
     });
 
     test("exactly at minUsdValue threshold", async () => {
-      const { filterDustTokens } = await import("../src/lib/balance-fetcher");
-
       const tokens = [
         {
           contractAddress: "0x1",
@@ -1901,8 +1734,6 @@ describe("Boundary Value Tests", () => {
 
   describe("Pool liquidity boundaries", () => {
     test("exactly at minimum TVL threshold", async () => {
-      const { validatePoolLiquidity } = await import("../src/utils/pool-finder-base");
-
       const pool = {
         protocol: "Uniswap V3" as const,
         address: "0x1234567890123456789012345678901234567890",
@@ -1919,8 +1750,6 @@ describe("Boundary Value Tests", () => {
     });
 
     test("just below minimum TVL threshold", async () => {
-      const { validatePoolLiquidity } = await import("../src/utils/pool-finder-base");
-
       const pool = {
         protocol: "Uniswap V3" as const,
         address: "0x1234567890123456789012345678901234567890",
@@ -1939,20 +1768,14 @@ describe("Boundary Value Tests", () => {
 
   describe("Discount BPS boundaries", () => {
     test("0 bps discount (no discount)", async () => {
-      const { formatPercentFromBps } = await import("../src/utils/format");
-
       expect(formatPercentFromBps(0)).toBe("0%");
     });
 
     test("10000 bps (100% discount)", async () => {
-      const { formatPercentFromBps } = await import("../src/utils/format");
-
       expect(formatPercentFromBps(10000)).toBe("100%");
     });
 
     test("maximum reasonable bps (5000 = 50%)", async () => {
-      const { formatPercentFromBps } = await import("../src/utils/format");
-
       expect(formatPercentFromBps(5000)).toBe("50%");
     });
   });
@@ -1964,8 +1787,6 @@ describe("Boundary Value Tests", () => {
 describe("Data Verification - Inspect Actual Outputs", () => {
   describe("Price fetcher data structure", () => {
     test("DeFiLlama returns correct data structure", async () => {
-      const { fetchDeFiLlamaPrices } = await import("../src/utils/price-fetcher");
-
       const USDC_ETH = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
       const prices = await fetchDeFiLlamaPrices("ethereum", [USDC_ETH]);
 
@@ -1985,8 +1806,6 @@ describe("Data Verification - Inspect Actual Outputs", () => {
 
   describe("OTC offer parsing verification", () => {
     test("verifies all 18 fields are parsed correctly", async () => {
-      const { parseOfferStruct } = await import("../src/lib/otc-helpers");
-
       const rawOffer = [
         5n, // consignmentId
         `0x${"ab".repeat(32)}`, // tokenId (32 bytes)
@@ -2034,8 +1853,6 @@ describe("Data Verification - Inspect Actual Outputs", () => {
 
   describe("Entity ID determinism verification", () => {
     test("produces consistent UUIDs across multiple calls", async () => {
-      const { walletToEntityId } = await import("../src/lib/entityId");
-
       const address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
       // Call 100 times and verify consistency
@@ -2046,8 +1863,6 @@ describe("Data Verification - Inspect Actual Outputs", () => {
     });
 
     test("case normalization produces same ID", async () => {
-      const { walletToEntityId } = await import("../src/lib/entityId");
-
       const variations = [
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         "0xF39FD6E51AAD88F6F4CE6AB8827279CFFFB92266",
@@ -2063,8 +1878,6 @@ describe("Data Verification - Inspect Actual Outputs", () => {
 
   describe("Consignment sanitization verification", () => {
     test("verifies all core fields are preserved", async () => {
-      const { sanitizeConsignmentForBuyer } = await import("../src/utils/consignment-sanitizer");
-
       const consignment = {
         id: "cons-123",
         tokenId: "token-base-0xabc",

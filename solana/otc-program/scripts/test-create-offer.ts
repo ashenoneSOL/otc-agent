@@ -1,12 +1,12 @@
 import type { Program } from "@coral-xyz/anchor";
-import pkg from "@coral-xyz/anchor";
+import * as anchor from "@coral-xyz/anchor";
 import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import * as fs from "fs";
 import type { Otc } from "../target/types/otc";
 
-// ESM/CJS compatibility: import as default then destructure
-const { AnchorProvider, setProvider, workspace, BN } = pkg as typeof import("@coral-xyz/anchor");
+// ESM/CJS compatibility: namespace import then destructure
+const { AnchorProvider, setProvider, workspace, BN } = anchor;
 
 async function test() {
   const provider = AnchorProvider.env();

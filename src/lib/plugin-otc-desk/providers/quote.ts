@@ -1,6 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 import type { IAgentRuntime, Memory, Provider, ProviderResult } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { getWorkerAuthToken } from "../../../config/env";
 import { formatTokenAmount } from "../../../utils/format";
 import { agentRuntime } from "../../agent-runtime";
 import { walletToEntityId } from "../../entityId";
@@ -158,10 +159,7 @@ export async function setUserQuote(
   const now = Date.now();
 
   // Generate signature using same method as QuoteService
-  const secret = process.env.WORKER_AUTH_TOKEN;
-  if (!secret) {
-    throw new Error("WORKER_AUTH_TOKEN must be set for quote signature generation");
-  }
+  const secret = getWorkerAuthToken();
   const signatureData = {
     quoteId,
     entityId,

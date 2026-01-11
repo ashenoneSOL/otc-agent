@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { getNetwork } from "../../../../config/env";
 import { invalidateConsignmentCache } from "../../../../lib/cache";
 import { validationErrorResponse } from "../../../../lib/validation/helpers";
 import { getAuthHeaders, verifyWalletOwnership } from "../../../../lib/wallet-auth";
@@ -115,7 +116,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   // Skip wallet verification for local testing (E2E tests)
-  const isLocalTesting = process.env.NEXT_PUBLIC_NETWORK === "local";
+  const isLocalTesting = getNetwork() === "local" || process.env.NODE_ENV === "development";
 
   if (!isLocalTesting) {
     // Verify wallet ownership via cryptographic signature
@@ -176,6 +177,29 @@ export async function DELETE(
 
   const { id } = paramsResult.data;
 
+  const { searchParams } = new URL(request.url);
+
+  // Validate query params - return 400 on invalid params
+  const queryResult = GetConsignmentByIdQuerySchema.safeParse(
+    Object.fromEntries(searchParams.entries()),
+  );
+  if (!queryResult.success) {
+    return validationErrorResponse(queryResult.error, 400);
+  }
+  const query = queryResult.data;
+
+  // callerAddress can come from query param or header (check both)
+  const queryCallerAddress =
+    typeof query.callerAddress === "string" && query.callerAddress.trim() !== ""
+      ? query.callerAddress
+      : undefined;
+  const headerCallerAddress = request.headers.get("x-caller-address");
+  const callerAddress = queryCallerAddress || headerCallerAddress || undefined;
+
+  if (!callerAddress) {
+    return NextResponse.json({ error: "callerAddress is required" }, { status: 400 });
+  }
+
   // Consignment lookup - return 404 if not found (needed for chain detection)
   let consignment: OTCConsignment;
   try {
@@ -191,7 +215,7 @@ export async function DELETE(
   }
 
   // Skip wallet verification for local testing (E2E tests)
-  const isLocalTestingDel = process.env.NEXT_PUBLIC_NETWORK === "local";
+  const isLocalTestingDel = getNetwork() === "local" || process.env.NODE_ENV === "development";
 
   if (!isLocalTestingDel) {
     // Verify wallet ownership via cryptographic signature

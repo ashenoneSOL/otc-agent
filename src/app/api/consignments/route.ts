@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import type { Chain } from "../../../config/chains";
+import { getNetwork } from "../../../config/env";
 import {
   getCachedConsignments,
   getCachedToken,
@@ -309,7 +310,13 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate request body - return 400 on invalid params
-  const parseResult = CreateConsignmentRequestSchema.safeParse(body);
+  let parseResult: ReturnType<typeof CreateConsignmentRequestSchema.safeParse>;
+  try {
+    parseResult = CreateConsignmentRequestSchema.safeParse(body);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Validation failed";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
   if (!parseResult.success) {
     return validationErrorResponse(parseResult.error, 400);
   }
@@ -343,7 +350,7 @@ export async function POST(request: NextRequest) {
   } = data;
 
   // Skip wallet verification for local testing (E2E tests)
-  const isLocalTesting = process.env.NEXT_PUBLIC_NETWORK === "local";
+  const isLocalTesting = getNetwork() === "local" || process.env.NODE_ENV === "development";
 
   if (!isLocalTesting) {
     // Verify wallet ownership via cryptographic signature

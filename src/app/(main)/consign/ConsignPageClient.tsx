@@ -10,10 +10,15 @@ import {
   PublicKey as SolPubkey,
   SystemProgram as SolSystemProgram,
 } from "@solana/web3.js";
-import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPublicClient, http } from "viem";
-import type { TokenWithBalance } from "../../../components/consignment-form/token-selection-step";
+import { FormStep } from "../../../components/consignment-form/form-step";
+import { ReviewStep } from "../../../components/consignment-form/review-step";
+import { SubmissionStepComponent } from "../../../components/consignment-form/submission-step";
+import {
+  TokenSelectionStep,
+  type TokenWithBalance,
+} from "../../../components/consignment-form/token-selection-step";
 import { WalletAvatar } from "../../../components/wallet-avatar";
 import { type Chain, SUPPORTED_CHAINS } from "../../../config/chains";
 import { useChain, useWalletActions, useWalletConnection } from "../../../contexts";
@@ -38,29 +43,6 @@ import {
   getChainFamily,
 } from "../../../utils/token-utils";
 import { waitForEvmTx } from "../../../utils/tx-helpers";
-
-const TokenSelectionStep = dynamic(
-  () =>
-    import("../../../components/consignment-form/token-selection-step").then(
-      (m) => m.TokenSelectionStep,
-    ),
-  { ssr: false },
-);
-const FormStep = dynamic(
-  () => import("../../../components/consignment-form/form-step").then((m) => m.FormStep),
-  { ssr: false },
-);
-const ReviewStep = dynamic(
-  () => import("../../../components/consignment-form/review-step").then((m) => m.ReviewStep),
-  { ssr: false },
-);
-const SubmissionStepComponent = dynamic(
-  () =>
-    import("../../../components/consignment-form/submission-step").then(
-      (m) => m.SubmissionStepComponent,
-    ),
-  { ssr: false },
-);
 
 const STEP_LABELS = ["Select", "Configure", "Review", "Submit"];
 

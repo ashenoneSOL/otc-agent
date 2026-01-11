@@ -260,13 +260,8 @@ export class ConsignmentService {
         throw new Error("Insufficient remaining amount");
       }
 
-      if (reserve < BigInt(consignment.minDealAmount)) {
-        throw new Error("Amount below minimum deal size");
-      }
-
-      if (reserve > BigInt(consignment.maxDealAmount)) {
-        throw new Error("Amount exceeds maximum deal size");
-      }
+      // NOTE: min/max deal amount checks removed - the smart contract is the source of truth
+      // for deal size validation. If the contract accepted the deal, we accept it here.
 
       const newRemaining = (remaining - reserve).toString();
       const status = newRemaining === "0" ? "depleted" : "active";

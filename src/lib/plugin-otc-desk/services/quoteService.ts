@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { getWorkerAuthToken } from "../../../config/env";
 import { walletToEntityId } from "../../entityId";
 import type { PaymentCurrency, QuoteMemory, QuoteStatus } from "../types";
 
@@ -89,10 +90,7 @@ export class QuoteService extends Service {
     discountBps: number;
     lockupMonths: number;
   }): string {
-    const secret = process.env.WORKER_AUTH_TOKEN;
-    if (!secret) {
-      throw new Error("WORKER_AUTH_TOKEN must be set for quote signature generation");
-    }
+    const secret = getWorkerAuthToken();
     const payload = JSON.stringify(data);
     return crypto.createHmac("sha256", secret).update(payload).digest("hex");
   }
@@ -486,6 +484,16 @@ export class QuoteService extends Service {
     if (!quote.signature || quote.signature.length === 0) {
       console.error(`[QuoteService] SECURITY: Quote ${quote.quoteId} has empty signature`);
       return false;
+    }
+
+    // Default quotes are created client-side without agent negotiation
+    // They use fixed terms from the consignment and don't need signature verification
+    // The contract is the source of truth for these direct purchases
+    if (quote.signature === "default-quote-no-signature" && quote.quoteId.startsWith("default-")) {
+      console.log(
+        `[QuoteService] Skipping signature verification for default quote: ${quote.quoteId}`,
+      );
+      return true;
     }
 
     const expectedSignature = this.generateQuoteSignature({

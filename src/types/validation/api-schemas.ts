@@ -40,6 +40,21 @@ export type { SolanaTokenBalance, TokenBalance } from "./db-schemas";
 const toArray = <T extends z.ZodTypeAny>(schema: T) =>
   z.union([schema, z.array(schema)]).transform((val) => (Array.isArray(val) ? val : [val]));
 
+// BigInt-like helpers (Zod v4: thrown errors inside transforms bubble out of safeParse)
+const NonNegativeBigIntLikeSchema = z.preprocess((val) => {
+  if (typeof val === "number") {
+    // NOTE: Numbers are lossy for large integers; prefer strings at API boundaries.
+    if (!Number.isFinite(val) || !Number.isInteger(val) || val < 0) return val;
+    return val.toString();
+  }
+  if (typeof val === "string") return val.trim();
+  return val;
+}, BigIntStringSchema);
+
+const PositiveBigIntLikeSchema = NonNegativeBigIntLikeSchema.refine((val) => BigInt(val) > 0n, {
+  message: "Amount must be a positive integer",
+});
+
 // GET /api/consignments query parameters
 export const GetConsignmentsQuerySchema = z.object({
   tokenId: z.string().optional(),
@@ -59,45 +74,7 @@ export const CreateConsignmentRequestSchema = z
   .object({
     tokenId: NonEmptyStringSchema,
     consignerAddress: AddressSchema,
-    amount: z
-      .union([BigIntStringSchema, z.number(), z.string()])
-      .transform((val) => {
-        if (typeof val === "number") {
-          if (!Number.isInteger(val)) {
-            throw new Error(
-              "Amount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
-          }
-          if (val < 0) {
-            throw new Error("Amount must be non-negative");
-          }
-          return val.toString();
-        }
-        if (typeof val === "string") {
-          // Reject decimal inputs
-          if (val.includes(".")) {
-            throw new Error(
-              "Amount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
-          }
-          const num = Number(val);
-          if (Number.isNaN(num) || !Number.isFinite(num)) {
-            throw new Error(`Invalid number: ${val}`);
-          }
-          if (num < 0) {
-            throw new Error("Amount must be non-negative");
-          }
-          return BigInt(val).toString();
-        }
-        return val;
-      })
-      .refine(
-        (val) => {
-          const num = BigInt(val);
-          return num > 0n;
-        },
-        { message: "Amount must be a positive integer" },
-      ),
+    amount: PositiveBigIntLikeSchema,
     isNegotiable: z.boolean(),
     fixedDiscountBps: BpsSchema.optional(),
     fixedLockupDays: z.number().int().min(0).optional(),
@@ -105,74 +82,8 @@ export const CreateConsignmentRequestSchema = z
     maxDiscountBps: BpsSchema.optional(),
     minLockupDays: z.number().int().min(0).optional(),
     maxLockupDays: z.number().int().min(0).optional(),
-    minDealAmount: z
-      .union([BigIntStringSchema, z.number(), z.string()])
-      .optional()
-      .transform((val) => {
-        if (val === undefined) return undefined;
-        if (typeof val === "number") {
-          if (!Number.isInteger(val)) {
-            throw new Error(
-              "minDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
-          }
-          if (val < 0) {
-            throw new Error("minDealAmount must be non-negative");
-          }
-          return val.toString();
-        }
-        if (typeof val === "string") {
-          // Reject decimal inputs
-          if (val.includes(".")) {
-            throw new Error(
-              "minDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
-          }
-          const num = Number(val);
-          if (Number.isNaN(num) || !Number.isFinite(num)) {
-            throw new Error(`Invalid number: ${val}`);
-          }
-          if (num < 0) {
-            throw new Error("minDealAmount must be non-negative");
-          }
-          return BigInt(val).toString();
-        }
-        return val;
-      }),
-    maxDealAmount: z
-      .union([BigIntStringSchema, z.number(), z.string()])
-      .optional()
-      .transform((val) => {
-        if (val === undefined) return undefined;
-        if (typeof val === "number") {
-          if (!Number.isInteger(val)) {
-            throw new Error(
-              "maxDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
-          }
-          if (val < 0) {
-            throw new Error("maxDealAmount must be non-negative");
-          }
-          return val.toString();
-        }
-        if (typeof val === "string") {
-          // Reject decimal inputs
-          if (val.includes(".")) {
-            throw new Error(
-              "maxDealAmount must be a whole number - decimals are not allowed. Use the smallest unit (e.g., wei for ETH).",
-            );
-          }
-          const num = Number(val);
-          if (Number.isNaN(num) || !Number.isFinite(num)) {
-            throw new Error(`Invalid number: ${val}`);
-          }
-          if (num < 0) {
-            throw new Error("maxDealAmount must be non-negative");
-          }
-          return BigInt(val).toString();
-        }
-        return val;
-      }),
+    minDealAmount: NonNegativeBigIntLikeSchema.optional(),
+    maxDealAmount: NonNegativeBigIntLikeSchema.optional(),
     isFractionalized: z.boolean().optional(),
     isPrivate: z.boolean().optional(),
     allowedBuyers: OptionalAddressArraySchema,

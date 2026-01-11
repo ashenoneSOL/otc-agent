@@ -141,7 +141,7 @@ async function seedTokens() {
           maxDiscountBps: 2500,
           minLockupDays: 30,
           maxLockupDays: 365,
-          minDealAmount: "1000000000000000000000",
+          minDealAmount: "1", // Smallest unit - allow any size purchase
           maxDealAmount: "1000000000000000000000000",
           isFractionalized: true,
           isPrivate: false,

@@ -62,7 +62,7 @@ export function MyDealsContent() {
     type: "success" | "error" | "info";
     message: string;
   } | null>(null);
-  const [showWithdrawnListings, setShowWithdrawnListings] = useState(false);
+  const [showCompletedListings, setShowCompletedListings] = useState(false);
 
   // Query BOTH wallets when both are linked - user may have deals on either chain
   const evmWalletAddr = evmAddress?.toLowerCase();
@@ -210,12 +210,13 @@ export function MyDealsContent() {
   }, [purchases]);
 
   const filteredListings = useMemo(() => {
-    if (showWithdrawnListings) return myListings;
-    return myListings.filter((c) => c.status !== "withdrawn");
-  }, [myListings, showWithdrawnListings]);
+    if (showCompletedListings) return myListings;
+    // Hide withdrawn and depleted (completed) listings by default
+    return myListings.filter((c) => c.status !== "withdrawn" && c.status !== "depleted");
+  }, [myListings, showCompletedListings]);
 
-  const withdrawnCount = useMemo(
-    () => myListings.filter((c) => c.status === "withdrawn").length,
+  const completedCount = useMemo(
+    () => myListings.filter((c) => c.status === "withdrawn" || c.status === "depleted").length,
     [myListings],
   );
 
@@ -230,7 +231,7 @@ export function MyDealsContent() {
 
   // Redirect to trading desk if no deals
   const hasAnyDeals =
-    filteredListings.length > 0 || sortedPurchases.length > 0 || withdrawnCount > 0;
+    filteredListings.length > 0 || sortedPurchases.length > 0 || completedCount > 0;
 
   // Track if we've successfully fetched data at least once
   const hasFetchedData = useMemo(() => {
@@ -391,7 +392,7 @@ export function MyDealsContent() {
           )}
 
           {/* My Listings Section */}
-          {(filteredListings.length > 0 || withdrawnCount > 0) && (
+          {(filteredListings.length > 0 || completedCount > 0) && (
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -401,13 +402,13 @@ export function MyDealsContent() {
                     ({filteredListings.length})
                   </span>
                 </h2>
-                {withdrawnCount > 0 && (
+                {completedCount > 0 && (
                   <button
                     type="button"
-                    onClick={() => setShowWithdrawnListings(!showWithdrawnListings)}
+                    onClick={() => setShowCompletedListings(!showCompletedListings)}
                     className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
                   >
-                    {showWithdrawnListings ? "Hide" : "Show"} withdrawn ({withdrawnCount})
+                    {showCompletedListings ? "Hide" : "Show"} completed ({completedCount})
                   </button>
                 )}
               </div>

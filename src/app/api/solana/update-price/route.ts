@@ -1,6 +1,13 @@
 import type { Wallet } from "@coral-xyz/anchor";
 import { AnchorProvider, BN, type Idl, Program } from "@coral-xyz/anchor";
-import { ComputeBudgetProgram, Connection, Keypair, PublicKey } from "@solana/web3.js";
+import {
+  ComputeBudgetProgram,
+  Connection,
+  Keypair,
+  PublicKey,
+  type Transaction,
+  type VersionedTransaction,
+} from "@solana/web3.js";
 import bs58 from "bs58";
 import { type NextRequest, NextResponse } from "next/server";
 import { getSolanaConfig } from "../../../../config/contracts";
@@ -37,23 +44,15 @@ class KeypairWallet implements Wallet {
   get publicKey() {
     return this.payer.publicKey;
   }
-  async signTransaction<
-    T extends
-      | import("@solana/web3.js").Transaction
-      | import("@solana/web3.js").VersionedTransaction,
-  >(tx: T): Promise<T> {
+  async signTransaction<T extends Transaction | VersionedTransaction>(tx: T): Promise<T> {
     if ("version" in tx) {
-      tx.sign([this.payer]);
+      (tx as VersionedTransaction).sign([this.payer]);
     } else {
-      (tx as import("@solana/web3.js").Transaction).partialSign(this.payer);
+      (tx as Transaction).partialSign(this.payer);
     }
     return tx;
   }
-  async signAllTransactions<
-    T extends
-      | import("@solana/web3.js").Transaction
-      | import("@solana/web3.js").VersionedTransaction,
-  >(txs: T[]): Promise<T[]> {
+  async signAllTransactions<T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> {
     return Promise.all(txs.map((tx) => this.signTransaction(tx)));
   }
 }

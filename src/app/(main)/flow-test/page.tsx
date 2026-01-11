@@ -1,13 +1,6 @@
-"use client";
+import FlowTestClient from "./FlowTestClient";
 
-import dynamic from "next/dynamic";
-import { PageLoading } from "../../../components/ui/loading-spinner";
-
-// Dynamic import to prevent SSR issues with wallet hooks
-const FlowTestClient = dynamic(() => import("./FlowTestClient"), {
-  ssr: false,
-  loading: () => <PageLoading message="Loading flow test..." />,
-});
+export const dynamic = "force-dynamic";
 
 export default function FlowTestPage() {
   return <FlowTestClient />;

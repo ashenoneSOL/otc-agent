@@ -9,7 +9,12 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { Wallet } from "@coral-xyz/anchor";
-import { Keypair, type Transaction, type VersionedTransaction } from "@solana/web3.js";
+import {
+  Keypair,
+  type PublicKey,
+  type Transaction,
+  type VersionedTransaction,
+} from "@solana/web3.js";
 import bs58 from "bs58";
 
 /**
@@ -122,7 +127,7 @@ export class KeypairWallet implements Wallet {
  * which is compatible with the shared SolanaTransaction interface.
  */
 export interface AnchorWallet {
-  publicKey: import("@solana/web3.js").PublicKey;
+  publicKey: PublicKey;
   signTransaction<T extends Transaction | VersionedTransaction>(tx: T): Promise<T>;
   signAllTransactions<T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]>;
 }

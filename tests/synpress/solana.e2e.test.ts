@@ -11,6 +11,7 @@
  * Run: npx playwright test --config=synpress.config.ts tests/synpress/solana.e2e.test.ts
  */
 
+import { PublicKey } from "@solana/web3.js";
 import { testWithSynpress } from "@synthetixio/synpress";
 import { Phantom, phantomFixtures } from "@synthetixio/synpress/playwright";
 
@@ -60,9 +61,7 @@ test.describe("Solana Additional Scenarios", () => {
     log("Solana-Verify", `Validator version: ${version["solana-core"]}`);
 
     // Verify program is deployed
-    const programInfo = await connection.getAccountInfo(
-      new (await import("@solana/web3.js")).PublicKey(deployment.programId),
-    );
+    const programInfo = await connection.getAccountInfo(new PublicKey(deployment.programId));
     if (!programInfo) {
       log("Solana-Verify", "Program not deployed - skipping");
       test.skip();

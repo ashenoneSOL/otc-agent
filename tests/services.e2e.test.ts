@@ -23,6 +23,14 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { z } from "zod";
 import { OTCConsignmentSchema, TokenSchema } from "../src/types/validation/db-schemas";
 import {
+  ConsignmentsFiltersSchema,
+  DealsResponseSchema,
+  EvmBalancesResponseSchema,
+  SolanaBalancesResponseSchema,
+  TokenBatchResponseSchema,
+  WalletTokenSchema,
+} from "../src/types/validation/hook-schemas";
+import {
   AddressSchema,
   BigIntStringSchema,
   BpsSchema,
@@ -833,8 +841,6 @@ describe("Service Layer E2E Tests", () => {
   // ==========================================================================
   describe("Hook Schema Validation", () => {
     test("ConsignmentsFiltersSchema validates filter options", async () => {
-      const { ConsignmentsFiltersSchema } = await import("../src/types/validation/hook-schemas");
-
       // Valid filters
       expect(() =>
         ConsignmentsFiltersSchema.parse({
@@ -852,8 +858,6 @@ describe("Service Layer E2E Tests", () => {
     });
 
     test("DealsResponseSchema validates deal response", async () => {
-      const { DealsResponseSchema } = await import("../src/types/validation/hook-schemas");
-
       const validResponse = {
         success: true,
         deals: [
@@ -895,8 +899,6 @@ describe("Service Layer E2E Tests", () => {
     });
 
     test("TokenBatchResponseSchema validates batch response", async () => {
-      const { TokenBatchResponseSchema } = await import("../src/types/validation/hook-schemas");
-
       const validResponse = {
         success: true,
         tokens: {
@@ -921,8 +923,6 @@ describe("Service Layer E2E Tests", () => {
     });
 
     test("WalletTokenSchema validates wallet token format", async () => {
-      const { WalletTokenSchema } = await import("../src/types/validation/hook-schemas");
-
       const validWalletToken = {
         id: "token-base-0x1234567890123456789012345678901234567890",
         symbol: "TEST",
@@ -947,8 +947,6 @@ describe("Service Layer E2E Tests", () => {
     });
 
     test("EvmBalancesResponseSchema validates EVM balances", async () => {
-      const { EvmBalancesResponseSchema } = await import("../src/types/validation/hook-schemas");
-
       const validResponse = {
         tokens: [
           {
@@ -965,13 +963,11 @@ describe("Service Layer E2E Tests", () => {
     });
 
     test("SolanaBalancesResponseSchema validates Solana balances", async () => {
-      const { SolanaBalancesResponseSchema } = await import("../src/types/validation/hook-schemas");
-
       const validResponse = {
         tokens: [
           {
             mint: "So11111111111111111111111111111111111111112",
-            amount: 1000000000,
+            amount: "1000000000",
             decimals: 9,
             symbol: "SOL",
             name: "Wrapped SOL",

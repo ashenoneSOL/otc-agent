@@ -1,21 +1,15 @@
 "use client";
 import "../../app/globals.css";
 
-import dynamic from "next/dynamic";
 import { Suspense, useCallback, useState } from "react";
+
+export const dynamic = "force-dynamic";
+
+import { DealFilters } from "../../components/deal-filters";
+import { DealsGrid } from "../../components/deals-grid";
 import { PageFooter } from "../../components/page-footer";
 import { PageLoading } from "../../components/ui/loading-spinner";
 import { useRenderTracker } from "../../utils/render-tracker";
-
-const DealsGrid = dynamic(() => import("../../components/deals-grid").then((m) => m.DealsGrid), {
-  ssr: false,
-});
-const DealFilters = dynamic(
-  () => import("../../components/deal-filters").then((m) => m.DealFilters),
-  {
-    ssr: false,
-  },
-);
 
 const INITIAL_FILTERS = {
   chains: ["ethereum", "base", "bsc", "solana"] as ("ethereum" | "base" | "bsc" | "solana")[],

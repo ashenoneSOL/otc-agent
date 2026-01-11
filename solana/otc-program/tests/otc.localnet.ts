@@ -1,12 +1,12 @@
 import type { Program } from "@coral-xyz/anchor";
-import pkg from "@coral-xyz/anchor";
+import * as anchor from "@coral-xyz/anchor";
 import type { Otc } from "../target/types/otc";
 import { PublicKey, SystemProgram, Keypair } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, createMint, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
 import { expect } from "chai";
 
-// ESM/CJS compatibility: import as default then destructure
-const { AnchorProvider, setProvider, workspace, BN } = pkg as typeof import("@coral-xyz/anchor");
+// ESM/CJS compatibility: namespace import then destructure
+const { AnchorProvider, setProvider, workspace, BN } = anchor;
 
 describe("otc localnet smoke", () => {
   const provider = AnchorProvider.env();

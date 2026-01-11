@@ -2,6 +2,7 @@
 
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import Card from "./card";
@@ -30,8 +31,8 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   }, [router, onClose]);
 
   return (
-    <Dialog open={isOpen} onClose={onClose} size="5xl">
-      <div className="relative flex flex-col rounded-2xl overflow-hidden bg-surface min-h-[500px] sm:min-h-[600px]">
+    <Dialog open={isOpen} onClose={onClose} size="5xl" fullScreenOnMobile>
+      <div className="relative flex flex-col overflow-hidden bg-surface min-h-[100dvh] sm:min-h-[600px] rounded-none sm:rounded-2xl">
         {/* Close button */}
         <button
           type="button"
@@ -108,6 +109,23 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
               button="View My Deals"
               onClick={handleViewDeals}
             />
+          </div>
+
+          <div className="mt-6 w-full flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-zinc-300">
+            <Link
+              href="/terms"
+              className="underline underline-offset-4 hover:text-white transition-colors"
+              onClick={() => onClose()}
+            >
+              Terms of Service
+            </Link>
+            <Link
+              href="/privacy"
+              className="underline underline-offset-4 hover:text-white transition-colors"
+              onClick={() => onClose()}
+            >
+              Privacy Policy
+            </Link>
           </div>
         </div>
 

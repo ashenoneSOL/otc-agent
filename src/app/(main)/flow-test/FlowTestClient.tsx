@@ -824,7 +824,7 @@ export default function FlowTestClient() {
           maxDiscountBps: 2000,
           minLockupDays: 7,
           maxLockupDays: 365,
-          minDealAmount: BigInt(1) * BigInt(10 ** tokenConfig.decimals),
+          minDealAmount: BigInt(1), // Smallest unit - allow any size purchase
           maxDealAmount: amount,
           isFractionalized: true,
           isPrivate: false,

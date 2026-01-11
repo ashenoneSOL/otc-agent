@@ -1,19 +1,9 @@
 "use client";
 
-import nextDynamic from "next/dynamic";
 import { useParams, useSearchParams } from "next/navigation";
-import type React from "react";
+import Chat from "../../../../components/chat";
 import { PageLoading } from "../../../../components/ui/loading-spinner";
 import { useMarketData, useToken } from "../../../../hooks/useToken";
-import type { Token, TokenMarketData } from "../../../../types";
-
-const Chat = nextDynamic(() => import("../../../../components/chat"), {
-  ssr: false,
-}) as React.ComponentType<{
-  token?: Token;
-  marketData?: TokenMarketData | null;
-  consignmentId?: string;
-}>;
 
 export const dynamic = "force-dynamic";
 

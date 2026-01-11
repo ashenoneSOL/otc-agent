@@ -19,31 +19,49 @@ export function Dialog({
   className,
   children,
   variant = "modal",
+  fullScreenOnMobile = false,
   ...props
 }: {
   size?: keyof typeof sizes;
   className?: string;
   children: React.ReactNode;
   variant?: "modal" | "slideout";
+  fullScreenOnMobile?: boolean;
 } & Omit<Headless.DialogProps, "as" | "className">) {
   return (
     <Headless.Dialog {...props}>
       {variant === "modal" && (
         <Headless.DialogBackdrop
           transition
-          className="fixed inset-0 z-40 flex w-screen justify-center overflow-y-auto bg-zinc-950/25 px-2 py-2 transition duration-100 focus:outline-0 data-[closed]:opacity-0 data-[enter]:ease-out data-[leave]:ease-in sm:px-6 sm:py-8 lg:px-8 lg:py-16 dark:bg-zinc-950/50"
+          className={clsx(
+            "fixed inset-0 z-40 flex w-screen justify-center overflow-y-auto bg-zinc-950/25 transition duration-100 focus:outline-0 data-[closed]:opacity-0 data-[enter]:ease-out data-[leave]:ease-in dark:bg-zinc-950/50",
+            fullScreenOnMobile ? "px-0 py-0" : "px-2 py-2",
+            "sm:px-6 sm:py-8 lg:px-8 lg:py-16",
+          )}
         />
       )}
 
       {variant === "modal" ? (
-        <div className="fixed inset-0 z-50 isolate w-screen overflow-y-auto pt-2 pb-2 sm:pt-0 sm:pb-0">
-          <div className="flex min-h-full items-center justify-center p-2 sm:p-4">
+        <div
+          className={clsx(
+            "fixed inset-0 z-50 isolate w-screen overflow-y-auto sm:pt-0 sm:pb-0",
+            fullScreenOnMobile ? "pt-0 pb-0" : "pt-2 pb-2",
+          )}
+        >
+          <div
+            className={clsx(
+              "flex min-h-full justify-center sm:p-4",
+              fullScreenOnMobile ? "items-stretch p-0 sm:items-center" : "items-center p-2",
+            )}
+          >
             <Headless.DialogPanel
               transition
               className={clsx(
                 className,
                 sizes[size],
-                "w-full max-h-[calc(100dvh-16px)] sm:max-h-[calc(100dvh-32px)] overflow-y-auto",
+                fullScreenOnMobile
+                  ? "w-full h-[100dvh] max-h-[100dvh] overflow-y-auto sm:h-auto sm:max-h-[calc(100dvh-32px)]"
+                  : "w-full max-h-[calc(100dvh-16px)] sm:max-h-[calc(100dvh-32px)] overflow-y-auto",
               )}
             >
               {children}

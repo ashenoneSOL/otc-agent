@@ -441,6 +441,13 @@ export function AcceptQuoteModal({
     consignmentRemainingTokens,
   } = state;
 
+  const [tokenLogoLoadFailed, setTokenLogoLoadFailed] = useState(false);
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!tokenMetadata?.logoUrl) return;
+    setTokenLogoLoadFailed(false);
+  }, [isOpen, tokenMetadata?.logoUrl]);
+
   // Track whether we're still loading consignment data
   // If we have a consignmentId but no remaining tokens yet, we're loading
   const isConsignmentLoading =
@@ -701,9 +708,7 @@ export function AcceptQuoteModal({
               contractAddress: token.contractAddress,
             };
             setCachedTokenMetadata(chain, symbol, metadata);
-            if (!initialQuote.tokenAddress) {
-              dispatch({ type: "SET_TOKEN_METADATA", payload: metadata });
-            }
+            dispatch({ type: "SET_TOKEN_METADATA", payload: metadata });
             if (typeof token.decimals === "number") {
               console.log(`[AcceptQuote] Setting token decimals: ${token.decimals}`);
               dispatch({
@@ -1696,6 +1701,12 @@ export function AcceptQuoteModal({
       // Construct tokenId in the format expected by the database
       const solanaTokenId = `token-solana-${tokenMintPk.toBase58()}`;
 
+      // Get the fulfillment transaction hash from approval response
+      const fulfillTxHash = approveData.fulfillTx as string;
+      if (!fulfillTxHash) {
+        throw new Error("Missing fulfillment transaction hash from approval response");
+      }
+
       console.log("[Solana] Saving deal completion:", {
         quoteId: initialQuote.quoteId,
         wallet: solanaWalletAddress,
@@ -1704,6 +1715,7 @@ export function AcceptQuoteModal({
         currency,
         tokenId: solanaTokenId,
         consignmentId: initialQuote.consignmentId,
+        transactionHash: fulfillTxHash,
       });
 
       const response = await fetch("/api/deal-completion", {
@@ -1717,7 +1729,8 @@ export function AcceptQuoteModal({
           tokenAmount: String(finalTokenAmount),
           paymentCurrency: currency,
           offerId: nextOfferId.toString(),
-          transactionHash: "",
+          transactionHash: fulfillTxHash,
+          blockNumber: 0, // Solana uses slot, but API validates after tx verification
           chain: "solana",
           offerAddress: offerKeypair.publicKey.toString(),
           beneficiary: solanaWalletAddress,
@@ -2180,6 +2193,7 @@ export function AcceptQuoteModal({
   ]);
 
   const validationError = useMemo(() => {
+    if (isConsignmentLoading) return null;
     if (tokenAmount < 1) return "You must buy at least 1 token.";
     if (tokenAmount > effectiveMaxTokens)
       return `Exceeds available supply (~${effectiveMaxTokens.toLocaleString()} max).`;
@@ -2187,7 +2201,14 @@ export function AcceptQuoteModal({
       return `Exceeds what you can afford (~${maxAffordableTokens.toLocaleString()} max).`;
     }
     return null;
-  }, [tokenAmount, effectiveMaxTokens, estPerTokenUsd, maxAffordableTokens, isSolanaToken]);
+  }, [
+    tokenAmount,
+    effectiveMaxTokens,
+    estPerTokenUsd,
+    maxAffordableTokens,
+    isSolanaToken,
+    isConsignmentLoading,
+  ]);
 
   const estimatedPayment = useMemo(() => {
     if (estPerTokenUsd <= 0) return { usdc: undefined, native: undefined, usd: undefined };
@@ -2372,21 +2393,20 @@ export function AcceptQuoteModal({
                 {/* Token Logo */}
                 <div className="h-10 w-10 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden ring-1 ring-white/10 relative">
                   {/* Use tokenMetadata if loaded, otherwise fallback to quote data (always available) */}
-                  {tokenMetadata?.logoUrl ? (
+                  {tokenMetadata?.logoUrl && !tokenLogoLoadFailed ? (
                     <Image
                       src={tokenMetadata.logoUrl}
                       alt={tokenMetadata.symbol}
                       fill
                       className="object-cover"
                       unoptimized
-                      onError={(e) => {
-                        // Fallback to symbol if image fails - hide the image
-                        e.currentTarget.style.display = "none";
+                      onError={() => {
+                        setTokenLogoLoadFailed(true);
                       }}
                     />
                   ) : null}
                   {/* Fallback symbol - shown when no logo or logo fails to load */}
-                  {(!tokenMetadata || !tokenMetadata.logoUrl) && (
+                  {(!tokenMetadata || !tokenMetadata.logoUrl || tokenLogoLoadFailed) && (
                     <span className="text-brand-400 text-sm font-bold">
                       {(tokenMetadata?.symbol || initialQuote.tokenSymbol).slice(0, 2)}
                     </span>
@@ -2570,15 +2590,7 @@ export function AcceptQuoteModal({
                 isWaitingForNativePrice ||
                 isConsignmentLoading
               }
-              title={
-                isChainMismatch
-                  ? `Switch to ${quoteChain === "solana" ? "Solana" : "EVM"} first`
-                  : isWaitingForNativePrice
-                    ? "Loading prices..."
-                    : isConsignmentLoading
-                      ? "Loading deal data..."
-                      : undefined
-              }
+              title={isWaitingForNativePrice ? "Loading..." : undefined}
             >
               <div className="px-4 py-2">
                 {isConsignmentLoading
