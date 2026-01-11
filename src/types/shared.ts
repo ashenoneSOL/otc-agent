@@ -288,6 +288,7 @@ export interface ModalState {
   tokenMetadata: TokenMetadata | null;
   completedTxHash: string | null;
   completedOfferId: string | null;
+  completedQuoteId: string | null;
   contractConsignmentId: string | null;
   consignmentRemainingTokens: number | null;
 }
@@ -310,7 +311,7 @@ export type ModalAction =
   | { type: "SET_CONSIGNMENT_REMAINING_TOKENS"; payload: number | null }
   | {
       type: "SET_COMPLETED";
-      payload: { txHash: string | null; offerId: string };
+      payload: { txHash: string | null; offerId: string; quoteId: string };
     }
   | {
       type: "RESET";

@@ -85,7 +85,16 @@ export async function POST(request: NextRequest) {
       if (typeof body.tokenAmount !== "string") {
         throw new Error("tokenAmount is required and must be a string");
       }
-      const tokenAmountForReserve: string = body.tokenAmount;
+      // Convert human-readable amount to raw units using token decimals
+      // The consignment stores amounts in raw units (with decimals)
+      const humanAmount = parseFloat(body.tokenAmount);
+      const rawAmount = BigInt(Math.round(humanAmount * 10 ** token.decimals));
+      const tokenAmountForReserve: string = rawAmount.toString();
+      console.log("[DealCompletion] Reserving amount:", {
+        humanAmount: body.tokenAmount,
+        decimals: token.decimals,
+        rawAmount: tokenAmountForReserve,
+      });
       await consignmentService.reserveAmount(consignmentId, tokenAmountForReserve);
       if (!body.beneficiary || typeof body.beneficiary !== "string") {
         throw new Error("beneficiary is required and must be a string");
@@ -234,8 +243,9 @@ export async function POST(request: NextRequest) {
         agentCommissionBps: 0,
       };
 
-      // Save to cache
-      await runtime.setCache(`quote:${quoteId}`, newQuote);
+      // Save to cache using QuoteService's cache key format
+      const quoteKey = `quote:${quoteId}`;
+      await runtime.setCache(quoteKey, newQuote);
 
       // Add to entity_quotes index
       const entityQuotes = (await runtime.getCache<string[]>(`entity_quotes:${entityId}`)) ?? [];
@@ -251,7 +261,26 @@ export async function POST(request: NextRequest) {
         await runtime.setCache("all_quotes", allQuotes);
       }
 
-      console.log("[DealCompletion] Created default quote:", quoteId);
+      // Also add to beneficiary index for lookup by wallet
+      const beneficiaryQuotes =
+        (await runtime.getCache<string[]>(`beneficiary_quotes:${normalizedBeneficiary}`)) ?? [];
+      if (!beneficiaryQuotes.includes(quoteId)) {
+        beneficiaryQuotes.push(quoteId);
+        await runtime.setCache(`beneficiary_quotes:${normalizedBeneficiary}`, beneficiaryQuotes);
+      }
+
+      // Verify the quote was saved correctly
+      const verifyQuote = await runtime.getCache<QuoteMemory>(quoteKey);
+      if (!verifyQuote) {
+        throw new Error(`Failed to save quote to cache: ${quoteId}`);
+      }
+
+      console.log("[DealCompletion] Created and verified default quote:", {
+        quoteId,
+        entityId,
+        beneficiary: normalizedBeneficiary,
+        cacheKey: quoteKey,
+      });
       quote = newQuote;
     } else {
       // Normal flow - fetch existing quote
@@ -692,17 +721,44 @@ export async function POST(request: NextRequest) {
       console.log(`[Deal Completion] ✅ Fixed indexes for quote ${quoteId}`);
     }
 
+    // Final verification - ensure the quote can be read back (same lookup used by executed quote API)
+    const finalVerify = await runtime.getCache<QuoteMemory>(`quote:${quoteId}`);
+    if (!finalVerify) {
+      console.error("[Deal Completion] CRITICAL: Quote not found after save:", quoteId);
+      throw new Error(`Quote verification failed: ${quoteId} not in cache after save`);
+    }
+    if (finalVerify.status !== "executed") {
+      console.error(
+        "[Deal Completion] CRITICAL: Quote status is not executed:",
+        finalVerify.status,
+      );
+      throw new Error(
+        `Quote status verification failed: expected executed, got ${finalVerify.status}`,
+      );
+    }
+
     console.log("[Deal Completion] ✅ VERIFIED and completed:", {
       entityId: quote.entityId,
       quoteId,
       tokenAmount: updated.tokenAmount,
-      status: updated.status,
+      status: finalVerify.status,
       inEntityList: true,
       discountBps: quote.discountBps,
       finalPrice: discountedUsd,
+      cacheKey: `quote:${quoteId}`,
     });
 
-    const completeResponse = { success: true, quoteId: updated.quoteId };
+    const completeResponse = {
+      success: true as const,
+      quoteId: updated.quoteId,
+      quote: {
+        quoteId: updated.quoteId,
+        status: updated.status,
+        tokenAmount: updated.tokenAmount,
+        totalUsd: updated.totalUsd,
+        discountBps: updated.discountBps,
+      },
+    };
     const validatedComplete = DealCompletionResponseSchema.parse(completeResponse);
     return NextResponse.json(validatedComplete);
   }

@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "eliza-otc-desk",
@@ -27,6 +28,7 @@
         "ai": "^5.0.116",
         "bigint-buffer": "^1.1.5",
         "boring-avatars": "^2.0.4",
+        "canvas-confetti": "^1.9.4",
         "clsx": "^2.1.1",
         "concurrently": "^9.2.1",
         "handlebars": "^4.7.8",
@@ -56,6 +58,7 @@
         "@synthetixio/synpress": "^4.1.1",
         "@types/bs58": "^5.0.0",
         "@types/bun": "^1.3.5",
+        "@types/canvas-confetti": "^1.9.0",
         "@types/chai": "^5.2.3",
         "@types/node": "^25.0.3",
         "@types/pg": "^8.16.0",
@@ -960,6 +963,8 @@
 
     "@types/bun": ["@types/bun@1.3.5", "", { "dependencies": { "bun-types": "1.3.5" } }, "sha512-RnygCqNrd3srIPEWBd5LFeUYG7plCoH2Yw9WaZGyNmdTEei+gWaHqydbaIRkIkcbXwhBT94q78QljxN0Sk838w=="],
 
+    "@types/canvas-confetti": ["@types/canvas-confetti@1.9.0", "", {}, "sha512-aBGj/dULrimR1XDZLtG9JwxX1b4HPRF6CX9Yfwh3NvstZEm1ZL7RBnel4keCPSqs1ANRu1u2Aoz9R+VmtjYuTg=="],
+
     "@types/chai": ["@types/chai@5.2.3", "", { "dependencies": { "@types/deep-eql": "*", "assertion-error": "^2.0.1" } }, "sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA=="],
 
     "@types/connect": ["@types/connect@3.4.38", "", { "dependencies": { "@types/node": "*" } }, "sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug=="],
@@ -1263,6 +1268,8 @@
     "caniuse-lite": ["caniuse-lite@1.0.30001762", "", {}, "sha512-PxZwGNvH7Ak8WX5iXzoK1KPZttBXNPuaOvI2ZYU7NrlM+d9Ov+TUvlLOBNGzVXAntMSMMlJPd+jY6ovrVjSmUw=="],
 
     "canonicalize": ["canonicalize@2.1.0", "", { "bin": { "canonicalize": "bin/canonicalize.js" } }, "sha512-F705O3xrsUtgt98j7leetNhTWPe+5S72rlL5O4jA1pKqBVQ/dT1O1D6PFxmSXvc0SUOinWS57DKx0I3CHrXJHQ=="],
+
+    "canvas-confetti": ["canvas-confetti@1.9.4", "", {}, "sha512-yxQbJkAVrFXWNbTUjPqjF7G+g6pDotOUHGbkZq2NELZUMDpiJ85rIEazVb8GTaAptNW2miJAXbs1BtioA251Pw=="],
 
     "cbw-sdk": ["@coinbase/wallet-sdk@3.9.3", "", { "dependencies": { "bn.js": "^5.2.1", "buffer": "^6.0.3", "clsx": "^1.2.1", "eth-block-tracker": "^7.1.0", "eth-json-rpc-filters": "^6.0.0", "eventemitter3": "^5.0.1", "keccak": "^3.0.3", "preact": "^10.16.0", "sha.js": "^2.4.11" } }, "sha512-N/A2DRIf0Y3PHc1XAMvbBUu4zisna6qAdqABMZwBMNEfWrXpAwx16pZGkYCLGE+Rvv1edbcB2LYDRnACNcmCiw=="],
 

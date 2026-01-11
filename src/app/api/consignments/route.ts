@@ -22,6 +22,27 @@ import {
 } from "../../../types/validation/api-schemas";
 import { sanitizeConsignmentForBuyer } from "../../../utils/consignment-sanitizer";
 
+const LOCAL_ORIGIN_PREFIXES = ["http://localhost:4444", "http://127.0.0.1:4444"] as const;
+
+function isLocalDevRequest(request: NextRequest): boolean {
+  const origin = request.headers.get("origin");
+  if (origin && LOCAL_ORIGIN_PREFIXES.some((allowed) => origin.startsWith(allowed))) {
+    return true;
+  }
+
+  const referer = request.headers.get("referer");
+  if (!origin && referer) {
+    try {
+      const refererOrigin = new URL(referer).origin;
+      return LOCAL_ORIGIN_PREFIXES.some((allowed) => refererOrigin.startsWith(allowed));
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -350,7 +371,9 @@ export async function POST(request: NextRequest) {
   } = data;
 
   // Skip wallet verification for local testing (E2E tests)
-  const isLocalTesting = getNetwork() === "local" || process.env.NODE_ENV === "development";
+  const isLocalTesting =
+    process.env.NODE_ENV !== "production" &&
+    (getNetwork() === "local" || isLocalDevRequest(request));
 
   if (!isLocalTesting) {
     // Verify wallet ownership via cryptographic signature

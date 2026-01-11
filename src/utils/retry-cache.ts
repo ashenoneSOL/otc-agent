@@ -11,6 +11,14 @@ interface CacheEntry<T> {
 
 const cache = new Map<string, CacheEntry<unknown>>();
 
+/**
+ * Clear all entries from the in-memory cache.
+ * Useful for tests and long-lived dev sessions.
+ */
+export function clearRetryCache(): void {
+  cache.clear();
+}
+
 // Safety limit: prevent unbounded memory growth
 // In serverless (Vercel), processes restart frequently so this is rarely hit
 const MAX_CACHE_SIZE = 1000;

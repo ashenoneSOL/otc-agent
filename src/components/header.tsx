@@ -19,6 +19,16 @@ export const Header = memo(function Header() {
 
   const NavLinks = () => (
     <>
+      <button
+        type="button"
+        onClick={() => {
+          setMobileMenuOpen(false);
+          setShowWelcomeModal(true);
+        }}
+        className="text-sm font-semibold m-1 p-1 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+      >
+        How It Works
+      </button>
       <Link
         href="/"
         className={clsx(
@@ -49,16 +59,6 @@ export const Header = memo(function Header() {
       >
         My Deals
       </Link>
-      <button
-        type="button"
-        onClick={() => {
-          setMobileMenuOpen(false);
-          setShowWelcomeModal(true);
-        }}
-        className="text-sm font-semibold m-1 p-1 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
-      >
-        How It Works
-      </button>
     </>
   );
 

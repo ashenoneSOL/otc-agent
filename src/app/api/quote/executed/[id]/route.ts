@@ -9,7 +9,7 @@ import {
 } from "../../../../../types/validation/api-schemas";
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await agentRuntime.getRuntime();
+  const runtime = await agentRuntime.getRuntime();
 
   const routeParams = await params;
   const validatedParams = validateRouteParams(GetExecutedQuoteParamsSchema, routeParams);
@@ -17,20 +17,36 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { id: quoteId } = validatedParams;
 
   // Lookup quote - handle not found at boundary
-  let quote: QuoteMemory;
+  let quote: QuoteMemory | null = null;
+
+  // First try QuoteDB/QuoteService (the standard path)
   try {
     quote = await QuoteDB.getQuoteByQuoteId(quoteId);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // QuoteDB throws for not found or service not registered - return 404
-    if (
-      message.includes("not found") ||
-      message.includes("not registered") ||
-      message.includes("does not exist")
-    ) {
-      return NextResponse.json({ error: `Quote ${quoteId} not found` }, { status: 404 });
+    console.log("[Quote Executed API] QuoteDB lookup failed:", message);
+    // Fall through to direct cache lookup below
+  }
+
+  // If QuoteDB fails, try direct cache lookup as fallback
+  // This handles cases where the quote was saved directly to cache
+  if (!quote) {
+    const cacheKey = `quote:${quoteId}`;
+    console.log("[Quote Executed API] Trying direct cache lookup:", cacheKey);
+    const cachedQuote = await runtime.getCache<QuoteMemory>(cacheKey);
+    if (cachedQuote) {
+      console.log("[Quote Executed API] Found quote in direct cache lookup:", {
+        quoteId: cachedQuote.quoteId,
+        status: cachedQuote.status,
+      });
+      quote = cachedQuote;
     }
-    throw err;
+  }
+
+  // If still not found, return 404
+  if (!quote) {
+    console.warn("[Quote Executed API] Quote not found by any method:", quoteId);
+    return NextResponse.json({ error: `Quote ${quoteId} not found` }, { status: 404 });
   }
 
   // Allow active, approved, and executed quotes to be viewed

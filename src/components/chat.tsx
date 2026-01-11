@@ -955,32 +955,36 @@ export const Chat = ({
   }, [entityId, createNewRoom]);
 
   const handleDealComplete = useCallback(async () => {
-    // DO NOT close the modal - let it show the success state and handle its own redirect
+    // DO NOT close the modal or reset chat yet - let modal show success state
     // The modal will redirect to /deal/[id] page after 2 seconds
+    // We delay chat reset until AFTER the redirect to avoid unmounting the modal
+    // (Setting currentQuote to null causes the modal to unmount due to conditional render)
 
-    // Reset chat and create new room in the background
     if (!entityId) {
       console.warn("[Chat] No entityId during deal completion - cannot reset chat");
       return;
     }
 
-    // Clear local storage for this wallet
-    localStorage.removeItem(`otc-desk-room-${entityId}`);
+    // Delay chat reset until after the modal redirects (modal waits 2s, we wait 3s)
+    setTimeout(async () => {
+      // Clear local storage for this wallet
+      localStorage.removeItem(`otc-desk-room-${entityId}`);
 
-    // Create a new room
-    const newRoomId = await createNewRoom();
-    if (!newRoomId) {
-      // Still clear the old state even if new room creation failed
+      // Create a new room
+      const newRoomId = await createNewRoom();
+      if (!newRoomId) {
+        // Still clear the old state even if new room creation failed
+        previousQuoteIdRef.current = null;
+        dispatch({ type: "SET_MESSAGES", payload: [] });
+        dispatch({ type: "SET_CURRENT_QUOTE", payload: null });
+        dispatch({ type: "SET_ROOM_ID", payload: null });
+        return;
+      }
+
+      // Clear messages and reset state - this prepares a fresh chat for when user returns
       previousQuoteIdRef.current = null;
-      dispatch({ type: "SET_MESSAGES", payload: [] });
-      dispatch({ type: "SET_CURRENT_QUOTE", payload: null });
-      dispatch({ type: "SET_ROOM_ID", payload: null });
-      return;
-    }
-
-    // Clear messages and reset state - this prepares a fresh chat for when user returns
-    previousQuoteIdRef.current = null;
-    dispatch({ type: "RESET_CHAT", payload: { roomId: newRoomId } });
+      dispatch({ type: "RESET_CHAT", payload: { roomId: newRoomId } });
+    }, 3000); // Wait 3 seconds (modal redirects after 2s)
   }, [entityId, createNewRoom]);
 
   // Unified connect handler - uses connectWallet if already authenticated, login if not

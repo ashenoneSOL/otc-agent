@@ -9,6 +9,7 @@ import {
   PublicKey as SolPubkey,
   SystemProgram as SolSystemProgram,
 } from "@solana/web3.js";
+import confetti from "canvas-confetti";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -139,6 +140,7 @@ function modalReducer(state: ModalState, action: ModalAction): ModalState {
         isProcessing: false,
         completedTxHash: action.payload.txHash,
         completedOfferId: action.payload.offerId,
+        completedQuoteId: action.payload.quoteId,
       };
     case "RESET":
       return {
@@ -153,6 +155,7 @@ function modalReducer(state: ModalState, action: ModalAction): ModalState {
         tokenMetadata: null,
         completedTxHash: null,
         completedOfferId: null,
+        completedQuoteId: null,
         contractConsignmentId: null,
         consignmentRemainingTokens: null,
       };
@@ -415,6 +418,7 @@ export function AcceptQuoteModal({
     tokenMetadata: null,
     completedTxHash: null,
     completedOfferId: null,
+    completedQuoteId: null,
     contractConsignmentId: null,
     consignmentRemainingTokens: null,
   };
@@ -1762,21 +1766,31 @@ export function AcceptQuoteModal({
         throw new Error(`Deal saved but status is ${saveResult.quote.status}, not executed`);
       }
 
-      console.log("✅ VERIFIED deal is in database as executed");
+      // Use the quoteId from the API response (not initialQuote which may be a default quote)
+      const finalQuoteId = saveResult.quoteId || saveResult.quote.quoteId || initialQuote.quoteId;
+      console.log("✅ VERIFIED deal is in database as executed, quoteId:", finalQuoteId);
+
+      // Fire confetti for success celebration
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
 
       dispatch({
         type: "SET_COMPLETED",
         payload: {
           txHash: null, // Solana tx hashes handled differently
           offerId: nextOfferId.toString(),
+          quoteId: finalQuoteId,
         },
       });
       onComplete?.({ offerId: BigInt(nextOfferId.toString()) });
 
       // Redirect to deal page after showing success
       setTimeout(() => {
-        router.push(`/deal/${initialQuote.quoteId}`);
-      }, 2000);
+        router.push(`/deal/${finalQuoteId}`);
+      }, 2500);
       return;
     }
 
@@ -2050,12 +2064,23 @@ export function AcceptQuoteModal({
     const saveData = await saveRes.json();
     console.log("[AcceptQuote] ✅ Deal completion saved:", saveData);
 
+    // Use the quoteId from the API response (not initialQuote which may be a default quote)
+    const finalQuoteId = saveData.quoteId || initialQuote.quoteId;
+
+    // Fire confetti for success celebration
+    confetti({
+      particleCount: 100,
+      spread: 70,
+      origin: { y: 0.6 },
+    });
+
     // NOW show success (everything confirmed)
     dispatch({
       type: "SET_COMPLETED",
       payload: {
         txHash: paymentTxHashTyped,
         offerId: newOfferId.toString(),
+        quoteId: finalQuoteId,
       },
     });
 
@@ -2063,8 +2088,8 @@ export function AcceptQuoteModal({
 
     // Auto-redirect after showing success briefly
     setTimeout(() => {
-      router.push(`/deal/${initialQuote.quoteId}`);
-    }, 2000);
+      router.push(`/deal/${finalQuoteId}`);
+    }, 2500);
   };
 
   const estPerTokenUsd = useMemo(() => {
@@ -2642,10 +2667,10 @@ export function AcceptQuoteModal({
 
         {step === "complete" && (
           <div className="px-5 pb-6">
-            <div className="text-center py-6">
-              <div className="w-12 h-12 rounded-full bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+            <div className="text-center py-8">
+              <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
                 <svg
-                  className="w-6 h-6 text-green-400"
+                  className="w-10 h-10 text-green-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -2654,26 +2679,29 @@ export function AcceptQuoteModal({
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth={2}
+                    strokeWidth={2.5}
                     d="M5 13l4 4L19 7"
                   />
                 </svg>
               </div>
-              <h3 className="font-semibold mb-2">Deal Complete</h3>
-              <p className="text-sm text-zinc-400">
-                Your purchase is complete. You&apos;ll receive your tokens at maturity.
-              </p>
+              <h3 className="text-2xl font-bold text-green-400 mb-3">Success</h3>
+              <p className="text-base text-zinc-300 mb-2">Your purchase is complete.</p>
+              <p className="text-sm text-zinc-400">You&apos;ll receive your tokens at maturity.</p>
               {completedTxHash && (
                 <a
                   href={getExplorerUrl(completedTxHash)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-brand-400 hover:text-brand-300 mt-3"
+                  className="inline-flex items-center gap-1 text-sm text-brand-400 hover:text-brand-300 mt-4 font-medium"
                 >
                   View transaction ↗
                 </a>
               )}
-              <p className="text-xs text-zinc-500 mt-3">Redirecting to your deal page...</p>
+              <div className="mt-6 pt-4 border-t border-zinc-800">
+                <p className="text-sm text-zinc-400 animate-pulse">
+                  Redirecting to your deal page...
+                </p>
+              </div>
             </div>
           </div>
         )}

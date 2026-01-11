@@ -8,39 +8,25 @@
  */
 
 import { beforeEach, describe, expect, setSystemTime, test } from "bun:test";
+import {
+  clearRetryCache,
+  getCached,
+  setCache,
+  withRetryAndCache,
+} from "../../src/utils/retry-cache";
 
 // =============================================================================
 // MODULE ISOLATION
 // =============================================================================
 
-// We need to test the module with fresh state, so we use dynamic imports
-// and clear the cache between tests by re-importing
-
-let getCached: <T>(key: string) => T | undefined;
-let setCache: <T>(key: string, value: T, ttlMs?: number) => void;
-let withRetryAndCache: <T>(
-  cacheKey: string,
-  fn: () => Promise<T>,
-  options?: { maxRetries?: number; cacheTtlMs?: number; skipCache?: boolean },
-) => Promise<T>;
-
-// Helper to clear and reload the module
-async function reloadModule(): Promise<void> {
-  // Clear any cached module
-  const modulePath = "../../src/utils/retry-cache";
-  // Dynamic import for fresh module state
-  const mod = await import(modulePath);
-  getCached = mod.getCached;
-  setCache = mod.setCache;
-  withRetryAndCache = mod.withRetryAndCache;
-}
+// The module has in-memory state; clear it between tests for isolation.
 
 // =============================================================================
 // CACHE BASICS - HAPPY PATH
 // =============================================================================
 describe("Retry Cache - Happy Path", () => {
-  beforeEach(async () => {
-    await reloadModule();
+  beforeEach(() => {
+    clearRetryCache();
   });
 
   describe("getCached / setCache", () => {
@@ -123,8 +109,8 @@ describe("Retry Cache - Happy Path", () => {
 // TTL EXPIRATION
 // =============================================================================
 describe("Retry Cache - TTL Expiration", () => {
-  beforeEach(async () => {
-    await reloadModule();
+  beforeEach(() => {
+    clearRetryCache();
   });
 
   test("cache expires after TTL", async () => {
@@ -208,13 +194,10 @@ describe("Retry Cache - TTL Expiration", () => {
 // =============================================================================
 // MAX CACHE SIZE & EVICTION
 // =============================================================================
-// NOTE: Cache eviction tests are skipped because the cache is a module-level
-// singleton that persists across test runs. Testing eviction would require
-// either modifying the module to expose a clear() function or running tests
-// in isolation. The eviction logic is tested manually and through code review.
+// NOTE: The cache is module-level; we clear it between tests via clearRetryCache().
 describe("Retry Cache - Max Size & Eviction", () => {
-  beforeEach(async () => {
-    await reloadModule();
+  beforeEach(() => {
+    clearRetryCache();
   });
 
   test("cache set and get works for many entries", () => {
@@ -246,8 +229,8 @@ describe("Retry Cache - Max Size & Eviction", () => {
 // RETRY LOGIC
 // =============================================================================
 describe("Retry Cache - Retry Logic", () => {
-  beforeEach(async () => {
-    await reloadModule();
+  beforeEach(() => {
+    clearRetryCache();
   });
 
   test("retries on retryable errors (429)", async () => {
@@ -327,8 +310,8 @@ describe("Retry Cache - Retry Logic", () => {
 // ERROR CLASSIFICATION
 // =============================================================================
 describe("Retry Cache - Error Classification", () => {
-  beforeEach(async () => {
-    await reloadModule();
+  beforeEach(() => {
+    clearRetryCache();
   });
 
   const retryableMessages = [
@@ -384,8 +367,8 @@ describe("Retry Cache - Error Classification", () => {
 // EDGE CASES
 // =============================================================================
 describe("Retry Cache - Edge Cases", () => {
-  beforeEach(async () => {
-    await reloadModule();
+  beforeEach(() => {
+    clearRetryCache();
   });
 
   test("handles empty string keys", () => {
@@ -450,8 +433,8 @@ describe("Retry Cache - Edge Cases", () => {
 // CONCURRENCY
 // =============================================================================
 describe("Retry Cache - Concurrency", () => {
-  beforeEach(async () => {
-    await reloadModule();
+  beforeEach(() => {
+    clearRetryCache();
   });
 
   test("concurrent reads return same cached value", () => {
@@ -503,8 +486,8 @@ describe("Retry Cache - Concurrency", () => {
 // DATA VERIFICATION
 // =============================================================================
 describe("Retry Cache - Data Verification", () => {
-  beforeEach(async () => {
-    await reloadModule();
+  beforeEach(() => {
+    clearRetryCache();
   });
 
   test("preserves exact numeric values", () => {

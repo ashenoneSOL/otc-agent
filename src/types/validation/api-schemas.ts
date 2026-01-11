@@ -51,7 +51,7 @@ const NonNegativeBigIntLikeSchema = z.preprocess((val) => {
   return val;
 }, BigIntStringSchema);
 
-const PositiveBigIntLikeSchema = NonNegativeBigIntLikeSchema.refine((val) => BigInt(val) > 0n, {
+const PositiveBigIntLikeSchema = NonNegativeBigIntLikeSchema.refine((val) => !/^0+$/.test(val), {
   message: "Amount must be a positive integer",
 });
 
@@ -870,6 +870,15 @@ export const DealCompletionResponseSchema = z.discriminatedUnion("success", [
   z.object({
     success: z.literal(true),
     quoteId: z.string(),
+    quote: z
+      .object({
+        quoteId: z.string(),
+        status: z.string(),
+        tokenAmount: z.string().optional(),
+        totalUsd: z.number().optional(),
+        discountBps: z.number().optional(),
+      })
+      .optional(),
     message: z.string().optional(),
     shareData: ShareDataSchema.optional(),
   }),

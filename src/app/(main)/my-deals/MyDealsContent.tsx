@@ -22,7 +22,13 @@ import {
   type OfferWithMetadata,
   transformSolanaDeal,
 } from "../../../utils/deal-transforms";
-import { formatDate, formatTokenAmount, getLockupLabel } from "../../../utils/format";
+import {
+  formatDate,
+  formatTimeRemaining,
+  formatTokenAmount,
+  formatUsd,
+  getLockupLabel,
+} from "../../../utils/format";
 import { useRenderTracker } from "../../../utils/render-tracker";
 import { resumeFreshAuth } from "../../../utils/x-share";
 
@@ -312,7 +318,7 @@ export function MyDealsContent() {
           <Button
             color="brand"
             onClick={() => router.push("/consign")}
-            className="!px-3 !py-1.5 !text-sm lg:hidden"
+            className="!px-3 !py-1.5 !text-sm md:hidden"
           >
             Create Listing
           </Button>
@@ -427,13 +433,18 @@ export function MyDealsContent() {
           {/* My Purchases Section */}
           {sortedPurchases.length > 0 && (
             <div>
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                My Purchases
-                <span className="text-sm font-normal text-zinc-500">
-                  ({sortedPurchases.length})
-                </span>
-              </h2>
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                  My Purchases
+                  <span className="text-sm font-normal text-zinc-500">
+                    ({sortedPurchases.length})
+                  </span>
+                </h2>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                  Tokens you have purchased with lockup periods
+                </p>
+              </div>
               <div className="space-y-3">
                 {sortedPurchases.map((o) => {
                   // FAIL-FAST: tokenSymbol and tokenName are required for display
@@ -489,49 +500,123 @@ export function MyDealsContent() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                        <div>
+                      {/* Remaining Lockup - Prominent Display */}
+                      {!matured && (
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <svg
+                                className="w-4 h-4 text-amber-600 dark:text-amber-400"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <title>Remaining lockup</title>
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                                Remaining Lockup
+                              </span>
+                            </div>
+                            <span className="text-lg font-bold text-amber-700 dark:text-amber-400">
+                              {formatTimeRemaining(o.unlockTime)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-amber-600/80 dark:text-amber-500/80 mt-1">
+                            Unlocks on {formatDate(o.unlockTime)}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Deal Terms Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-3">
                           <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                            Amount
+                            Amount Purchased
                           </div>
                           <div className="font-semibold text-sm">
                             {formatTokenAmount(o.tokenAmount)} {o.tokenSymbol}
                           </div>
                         </div>
 
-                        <div>
+                        <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-3">
                           <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                            Maturity
-                          </div>
-                          <div className="font-semibold text-sm">{formatDate(o.unlockTime)}</div>
-                        </div>
-
-                        <div>
-                          <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                            Discount
+                            Discount Received
                           </div>
                           <span className="inline-flex items-center rounded-full bg-brand-500/15 text-brand-600 dark:text-brand-400 px-2 py-0.5 text-xs font-medium">
-                            {discountPct.toFixed(0)}%
+                            {discountPct.toFixed(1)}%
                           </span>
                         </div>
 
-                        <div>
+                        <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-3">
+                          <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                            Lockup Period
+                          </div>
+                          <div className="font-semibold text-sm">{lockup}</div>
+                        </div>
+
+                        <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-3">
+                          <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                            Amount Paid
+                          </div>
+                          <div className="font-semibold text-sm">
+                            {o.amountPaid > 0n
+                              ? `${(Number(o.amountPaid) / (o.currency === 0 ? 1e18 : 1e6)).toFixed(o.currency === 0 ? 6 : 2)} ${o.currency === 0 ? (o.chain === "solana" ? "SOL" : "ETH") : "USDC"}`
+                              : "—"}
+                          </div>
+                        </div>
+
+                        <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-3">
+                          <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                            Price Per Token
+                          </div>
+                          <div className="font-semibold text-sm">
+                            {o.priceUsdPerToken > 0n
+                              ? formatUsd(Number(o.priceUsdPerToken) / 1e8)
+                              : "—"}
+                          </div>
+                        </div>
+
+                        <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-3">
                           <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
                             Status
                           </div>
                           {matured ? (
                             <span className="inline-flex items-center rounded-full bg-green-600/15 text-green-700 dark:text-green-400 px-2 py-0.5 text-xs font-medium">
-                              Ready
+                              Ready to Claim
                             </span>
                           ) : (
-                            <span className="inline-flex items-center rounded-full bg-brand-400/15 text-brand-600 dark:text-brand-400 px-2 py-0.5 text-xs font-medium">
-                              Locked ({lockup})
+                            <span className="inline-flex items-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 px-2 py-0.5 text-xs font-medium">
+                              Locked
                             </span>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                      {/* Purchase Date */}
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-3">
+                        Purchased on {formatDate(o.createdAt)}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+                        {matured ? (
+                          <Button
+                            color="brand"
+                            disabled={isClaiming}
+                            data-testid={`offer-claim-${o.id.toString()}`}
+                            onClick={async () => {
+                              await claim(o.id);
+                            }}
+                            className="!px-4 !py-2 !text-sm"
+                          >
+                            {isClaiming ? "Claiming…" : "Claim Tokens"}
+                          </Button>
+                        ) : null}
                         <Button
                           color="zinc"
                           onMouseEnter={() => {
@@ -559,23 +644,10 @@ export function MyDealsContent() {
                               window.location.href = `/deal/${data.quoteId}`;
                             }
                           }}
-                          className="!px-3 !py-1.5 !text-sm"
+                          className="!px-4 !py-2 !text-sm"
                         >
-                          View
+                          View Details
                         </Button>
-                        {matured && (
-                          <Button
-                            color="brand"
-                            disabled={isClaiming}
-                            data-testid={`offer-claim-${o.id.toString()}`}
-                            onClick={async () => {
-                              await claim(o.id);
-                            }}
-                            className="!px-3 !py-1.5 !text-sm"
-                          >
-                            {isClaiming ? "Claiming…" : "Claim"}
-                          </Button>
-                        )}
                         {emergencyRefundsEnabled && !matured && (
                           <Button
                             color="red"
@@ -603,9 +675,9 @@ export function MyDealsContent() {
                               });
                               setRefunding(null);
                             }}
-                            className="!px-3 !py-1.5 !text-sm"
+                            className="!px-4 !py-2 !text-sm"
                           >
-                            {refunding === o.id ? "Refunding..." : "Refund"}
+                            {refunding === o.id ? "Refunding..." : "Emergency Refund"}
                           </Button>
                         )}
                       </div>

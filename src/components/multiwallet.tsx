@@ -1,5 +1,6 @@
 "use client";
 
+import miniappSdk from "@farcaster/miniapp-sdk";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useWallet as useSolanaWalletAdapter } from "@solana/wallet-adapter-react";
 import {
@@ -331,24 +332,17 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     const timer = setTimeout(checkPhantom, 1000);
 
     // Detect Farcaster (expected to fail in non-Farcaster environments)
-    import("@farcaster/miniapp-sdk")
-      .then(({ default: miniappSdk }) => {
-        miniappSdk.context
-          .then((context) => {
-            if (context) {
-              setIsFarcasterContext(true);
-              miniappSdk.actions.ready();
-            }
-          })
-          .catch((err) => {
-            if (process.env.NODE_ENV === "development") {
-              console.debug("[MultiWallet] Not in Farcaster context:", err);
-            }
-          });
+    Promise.resolve()
+      .then(() => miniappSdk.context)
+      .then((context) => {
+        if (context) {
+          setIsFarcasterContext(true);
+          miniappSdk.actions.ready();
+        }
       })
       .catch((err) => {
         if (process.env.NODE_ENV === "development") {
-          console.debug("[MultiWallet] Farcaster SDK not available:", err);
+          console.debug("[MultiWallet] Not in Farcaster context:", err);
         }
       });
 
