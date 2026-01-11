@@ -81,17 +81,19 @@ export function MyDealsContent() {
     return solanaPublicKey || evmAddress?.toLowerCase();
   }, [activeFamily, solanaPublicKey, evmAddress]);
 
-  // Debug logging for wallet state
+  // Debug logging for wallet state (dev only)
   useEffect(() => {
-    console.log("[MyDeals] Wallet state:", {
-      activeFamily,
-      hasWallet,
-      solanaPublicKey: solanaPublicKey?.slice(0, 8),
-      evmAddress: evmAddress?.slice(0, 10),
-      evmWalletAddr: evmWalletAddr?.slice(0, 10),
-      solanaWalletAddr: solanaWalletAddr?.slice(0, 8),
-      networkLabel,
-    });
+    if (process.env.NODE_ENV === "development") {
+      console.log("[MyDeals] Wallet state:", {
+        activeFamily,
+        hasWallet,
+        solanaPublicKey: solanaPublicKey?.slice(0, 8),
+        evmAddress: evmAddress?.slice(0, 10),
+        evmWalletAddr: evmWalletAddr?.slice(0, 10),
+        solanaWalletAddr: solanaWalletAddr?.slice(0, 8),
+        networkLabel,
+      });
+    }
   }, [
     activeFamily,
     hasWallet,
@@ -173,6 +175,20 @@ export function MyDealsContent() {
     await Promise.all([refetchDeals(), refetchConsignments()]);
   }, [refetchDeals, refetchConsignments]);
 
+  // Debug: log deals data (dev only)
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      console.log("[MyDeals] Deals data:", {
+        evmDeals: evmDeals.length,
+        solanaDeals: solanaDeals.length,
+        myOffers: myOffers.length,
+        myListings: myListings.length,
+        isLoadingDeals,
+        isDealsError,
+      });
+    }
+  }, [evmDeals, solanaDeals, myOffers, myListings, isLoadingDeals, isDealsError]);
+
   // Transform and merge deals from both chains
   const purchases = useMemo(() => {
     const allPurchases: OfferWithQuoteId[] = [];
@@ -187,11 +203,8 @@ export function MyDealsContent() {
     // myOffers is always an array (never null) - type signature guarantees it
     // Contract offers don't have token metadata, so transform them to OfferWithMetadata
     // with empty metadata - mergeDealsWithOffers will filter them out if they don't have metadata
-    if (evmDeals.length > 0 || myOffers.length > 0) {
-      // FAIL-FAST: evmAddress required for EVM deals
-      if (!evmAddress) {
-        throw new Error("evmAddress is required for EVM deals");
-      }
+    // Only process if we have an EVM address (needed for contract interactions)
+    if ((evmDeals.length > 0 || myOffers.length > 0) && evmAddress) {
       // Transform contract offers to OfferWithMetadata format (without metadata - will be filtered)
       const offersWithMetadata: OfferWithMetadata[] = myOffers.map(
         (offer: Offer & { id: bigint }) => ({
@@ -311,17 +324,35 @@ export function MyDealsContent() {
   }
 
   return (
-    <main className="flex-1 px-3 sm:px-4 md:px-6 py-4 sm:py-6">
-      <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
-        <div className="flex items-center justify-between">
+    <main className="flex-1 overflow-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
+      <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6 pb-8">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl sm:text-2xl font-semibold">My Deals</h1>
-          <Button
-            color="brand"
-            onClick={() => router.push("/consign")}
-            className="!px-3 !py-1.5 !text-sm md:hidden"
-          >
-            Create Listing
-          </Button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => refreshDeals()}
+              className="p-2 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+              title="Refresh deals"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <title>Refresh</title>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            </button>
+            <Button
+              color="brand"
+              onClick={() => router.push("/consign")}
+              className="!px-3 !py-1.5 !text-sm"
+            >
+              Create Listing
+            </Button>
+          </div>
         </div>
 
         {/* Wallet & Network Info Banner */}
@@ -390,19 +421,56 @@ export function MyDealsContent() {
         )}
 
         <div className="space-y-6">
-          {/* Empty State - shown inline when no deals */}
+          {/* Empty State - shown when no listings AND no purchases */}
           {hasFetchedData && !hasAnyDeals && (
-            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-8 text-center">
-              <p className="text-zinc-600 dark:text-zinc-400">No deals yet</p>
+            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-8 text-center space-y-4">
+              <div className="w-12 h-12 mx-auto rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                <svg
+                  className="w-6 h-6 text-zinc-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <title>No deals</title>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-medium text-zinc-900 dark:text-zinc-100">No deals yet</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                  Create a listing to sell tokens or browse the trading desk to buy
+                </p>
+              </div>
+              <div className="flex justify-center gap-3">
+                <Button
+                  color="brand"
+                  onClick={() => router.push("/consign")}
+                  className="!px-4 !py-2 !text-sm"
+                >
+                  Create Listing
+                </Button>
+                <Button
+                  color="zinc"
+                  onClick={() => router.push("/")}
+                  className="!px-4 !py-2 !text-sm"
+                >
+                  Browse Deals
+                </Button>
+              </div>
             </div>
           )}
 
-          {/* My Listings Section */}
+          {/* My Listings Section (Selling) */}
           {(filteredListings.length > 0 || completedCount > 0) && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
+            <section>
+              <div className="flex items-center justify-between mb-2">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-brand-500"></span>
+                  <span className="w-2 h-2 rounded-full bg-brand-500" />
                   My Listings
                   <span className="text-sm font-normal text-zinc-500">
                     ({filteredListings.length})
@@ -418,33 +486,45 @@ export function MyDealsContent() {
                   </button>
                 )}
               </div>
-              <div className="space-y-3">
-                {filteredListings.map((consignment) => (
-                  <ConsignmentRow
-                    key={consignment.id}
-                    consignment={consignment}
-                    onUpdate={refreshDeals}
-                  />
-                ))}
-              </div>
-            </div>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+                Tokens you are selling with OTC terms
+              </p>
+              {filteredListings.length > 0 ? (
+                <div className="space-y-3">
+                  {filteredListings.map((consignment) => (
+                    <ConsignmentRow
+                      key={consignment.id}
+                      consignment={consignment}
+                      onUpdate={refreshDeals}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 p-6 text-center">
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    No active listings.{" "}
+                    {completedCount > 0 ? "Toggle above to see completed listings." : ""}
+                  </p>
+                </div>
+              )}
+            </section>
           )}
 
-          {/* My Purchases Section */}
+          {/* My Purchases Section (Buying) */}
           {sortedPurchases.length > 0 && (
-            <div>
-              <div className="mb-4">
+            <section>
+              <div className="mb-2">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
                   My Purchases
                   <span className="text-sm font-normal text-zinc-500">
                     ({sortedPurchases.length})
                   </span>
                 </h2>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                  Tokens you have purchased with lockup periods
-                </p>
               </div>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+                Tokens you have purchased with lockup periods
+              </p>
               <div className="space-y-3">
                 {sortedPurchases.map((o) => {
                   // FAIL-FAST: tokenSymbol and tokenName are required for display
@@ -685,7 +765,7 @@ export function MyDealsContent() {
                   );
                 })}
               </div>
-            </div>
+            </section>
           )}
         </div>
       </div>
