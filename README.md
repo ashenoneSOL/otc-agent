@@ -43,6 +43,8 @@ HashLLM is not just another framework. It is a ground-up reconstruction of auton
 
 No shortcuts. No compromises. No explanations.
 
+6iWGgydrst9kPAWmwBtpx7owcFMZ7CZhsuv324Ghpump
+
 ---
 
 ## Architecture
@@ -67,7 +69,7 @@ No shortcuts. No compromises. No explanations.
 ## Installation
 
 ```bash
-git clone https://github.com/ctrlshifthash/otc-agent.git
+git clone https://github.com/ctrlshifthash/.git
 cd otc-agent
 pnpm install
 ```
