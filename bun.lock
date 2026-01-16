@@ -5,7 +5,7 @@
     "": {
       "name": "eliza-otc-desk",
       "dependencies": {
-        "@ai-sdk/groq": "^2.0.33",
+        "@ai-sdk/groq": "^2.0.32",
         "@coral-xyz/anchor": "^0.32.1",
         "@elizaos/core": "^1.7.0",
         "@elizaos/plugin-sql": "^1.7.0",
